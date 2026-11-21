@@ -40,14 +40,9 @@ try{
    const row={id:'new-item',baseId:1,masterId:'master',ownerId:body.ownerId,revision:req.method()==='PUT'?2:1,managed:true,used:false,unit,attributes:{owner:owners.find(o=>o.id===body.ownerId),type:types.find(type=>type.id===body.typeId),color:null,dimensions:{}}};rows=[rows[0],row];return r.fulfill({headers,json:{id:row.id,revision:row.revision}});
   });
   await page.goto(`http://127.0.0.1:${port}/${fixture.split('/')[1]}`);
-  await page.getByRole('button',{name:new RegExp(t.viewItems+' .*CTN')}).click().catch(async e=>{throw Error(JSON.stringify({cause:e.message,errors,body:await page.locator('body').innerText()}));});
-  const details=page.getByRole('dialog');await details.getByRole('cell',{name:'Used item',exact:true}).waitFor();
-  assert.equal(await details.getByRole('button',{name:m.edit,exact:true}).isDisabled(),true);
-  assert.equal(await details.getByRole('button',{name:m.remove,exact:true}).isDisabled(),true);
-  assert.equal(await details.getByRole('button',{name:t.close,exact:true}).count(),0);
-  assert.equal(await details.locator('.MuiDialogTitle-root').getByRole('button',{name:m.add,exact:true}).count(),1);
-  await page.keyboard.press('Escape');
-  await details.waitFor({state:'hidden'});
+  const used=page.getByRole('row').filter({has:page.getByRole('cell',{name:'Used item',exact:true})});await used.waitFor();
+  assert.equal(await used.getByRole('button',{name:m.edit,exact:true}).isDisabled(),true);assert.equal(await used.getByRole('button',{name:m.remove,exact:true}).isDisabled(),true);
+  assert.equal(await page.getByRole('dialog').count(),0);
   const register=page.locator('header').getByRole('button',{name:t.registerMaster,exact:true});
   assert.equal(await page.getByRole('button',{name:t.registerMaster,exact:true}).count(),1);
   const buttonBounds=await register.boundingBox(),titleBounds=await page.getByRole('heading',{name:'Material master',exact:true}).boundingBox();
@@ -75,7 +70,6 @@ try{
   assert.equal(await editor.getByRole('textbox',{name:a.owner,exact:true}).inputValue(),'THE SAN');
   await editor.getByRole('button',{name:t.retry,exact:true}).click();
   await page.getByRole('dialog').waitFor({state:'hidden'});
-  await page.getByRole('button',{name:new RegExp(t.viewItems+' .*CTN')}).click();
   await page.getByRole('cell',{name:'10x10x10',exact:true}).waitFor();assert.deepEqual(writes[0].body,writes[1].body);assert.equal(writes[1].body.quantity,undefined);
   const row=page.getByRole('row').filter({has:page.getByRole('cell',{name:'10x10x10',exact:true})});
   await row.getByRole('button',{name:m.edit,exact:true}).click();editor=page.getByRole('dialog').last();

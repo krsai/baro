@@ -100,8 +100,8 @@ test('registered material identity and snapshots flow to expenses and direct ban
   const cost=await db.partnerTransactionCost.findFirst({where:{expenseRequestId:doc.id}});
   assert.equal(cost.materialItemId,item.id);assert.equal(cost.unitId,unit.id);assert.equal(cost.itemOwnerOrgId,org);assert.equal(cost.details.height,undefined);assert.equal(cost.materialItemSnapshot.nameEn,base.nameEn);
   const form=expenseEditorForm(await loadExpenseEditorSource(db,org,'request',String(doc.id)));assert.equal(form.items[0].materialItemId,item.id);assert.deepEqual(form.items[0].materialItemSnapshot,cost.materialItemSnapshot);
-  const bank={clientKey:randomUUID(),transactionDate:'2026-11-19',direction:'OUT',amount:'10',purpose:'Material purchase',accountingCodeId:s.code.id,evidenceType:'FILE',evidenceNumber:'receipt.pdf',counterparty:{kind:'PARTNER',id:s.vendor.id},materialItemId:item.id};
-  const entry=await postLedgerEntry(db,org,'admin@example.test',s.account.id,bank);assert.equal(entry.materialItemId,item.id);assert.equal(entry.materialItemSnapshot.variantId,undefined);assert.equal(cost.materialItemSnapshot.variantId,expenseSelection.materialVariantId);
+  const bank={clientKey:randomUUID(),transactionDate:'2026-11-19',direction:'OUT',amount:'10',purpose:'Material purchase',accountingCodeId:s.code.id,evidenceType:'FILE',evidenceNumber:'receipt.pdf',counterparty:{kind:'PARTNER',id:s.vendor.id},...expenseSelection};
+  const entry=await postLedgerEntry(db,org,'admin@example.test',s.account.id,bank);assert.equal(entry.materialItemId,item.id);assert.equal(entry.materialItemSnapshot.variantId,expenseSelection.materialVariantId);assert.equal(cost.materialItemSnapshot.variantId,expenseSelection.materialVariantId);
   assert.equal((await postLedgerEntry(db,org,'admin@example.test',s.account.id,bank)).id,entry.id);
   await assert.rejects(db.$transaction(tx=>prepareMaterialSelection(tx,s.other.id,{...s.code,base:{materialSettings:{enabled:true}}},{materialItemId:item.id})),/INVALID_MATERIAL_ITEM/);
   await assert.rejects(db.materialItem.update({where:{id:item.id},data:{data:{nameEn:'FORGED'}}}),/immutable/);

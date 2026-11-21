@@ -5,6 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
 import {expensePaymentChecks} from '../frontend/src/utils/expensePaymentChecks.mjs';
+import {seedExpenseVariant} from './helpers/expense-variant-fixture.mjs';
 const require=createRequire(import.meta.url);
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
 const {registerMaterialItemRoutes,systemMaterialOptions}=require('../backend/dist/services/materialItems');
@@ -84,4 +85,23 @@ test('input comparison uses selected instalment gross, preserves decimals and se
  const historical={...row,paymentScheduleId:'',expenseComparison:{version:1,paymentScheduleId:null,items:[{itemId:'i',expected:'108'}]},document:{items:[{id:'i',remaining:'54'}]}};
  assert.equal(expensePaymentChecks([historical]).difference,true);
  assert.deepEqual(expensePaymentChecks([{...row,evidenceType:'FILE'}]),{vat:false,difference:false});
+});
+
+test('direct file evidence links the real variant and protects items referenced only by a ledger entry',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
+  const base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}}),unit=await db.expenseUnit.create({data:{code:'FILEBOX',nameEn:'Box',nameKo:'박스',nameVi:'Thùng'}});
+  await db.accountingCodeIndustry.create({data:{baseId:base.id,systemIndustryId:base.serviceTypeId}});
+  await db.settingServiceDefault.update({where:{id:base.serviceTypeId},data:{materialManagement:true}});
+  await db.transactionCodeBase.update({where:{id:base.id},data:{materialUnitId:unit.id,materialSettings:{enabled:true,stockFields:['unit'],unitInput:'REQUIRED',colorInput:'HIDDEN',masterInputs:{owner:'REQUIRED',type:'HIDDEN',color:'HIDDEN'}}}});
+  const [system]=await systemMaterialOptions(db,org,base.id),selection=await seedExpenseVariant(db,s,system.id);
+  const body={clientKey:randomUUID(),transactionDate:'2026-11-20',direction:'OUT',amount:'10',accountingCodeId:s.code.id,evidenceType:'FILE',evidenceNumber:'carton.pdf',counterparty:{kind:'PARTNER',id:s.vendor.id},...selection};
+  const entry=await postLedgerEntry(db,org,'admin@example.test',s.account.id,body);
+  assert.equal(entry.materialItemSnapshot.variantId,selection.materialVariantId);assert.equal(await db.partnerTransactionCost.count(),0);
+  assert.equal((await db.$queryRaw`SELECT "materialVariantId" FROM "BankLedgerEntry" WHERE id=${entry.id}`)[0].materialVariantId,selection.materialVariantId);
+  const routes=new Map();registerInventoryVariantRoutes(Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,h)=>routes.set(method+path,h)])),db,async()=>({orgId:org,actorId:actor}));
+  await assert.rejects(routes.get('delete/material-items/variants/:id')({params:{id:selection.materialVariantId},body:{revision:1}},{json(){}}),/VARIANT_IN_USE/);
+  await assert.rejects(db.$executeRaw`DELETE FROM "InventoryVariant" WHERE id=${selection.materialVariantId}`,/VARIANT_IN_USE/);
+  await assert.rejects(postLedgerEntry(db,org,'admin@example.test',s.account.id,{...body,materialVariantId:'forged'}),/LEDGER_RETRY_CONFLICT/);
+ }finally{await f.close();}
 });

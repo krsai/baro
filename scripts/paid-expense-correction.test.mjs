@@ -1,5 +1,6 @@
 import test from 'node:test';
 import {expenseCodeCorrectionInput} from '../frontend/src/utils/ledgerExpenseCodeCorrection.mjs';
+import {seedExpenseVariant} from './helpers/expense-variant-fixture.mjs';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
@@ -114,5 +115,41 @@ test('highest admin code correction follows allocated expense FKs for every part
   assert.equal((await db.expenseRequest.findUnique({where:{id:mixed.id}})).version,1);
   assert.equal(await db.bankLedgerEntry.count({where:{orgId:org,voidedAt:null}}),3);
   assert.equal((await db.$queryRawUnsafe('SELECT * FROM "PaidExpenseCorrection"')).length,2);
+ }finally{await f.close();}
+});
+
+test('dashboard correction explicitly links a registered material to a paid legacy cost without changing money',async()=>{
+ const f=await changeApprovalFixture({registration:true}),db=f.db;
+ try{
+  const s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin;
+  const {saveApprovalActionBatch}=require('../backend/dist/services/approvalActions');
+  const {systemMaterialOptions}=require('../backend/dist/services/materialItems');
+  const {ledgerEntryRevision}=require('../backend/dist/services/bankLedgerEdit');
+  await saveApprovalActionBatch(db,org,actor.id,[{menu:'BANK_LEDGER',operation:'CREATE',settings:{revision:0,drafterScope:{role:'ALL',gradeId:null},registrationStages:[{role:'ADMIN',gradeMatch:'ANY',gradeId:null}]}}]);
+  const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor.id,{partnerOrgId:s.vendor.id,requestDate:'2026-11-20',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'10',unitPrice:'10',vatRate:'0',details:{evidenceFile:'carton.pdf'}}]}));
+  const bank={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{entryKind:'BANK',clientKey:randomUUID(),accountId:s.account.id,transactionDate:'2026-11-20',direction:'OUT',amount:'100',accountingCodeId:s.code.id,evidenceType:'EXPENSE',expenseRequestId:doc.id,expenseVersion:doc.version,expenseItems:[{itemId:doc.items[0].id,amount:'100'}],counterparty:{kind:'PARTNER',id:s.vendor.id}}]};
+  const payment=await requestChangeApproval(db,org,actor.id,{menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:bank.clientKey,payload:bank,clientKey:randomUUID()});assert.equal(payment.status,'APPROVED');
+  const original=await db.bankLedgerEntry.findFirst({where:{orgId:org,voidedAt:null}});
+  const base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}}),unit=await db.expenseUnit.create({data:{code:'PAIDBOX',nameEn:'Box',nameKo:'박스',nameVi:'Thùng'}});
+  await db.accountingCodeIndustry.create({data:{baseId:base.id,systemIndustryId:base.serviceTypeId}});
+  await db.settingServiceDefault.update({where:{id:base.serviceTypeId},data:{materialManagement:true}});
+  await db.transactionCodeBase.update({where:{id:base.id},data:{materialUnitId:unit.id,materialSettings:{enabled:true,stockFields:['unit'],unitInput:'REQUIRED',colorInput:'HIDDEN',masterInputs:{owner:'REQUIRED',type:'HIDDEN',color:'HIDDEN'}}}});
+  const [system]=await systemMaterialOptions(db,org,base.id),selection=await seedExpenseVariant(db,s,system.id);
+  const [variant]=await db.$queryRaw`SELECT * FROM "InventoryVariant" WHERE id=${selection.materialVariantId}`;
+  const master=await db.materialItem.findUnique({where:{id:selection.materialItemId}}),a=variant.attributes;
+  const material={...master,data:{...master.data,variantId:variant.id,variantRevision:variant.revision,itemOwnerOrgId:a.owner.id,itemOwnerSnapshot:a.owner,itemTypeId:null,itemAttributeSnapshot:{type:null},color:null,details:{}}};
+  const form=expenseEditorForm(await loadExpenseEditorSource(db,org,'request',String(doc.id)));
+  const input=expenseCodeCorrectionInput(form,doc.items[0].id,s.code.id,randomUUID(),{entryId:original.id,revision:ledgerEntryRevision(original)},material);
+  const result=await requestChangeApproval(db,org,actor.id,{...input,clientKey:randomUUID(),reason:'Link the selected carton item'});assert.equal(result.status,'APPROVED');
+  const cost=await db.partnerTransactionCost.findUnique({where:{id:doc.items[0].id}});
+  assert.equal(cost.materialItemSnapshot.variantId,variant.id);assert.equal(cost.unitId,unit.id);assert.equal(String(cost.quantity),'10');assert.equal(String(cost.unitPrice),'10');assert.equal(String(cost.amount),'100');assert.equal(String(cost.vatRate),'0');
+  const replacement=await db.bankLedgerEntry.findFirst({where:{orgId:org,voidedAt:null}});assert.equal(replacement.revisesEntryId,original.id);assert.equal(String(replacement.amount),'100');assert.deepEqual(replacement.expenseComparison,original.expenseComparison);
+  const audit=await db.changeApprovalRequest.findUnique({where:{id:result.id}});assert.equal(audit.beforeSnapshot.costs[0].materialItemId??null,null);assert.equal(audit.beforeSnapshot.costs[0].unitId,null);
+  const latest=expenseEditorForm(await loadExpenseEditorSource(db,org,'request',String(doc.id)));
+  for(const patch of [{quantity:'11'},{unitId:unit.id+999},{materialVariantId:'forged-variant'},{itemOwnerOrgId:s.other.id}]){
+   const invalid={...latest,clientKey:randomUUID(),items:latest.items.map(line=>({...line,...patch}))};
+   await assert.rejects(requestChangeApproval(db,org,actor.id,{menu:'EXPENSE',operation:'UPDATE',sourceKind:'request',sourceId:String(doc.id),revision:latest.revision,payload:invalid,reason:'Invalid correction',clientKey:randomUUID()}));
+  }
+  assert.equal(await db.bankLedgerEntry.count({where:{orgId:org}}),2);
  }finally{await f.close();}
 });

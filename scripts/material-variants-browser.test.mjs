@@ -40,32 +40,19 @@ try{
   await page.goto(`http://127.0.0.1:${port}/material-variants-test.html`);
   const t=materialItemText[lang];
   if(fail){await page.getByRole('alert').waitFor().catch(async e=>{throw Error(JSON.stringify({errors,body:await page.locator('body').innerText(),cause:e.message}));});assert.equal(await page.getByText(t.empty,{exact:true}).count(),0);fail=false;await page.getByRole('button',{name:t.retry,exact:true}).click();}
-  const view=page.getByRole('button',{name:new RegExp(t.viewItems+' .*CTN')});
-  await view.waitFor();assert.equal(await page.getByRole('cell',{name:'10x10x10',exact:true}).count(),0);
-  const mainTable=page.locator('table').first();
-  assert.equal(await mainTable.getAttribute('data-table-layout'),'fixed');
-  if(width===1440){const tableBox=await mainTable.boundingBox(),actionBox=await view.locator('xpath=..').boundingBox();assert.ok(Math.abs(actionBox.x+actionBox.width-tableBox.x-tableBox.width)<2,'action column reaches the right edge of the full-width list');}
-  assert.equal(await mainTable.locator('thead th').nth(3).evaluate(cell=>getComputedStyle(cell).textAlign),'center');
-  assert.equal(await mainTable.locator('tbody tr').first().locator('td').nth(3).evaluate(cell=>getComputedStyle(cell).textAlign),'center');
-  assert.equal(await view.locator('xpath=..').evaluate(cell=>cell===cell.parentElement.lastElementChild&&getComputedStyle(cell).position==='sticky'),true);
-  await view.focus();await page.keyboard.press('Enter');
-  let dialog=page.getByRole('dialog');await dialog.waitFor();
-  await dialog.getByRole('cell',{name:'10x10x10',exact:true}).waitFor();
-  assert.equal(await dialog.getByRole('cell',{name:'THE SAN',exact:true}).count(),2);
-  await dialog.getByRole('cell',{name:'30 \u00d7 40 \u00d7 50',exact:true}).waitFor();
-  await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});assert.equal(await view.evaluate(button=>button===document.activeElement),true);
-  await page.getByRole('textbox',{name:'Search',exact:true}).fill('THE SAN');await view.click();
-  dialog=page.getByRole('dialog');await dialog.getByRole('cell',{name:'10x10x10',exact:true}).waitFor();
-  assert.equal(await dialog.getByRole('cell',{name:'BARO',exact:true}).count(),1,'the modal shows all products belonging to the code');
-  await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
-  assert.equal(await page.getByRole('textbox',{name:'Search',exact:true}).inputValue(),'THE SAN');
-  await page.getByRole('textbox',{name:'Search',exact:true}).fill('10x10x10');
-  await view.waitFor();assert.equal(await page.getByRole('button',{name:new RegExp(t.viewItems+' .*LBL')}).count(),0);
-  await page.getByRole('textbox',{name:'Search',exact:true}).fill('');
-  await page.getByRole('button',{name:new RegExp(t.viewItems+' .*LBL')}).click();
-  dialog=page.getByRole('dialog');await dialog.getByRole('cell',{name:t.noItems,exact:true}).waitFor();
+  await page.getByRole('cell',{name:'10x10x10',exact:true}).waitFor();
+  const mainTable=page.locator('table').first();assert.equal(await mainTable.getAttribute('data-table-layout'),'fixed');
+  assert.equal(await mainTable.locator('tbody tr').count(),3);assert.equal(await page.getByRole('cell',{name:'LBL',exact:true}).count(),0,'enabled codes without registered items are not material items');
+  assert.equal(await page.getByRole('cell',{name:'THE SAN',exact:true}).count(),2);await page.getByRole('cell',{name:'30 \u00d7 40 \u00d7 50',exact:true}).waitFor();
+  const action=mainTable.locator('tbody tr').first().locator('td').last();
+  assert.equal(await action.evaluate(cell=>getComputedStyle(cell).position),'sticky');
+  if(width===1440){const tableBox=await mainTable.boundingBox(),actionBox=await action.boundingBox();assert.ok(Math.abs(actionBox.x+actionBox.width-tableBox.x-tableBox.width)<2);}
+  await page.getByRole('textbox',{name:'Search',exact:true}).fill('THE SAN');assert.equal(await mainTable.locator('tbody tr').count(),2);assert.equal(await page.getByRole('cell',{name:'BARO',exact:true}).count(),0);
+  await page.getByRole('textbox',{name:'Search',exact:true}).fill('10x10x10');assert.equal(await mainTable.locator('tbody tr').count(),1);
+  await page.getByRole('textbox',{name:'Search',exact:true}).fill('LBL');await page.getByRole('cell',{name:t.noItems,exact:true}).waitFor();
+  assert.equal(await page.getByRole('dialog').count(),0,'registered material items are managed directly on the master page');
   assert.deepEqual(writes,[]);assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   await page.close();
  }
- console.log('PASS material code drilldown: row-end modal action, keyboard/focus return, all belonging definitions, owner/type search, legacy dimensions, empty state and failure retry; ko/en/vi desktop/mobile; no writes');
+ console.log('PASS material master registered-item table, owner/type search, legacy dimensions, empty state, right-fixed actions and retry; ko/en/vi desktop/mobile; no writes');
 }finally{await browser?.close();server.kill();if(existsSync(fixture))unlinkSync(fixture);}

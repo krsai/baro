@@ -39,7 +39,7 @@ export async function prepareLedgerMaterial(tx:any,orgId:number,body:any,previou
  const code=body.accountingCodeId?await tx.transactionCode.findFirst({where:{id:body.accountingCodeId,ownerOrgId:orgId},include:{base:true}}):null;
  if(!code)return {};
  const historical=previous?.evidenceType==='FILE'&&previous.accountingCodeId===code.id?{...previous,transactionCodeId:previous.accountingCodeId}:undefined;
- return prepareMaterialSelection(tx,orgId,code,body,historical);
+ return prepareMaterialSelection(tx,orgId,code,{...body,materialVariantRequired:true},historical);
 }
 export async function registerMaterialItem(tx:any,orgId:number,actorId:number,body:any,systemDefault=false){
  if(typeof body.clientKey!=='string'||!/^[\w-]{8,100}$/.test(body.clientKey))fail('INVALID_MATERIAL_ITEM');
@@ -123,7 +123,7 @@ export function registerMaterialItemRoutes(app:any,db:any,gates:any){
  });
  app.get('/material-items/variants',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;
-  res.json(await db.$queryRaw`SELECT v.id,v."masterId",i."baseId",v."ownerId",v.revision,v.managed,EXISTS(SELECT 1 FROM "InventoryMovement" m WHERE m."orgId"=v."orgId" AND m."variantId"=v.id) OR EXISTS(SELECT 1 FROM "PartnerTransactionCost" c WHERE c."orgId"=v."orgId" AND c."materialVariantId"=v.id) AS used,jsonb_build_object('owner',v.attributes->'owner','type',v.attributes->'type','color',v.attributes->'color','dimensions',v.attributes->'dimensions') AS attributes,i.data->'unit' AS unit
+  res.json(await db.$queryRaw`SELECT v.id,v."masterId",i."baseId",v."ownerId",v.revision,v.managed,i.data->'baseSnapshot' AS "baseSnapshot",EXISTS(SELECT 1 FROM "InventoryMovement" m WHERE m."orgId"=v."orgId" AND m."variantId"=v.id) OR EXISTS(SELECT 1 FROM "PartnerTransactionCost" c WHERE c."orgId"=v."orgId" AND c."materialVariantId"=v.id) OR EXISTS(SELECT 1 FROM "BankLedgerEntry" ledger WHERE ledger."orgId"=v."orgId" AND ledger."materialVariantId"=v.id) AS used,jsonb_build_object('owner',v.attributes->'owner','type',v.attributes->'type','color',v.attributes->'color','dimensions',v.attributes->'dimensions') AS attributes,i.data->'unit' AS unit
    FROM "InventoryVariant" v JOIN "MaterialItem" i ON i.id=v."masterId" AND i."orgId"=v."orgId" AND i."baseId"=v."baseId"
    WHERE v."orgId"=${scope.orgId} ORDER BY i."baseId",v.id`);
  });

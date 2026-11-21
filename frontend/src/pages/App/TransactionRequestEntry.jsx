@@ -175,7 +175,7 @@ export default function TransactionRequestEntry() {
         if(statuses[line.key])return;
         const code=expenseCodeForLine(line,data.codes.find(code=>code.id===line.transactionCodeId)),fields=[];
         if(!code)fields.push(labels.code);
-        if(code?.base?.materialSettings?.enabled&&!line.materialItemId&&(!line.itemId||line.materialItemWasRequired))fields.push((materialItemText[languageCode]||materialItemText.en).title);
+        if(line.materialSelectionRequired&&!line.materialItemSnapshot?.variantId||code?.base?.materialSettings?.enabled&&!line.materialItemId&&(!line.itemId||line.materialItemWasRequired))fields.push((materialItemText[languageCode]||materialItemText.en).title);
         if(!Number(line.quantity)||Number(line.quantity)<0)fields.push(labels.quantity);
         if(!Number(line.unitPrice)||Number(line.unitPrice)<0)fields.push(labels.price);
         for(const key of ['order','style','process'])if(inputMode(code,key)==='REQUIRED'&&!line[{order:'workOrderId',style:'styleId',process:'styleProcessId'}[key]]&&!(key==='process'&&line.styleProcessIds?.length))fields.push(labels[key]);

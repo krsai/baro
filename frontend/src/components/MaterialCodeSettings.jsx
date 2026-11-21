@@ -2,9 +2,9 @@ import React from 'react';
 import {Box,Checkbox,FormControlLabel} from '@mui/material';
 import {materialItemText} from '../constants/materialItems';
 export const MATERIAL_SETTINGS_TEXT={
- ko:{enabled:'자재 관리 대상',title:'개별 품목 입력',field:'항목',input:'입력 설정',customer:'고객',owner:'소유자',type:'타입',color:'색상',unit:materialItemText.ko.unit,dimensions:'치수 (L×W×H)'},
- en:{enabled:'Track as material',title:'Stock item inputs',field:'Field',input:'Input setting',customer:'Customer',owner:'Owner',type:'Type',color:'Color',unit:materialItemText.en.unit,dimensions:'Dimensions (L×W×H)'},
- vi:{enabled:'Quản lý vật tư',title:'Thiết lập mặt hàng',field:'Trường',input:'Thiết lập nhập',customer:'Khách hàng',owner:'Chủ sở hữu',type:'Loại',color:'Màu sắc',unit:materialItemText.vi.unit,dimensions:'Kích thước (L×W×H)'},
+ ko:{enabled:'자재로 활용',title:'자재 품목 등록 항목',field:'항목',input:'입력 설정',customer:'고객',owner:'소유자',type:'타입',color:'색상',unit:materialItemText.ko.unit,dimensions:'치수 (L×W×H)'},
+ en:{enabled:'Use as material',title:'Material item registration fields',field:'Field',input:'Input setting',customer:'Customer',owner:'Owner',type:'Type',color:'Color',unit:materialItemText.en.unit,dimensions:'Dimensions (L×W×H)'},
+ vi:{enabled:'Sử dụng làm vật tư',title:'Trường đăng ký mặt hàng vật tư',field:'Trường',input:'Thiết lập nhập',customer:'Khách hàng',owner:'Chủ sở hữu',type:'Loại',color:'Màu sắc',unit:materialItemText.vi.unit,dimensions:'Kích thước (L×W×H)'},
 };
 export function masterInputModes(value){
  const m=value.materialSettings||{};

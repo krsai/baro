@@ -7,10 +7,10 @@ Object.assign(materialItemText.ko, {productSearch:"제품 검색",unit:'단위',
 Object.assign(materialItemText.en, {productSearch:"Product search",unit:'Unit',variant:'Material type',addVariant:'Add type',duplicate:'A material with this product and specification already exists.'});
 Object.assign(materialItemText.vi, {productSearch:"Tìm sản phẩm",unit:'Đơn vị',variant:'Loại vật tư',addVariant:'Thêm loại',duplicate:'Danh mục vật tư cùng sản phẩm và quy cách đã được đăng ký.'});
 export const materialItemName=(item,lang)=>{const data=item?.data||item||{};return data[lang==='ko'?'nameKo':lang==='vi'?'nameVi':'nameEn']||data.nameEn||data.nameKo||data.nameVi||'';};
-Object.assign(materialItemText.ko,{registerMaster:'마스터 등록'});
-Object.assign(materialItemText.en,{registerMaster:'Register master'});
-Object.assign(materialItemText.vi,{registerMaster:'Đăng ký danh mục'});
-Object.assign(materialItemText.ko,{type:'타입',items:'개별 품목',viewItems:'상세 보기',actions:'작업',close:'닫기',noItems:'등록된 개별 품목이 없습니다.'});
-Object.assign(materialItemText.en,{type:'Type',items:'Stock items',viewItems:'View details',actions:'Actions',close:'Close',noItems:'No registered stock items.'});
-Object.assign(materialItemText.vi,{type:'Loại',items:'Mặt hàng',viewItems:'Xem chi tiết',actions:'Thao tác',close:'Đóng',noItems:'Chưa có mặt hàng được đăng ký.'});
+Object.assign(materialItemText.ko,{registerMaster:'자재 품목 등록',add:'자재 품목 등록',code:'자재 코드'});
+Object.assign(materialItemText.en,{registerMaster:'Register material item',add:'Register material item',code:'Material code'});
+Object.assign(materialItemText.vi,{registerMaster:'Đăng ký mặt hàng vật tư',add:'Đăng ký mặt hàng vật tư',code:'Mã vật tư'});
+Object.assign(materialItemText.ko,{type:'타입',items:'자재 품목',viewItems:'상세 보기',actions:'작업',close:'닫기',noItems:'등록된 자재 품목이 없습니다.'});
+Object.assign(materialItemText.en,{type:'Type',items:'Material items',viewItems:'View details',actions:'Actions',close:'Close',noItems:'No registered material items.'});
+Object.assign(materialItemText.vi,{type:'Loại',items:'Mặt hàng vật tư',viewItems:'Xem chi tiết',actions:'Thao tác',close:'Đóng',noItems:'Chưa có mặt hàng vật tư được đăng ký.'});
 export const materialItemSpec=item=>{const data=item?.data||item||{},d=data.details||{};return [data.itemAttributeSnapshot?.type?.nameEn,data.color?.code,[d.length,d.width,d.height].filter(Boolean).length?[d.length,d.width,d.height].filter(Boolean).join(' × ')+' mm':''].filter(Boolean).join(' / ');};

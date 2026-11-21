@@ -34,7 +34,7 @@ try{
   await dialog.locator('#accounting-master-toggle').click();const panel=dialog.locator('#accounting-input-panel');
   assert.equal(await panel.getByRole('combobox').count(),0);assert.equal(await panel.getByRole('table').count(),0);
   assert.equal(await panel.getByRole('checkbox',{name:t.customer,exact:true}).count(),0);
-  for(const key of ['type','color','dimensions'])await panel.getByRole('checkbox',{name:t[key],exact:true}).check();
+  for(const key of ['type','color'])await panel.getByRole('checkbox',{name:t[key],exact:true}).check();
   assert.equal(await panel.getByRole('checkbox',{name:t.unit,exact:true}).isChecked(),true);assert.equal(await panel.getByRole('checkbox',{name:t.unit,exact:true}).isDisabled(),true);
   await panel.press('Escape');await panel.waitFor({state:'hidden'});
   await dialog.locator('#accounting-input-toggle').click();
@@ -42,8 +42,8 @@ try{
   await panel.getByRole('checkbox',{name:d.transportDate,exact:true}).check();await panel.press('Escape');await panel.waitFor({state:'hidden'});
   await Promise.all([page.waitForResponse(r=>r.status()===400),dialog.getByRole('button',{name:save,exact:true}).click()]);await dialog.locator('#accounting-master-toggle').click();assert.equal(await panel.getByRole('checkbox',{name:t.owner,exact:true}).isChecked(),true);await panel.press('Escape');await panel.waitFor({state:'hidden'});
   await dialog.getByRole('button',{name:save,exact:true}).click();await dialog.waitFor({state:'hidden'});
-  assert.deepEqual(writes[0],writes[1]);assert.deepEqual(saved.attributeInputs,{});assert.deepEqual(saved.requiredFields,['transportDate']);assert.equal(saved.materialUnitId,42);assert.equal(saved.materialSettings.masterInputs.dimensions,'REQUIRED');assert.deepEqual(saved.materialSettings.stockFields,['unit']);
-  await page.getByRole('row').filter({hasText:'CTN'}).getByRole('button',{name:edit,exact:true}).click();await dialog.locator('#accounting-master-toggle').click();assert.equal(await panel.getByRole('checkbox',{name:t.dimensions,exact:true}).isChecked(),true);
+  assert.deepEqual(writes[0],writes[1]);assert.deepEqual(saved.attributeInputs,{});assert.deepEqual(saved.requiredFields,['transportDate']);assert.equal(saved.materialUnitId,42);assert.equal(saved.materialSettings.masterInputs.dimensions,undefined);assert.deepEqual(saved.materialSettings.stockFields,['unit']);
+  await page.getByRole('row').filter({hasText:'CTN'}).getByRole('button',{name:edit,exact:true}).click();await dialog.locator('#accounting-master-toggle').click();assert.equal(await panel.getByRole('checkbox',{name:t.type,exact:true}).isChecked(),true);
   assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await page.close();console.log('PASS separate material master requirements/save/retry/reload',lang,width);
  }
 }finally{await browser?.close();server.kill();unlinkSync(file);}

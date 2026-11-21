@@ -63,7 +63,7 @@ async function source(db:any,orgId:number,input:any,lock=false):Promise<any>{
   const entry=await db.bankLedgerEntry.findFirst({where:{id:origin.entryId,orgId,voidedAt:null},include:{allocations:true,bankFeeLinks:{include:{fee:true}}}});
   if(!entry||entry.evidenceType!=='EXPENSE'||ledgerEntryRevision(entry)!==origin.revision||!entry.allocations.some((allocation:any)=>allocation.expenseItemId===origin.itemId))fail('CHANGE_SOURCE_CHANGED');
  }
- if(current.document?.bankReconciled){if(operation!=='UPDATE')fail('EXPENSE_ALREADY_RECONCILED');assertPaidExpenseCorrection(current,input.payload);await paidExpenseEntries(db,orgId,current);}
+ if(current.document?.bankReconciled){if(operation!=='UPDATE')fail('EXPENSE_ALREADY_RECONCILED');await assertPaidExpenseCorrection(current,input.payload,db);await paidExpenseEntries(db,orgId,current);}
  if(await db.accountingOpeningItem.findFirst({where:{orgId,voidedAt:null,expenseItemId:{in:current.costs.map((c:any)=>c.id)}},select:{id:true}}))fail('OPENING_SOURCE_LOCKED');
  if(operation==='DELETE'&&!current.document)fail('CHANGE_INVALID_SOURCE',400);
  return {menu,operation,kind:current.kind,id:current.id,revision:expenseEditorRevision(current),version:current.document?.version??null,snapshot:json(current),expense:current,items:current.costs.map((c:any)=>({currency:c.currency,unitPrice:String(c.amount),quantity:'1',vatRate:'0'}))};

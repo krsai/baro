@@ -44,6 +44,7 @@ export function expenseDocumentTotals(lines, currency) {
 export function validExpenseLine(line, code, currency) {
   code = expenseCodeForLine(line,code);
   if (!code || !expenseLineAmounts(line, currency)) return false;
+  if(line.materialSelectionRequired&&!line.materialItemSnapshot?.variantId)return false;
   if(code.base?.materialSettings?.enabled&&!line.materialItemId&&(!line.itemId||line.materialItemWasRequired))return false;
   if(['customer','type','owner'].some(key=>code.base?.attributeInputs?.[key]==='REQUIRED'&&!line[key==='owner'?'itemOwnerOrgId':key==='customer'?'itemCustomerId':'itemTypeId']))return false;
   if(['length','width','height'].some(key=>line.details[key])&&(!line.details.length||!line.details.width||!line.details.height)&&!(line.itemId&&['length','width','height'].every(key=>(line.details[key]||'')===(line.originalDetails?.[key]||''))))return false;
