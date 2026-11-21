@@ -21,7 +21,7 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/${path.basename(html)}`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const [lang,width,failure] of [...['ko','en','vi'].flatMap(lang=>[1440,390].map(width=>[lang,width,'none'])),['en',1440,'save'],['en',1440,'issue']]){
-  if(process.argv.includes('--customer-only')&&failure!=='none')continue;
+  if((process.argv.includes('--customer-only')||process.argv.includes('--layout-only'))&&failure!=='none')continue;
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],saves=[],issues=[],sourceReads=[];let failed=false;
   await page.addInitScript(language=>localStorage.setItem('baro_language_override',language),lang);
   page.on('pageerror',error=>errors.push(error.message));page.on('dialog',dialog=>dialog.accept());
@@ -51,6 +51,22 @@ try{
   }
   await customer.fill('Customer');await customer.press('Enter');
   const row=page.getByTestId('general-invoice-line');await row.waitFor();
+  if(process.argv.includes('--layout-only')){
+   const header=page.locator('[data-invoice-form-header="editing"]'),currency=header.getByRole('combobox',{name:t.currency,exact:true});
+   await currency.waitFor();assert.equal(await header.locator('.invoice-document-identifiers').getByRole('combobox').count(),1,'Currency belongs to document metadata');
+   if(lang==='ko'&&width===1440){await currency.click();await page.getByRole('option',{name:'USD',exact:true}).click();assert.match(await currency.textContent(),/USD/);await currency.click();await page.getByRole('option',{name:'VND',exact:true}).click();}
+   const controls=await header.locator('.MuiInputBase-root').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().height));
+   assert.ok(controls.every(height=>Math.abs(height-36)<1),'Header inputs share the 36px control height');
+   if(width>=900){
+    const positions=await header.locator('.invoice-document-identifiers .MuiInputBase-root').evaluateAll(nodes=>nodes.map(node=>Math.round(node.getBoundingClientRect().y)));assert.equal(new Set(positions).size,1,'Number, date and currency align');
+    const parties=header.locator('.invoice-party');const left=await parties.nth(0).boundingBox(),right=await parties.nth(1).boundingBox();assert.equal(Math.round(left.y),Math.round(right.y));
+    for(const party of await parties.all()){const address=await party.locator('.invoice-party-address').boundingBox(),panel=await party.boundingBox();assert.ok(address.width>panel.width-2,'Address uses the full party width');}
+   }
+   const lineControls=await row.locator('.MuiInputBase-root').evaluateAll(nodes=>nodes.map(node=>({y:Math.round(node.getBoundingClientRect().y),height:Math.round(node.getBoundingClientRect().height)})));
+   assert.equal(new Set(lineControls.map(control=>control.y)).size,1,'Item inputs align vertically');assert.ok(lineControls.every(control=>control.height===36));
+   assert.equal(await row.locator('.MuiInputLabel-root').count(),0,'Table headings provide item labels');
+   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'Only the item table scrolls horizontally');
+  }
   const code=row.getByRole('textbox',{name:ACCOUNTING_CODE_TEXT[lang].code,exact:true});await code.fill('GENV');await code.press('Enter');
   await row.getByRole('textbox',{name:t.description,exact:true}).fill('Polybag agency purchase');
   await row.getByRole('textbox',{name:t.unit,exact:true}).fill('pcs');await row.getByRole('textbox',{name:t.quantity,exact:true}).fill('1000');await row.getByRole('textbox',{name:t.price,exact:true}).fill('1250');await row.getByRole('textbox',{name:t.vat,exact:true}).fill('10');
@@ -69,5 +85,5 @@ try{
   }
   await page.close();
  }
- console.log(process.argv.includes('--customer-only')?'PASS: invoice customer code column, code search/selection and original buyer ID; ko/en/vi desktop/mobile.':'General invoice workspace: ko/en/vi desktop/mobile, customer without orders, codes/items/VAT, bank confirmation, issue and uncertain save/issue retries passed.');
+ console.log(process.argv.includes('--layout-only')?'PASS: invoice currency metadata, 36px controls, party/address alignment, item input alignment, codes/VAT/issue and PDF; ko/en/vi desktop/mobile.':process.argv.includes('--customer-only')?'PASS: invoice customer code column, code search/selection and original buyer ID; ko/en/vi desktop/mobile.':'General invoice workspace: ko/en/vi desktop/mobile, customer without orders, codes/items/VAT, bank confirmation, issue and uncertain save/issue retries passed.');
 }finally{await browser?.close();server.kill();for(const file of [html,jsx])if(existsSync(file))unlinkSync(file);}
