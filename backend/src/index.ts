@@ -21,6 +21,7 @@ import {registerOrderShipmentRoutes} from './services/orderShipments';
 import {registerCategoryPackagingRoutes} from './services/categoryPackaging';
 import {registerTenureRecognitionRoutes} from './employees/tenureRecognition';
 import {registerIndustryMenuRoutes,industryMenuMiddleware,companyIndustryMenuFeatures} from './services/industryMenuPolicy';
+import {registerNavigationOrderRoutes} from './services/navigationOrder';
 import {registerCompanyIndustryRoutes} from './services/companyIndustries';
 import {registerApprovalReviewRoutes} from './services/approvalReview';
 import {registerFreightRoutes} from './services/freightOperations';
@@ -27648,6 +27649,7 @@ registerWorkTimeRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActor
 registerEmployeeLeaveRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerTenureRecognitionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerIndustryMenuRoutes(app,prisma,{requireSystemAdmin});
+registerNavigationOrderRoutes(app,prisma,{requireSystemAdmin,requireOrgRole});
 registerSystemEntityRoutes(app,prisma,{requireSystemAdmin});
 registerSystemShippingPortRoutes(app,prisma,{requireSystemAdmin});
 registerCategoryPackagingRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});

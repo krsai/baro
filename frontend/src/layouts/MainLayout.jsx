@@ -1,4 +1,6 @@
 import WorkspacePageBoundary from '../components/WorkspacePageBoundary';
+import useNavigationOrder from '../hooks/useNavigationOrder';
+import {applyNavigationOrder} from '../utils/navigationOrder.mjs';
 import useWorkspaceLiveUpdates from '../hooks/useWorkspaceLiveUpdates';
 import {keyboardAction} from '../utils/keyboardPolicy.mjs';
 import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined';
@@ -927,9 +929,10 @@ const MainLayout = () => {
     settingsOpen,
   ]);
 
+  const navigationOrder = useNavigationOrder(isAuthenticated, `${activeProfile?.entryType}:${activeOrgId}:${user?.id}`, activeProfile?.entryType==='SYSTEM');
   const menuStructureBlueprint = useMemo(
-    () => organizeCompanyMenu(baseMenuBlueprint, key => getUiMessage(key, key, languageCode), activeProfile?.orgType),
-    [baseMenuBlueprint, languageCode, activeProfile?.orgType]
+    () => applyNavigationOrder(organizeCompanyMenu(baseMenuBlueprint, key => getUiMessage(key, key, languageCode), activeProfile?.orgType), navigationOrder.loaded?.order),
+    [baseMenuBlueprint, languageCode, activeProfile?.orgType, navigationOrder.loaded]
   );
 
   const accessPolicyMenuBlueprint = useMemo(
@@ -1742,7 +1745,7 @@ const MainLayout = () => {
           const hasNotification = hasActiveMenuNotification(menu);
 
           return (
-            <Box component="li" key={menu.menuGroupKey || menu.path} sx={{ listStyle: 'none', flexShrink: 0, mt: !isSystemProfile && menu.menuGroupKey === MENU_GROUP_KEYS.SETTINGS ? 'auto' : 0 }}>
+            <Box component="li" key={menu.menuGroupKey || menu.path} sx={{ listStyle: 'none', flexShrink: 0, mt: !isSystemProfile && menuItems.at(-1)?.menuGroupKey === MENU_GROUP_KEYS.SETTINGS && menu.menuGroupKey === MENU_GROUP_KEYS.SETTINGS ? 'auto' : 0 }}>
             <ListItemButton
               component="div"
               disabled={isMenuDisabled}

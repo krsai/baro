@@ -1,4 +1,7 @@
 import useIndustryMenuPolicy from '../../../hooks/useIndustryMenuPolicy';
+import useNavigationOrder from '../../../hooks/useNavigationOrder';
+import {usePageDialogs} from '../../../components/PageDialogProvider';
+import {applyNavigationOrder,moveNavigationNode,navigationNodeId} from '../../../utils/navigationOrder.mjs';
 import {SERVICE_FEATURES} from '../../../utils/serviceCompany.mjs';
 import {fetchRoleAccessPolicy,saveRoleAccessPolicy} from '../../../utils/roleAccessPolicy';
 import {accessPolicyLayoutText,accessPolicyActionText} from '../../../constants/accessPolicyLayout';
@@ -7,7 +10,7 @@ import {subscriberAccessText} from '../../../constants/subscriberAccess';
 import {organizeCompanyMenu} from '../../../utils/companyMenuLayout.mjs';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React from 'react';
-import {Button,Checkbox,Paper,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
+import {IconButton,Button,Checkbox,Paper,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useAuth } from '../../../context/AuthContext';
@@ -46,6 +49,8 @@ const buildMenuTree = (nodes = [], parentId = 'root', orgType = 'SERVICE') =>
         return {
           id: nodeId,
           type: 'group',
+          menuGroupKey: node.menuGroupKey,
+          isParent: true,
           label: nodeLabel || '-',
           icon: node?.icon || null,
           children,
@@ -111,31 +116,41 @@ function AccessPolicyBoard(){
  const {activeProfile}=useAuth(),{languageCode}=useLanguage(),{showNotification}=useAppActions();
  const allowed=activeProfile?.entryType==='SYSTEM'&&activeProfile?.systemRole==='SYSTEM_ADMIN';
  const menus=useIndustryMenuPolicy(allowed),blueprint=useMenuBlueprint();
+ const ordering=useNavigationOrder(allowed,activeProfile?.entryType,true);
+ const dialogs=usePageDialogs();
  const t=subscriberAccessText[languageCode]||subscriberAccessText.en,layout=accessPolicyLayoutText[languageCode]||accessPolicyLayoutText.en;
 
  const [saving,setSaving]=React.useState(false);
  const [policy,setPolicy]=React.useState(null),[original,setOriginal]=React.useState(null),[roleError,setRoleError]=React.useState(false);
  const loadRoles=React.useCallback(async()=>{setRoleError(false);try{const value=toEditablePolicy((await fetchRoleAccessPolicy()).policy);setPolicy(value);setOriginal(value);}catch{setRoleError(true);}},[]);
  React.useEffect(()=>{if(allowed)loadRoles();},[allowed,loadRoles]);
- const rows=React.useMemo(()=>flattenMenuTree(mergeMenus(...TYPES.map(type=>buildMenuTree(organizeCompanyMenu(subscriberMenuBlueprint(blueprint,type),key=>getUiMessage(key,key,languageCode),type),'root',type)))),[blueprint,languageCode]);
+ const tree=React.useMemo(()=>applyNavigationOrder(mergeMenus(...TYPES.map(type=>buildMenuTree(organizeCompanyMenu(subscriberMenuBlueprint(blueprint,type),key=>getUiMessage(key,key,languageCode),type),'root',type))),ordering.draft),[blueprint,languageCode,ordering.draft]);
+ const rows=React.useMemo(()=>flattenMenuTree(tree),[tree]);
  const roles=['ADMIN','OPERATOR','ACCOUNTANT','WORKER'];
  const labels={ko:['관리자','운영자','회계','직원'],en:['Administrator','Operator','Accountant','Worker'],vi:['Quản trị','Điều hành','Kế toán','Nhân viên']}[languageCode]||['Administrator','Operator','Accountant','Worker'];
- const roleDirty=!!policy&&JSON.stringify(policy)!==JSON.stringify(original),dirty=menus.dirty||roleDirty;
+ const roleDirty=!!policy&&JSON.stringify(policy)!==JSON.stringify(original),dirty=menus.dirty||roleDirty||ordering.dirty;
  useUnsavedChanges(dirty);
- const locked=menus.loading||saving||!menus.loaded||!policy||roleError;
+ const locked=menus.loading||ordering.loading||saving||!menus.loaded||!ordering.loaded||!policy||roleError;
  const actionText=accessPolicyActionText[languageCode]||accessPolicyActionText.en;
+ const orderText={ko:{up:'위로 이동',down:'아래로 이동'},en:{up:'Move up',down:'Move down'},vi:{up:'Di chuyển lên',down:'Di chuyển xuống'}}[languageCode]||{up:'Move up',down:'Move down'};
+ const moveControls=row=>{
+  const parent=row.depth===0?'root':row.id.split(':').slice(0,-1).join(':'),parentNode=rows.find(node=>node.id===parent);
+  const parentId=row.depth===0?'root':navigationNodeId(parentNode||{}),siblings=row.depth===0?tree:parentNode?.children||[],index=siblings.findIndex(node=>node.id===row.id);
+  return <span style={{display:'inline-flex',marginRight:8}}>{[-1,1].map(delta=><IconButton key={delta} data-menu-move={delta} size="small" aria-label={row.label+' '+(delta<0?orderText.up:orderText.down)} title={delta<0?orderText.up:orderText.down} disabled={locked||index<0||(delta<0?index===0:index===siblings.length-1)} onClick={()=>ordering.setDraft(previous=>moveNavigationNode(tree,previous,parentId,navigationNodeId(row),delta))}>{delta<0?'↑':'↓'}</IconButton>)}</span>;
+ };
  const toggleRole=(type,features,role,checked)=>setPolicy(previous=>({...previous,[type]:{...previous[type],[role]:checked?[...new Set([...previous[type][role],...features])]:previous[type][role].filter(key=>!features.includes(key))}}));
- const save=async()=>{if(locked||!dirty)return;setSaving(true);try{if(menus.dirty)await menus.save();if(roleDirty){const saved=toEditablePolicy(await saveRoleAccessPolicy(policy));setPolicy(saved);setOriginal(saved);}showNotification(layout.saved,'success');}catch{showNotification(layout.partial,'error');}finally{setSaving(false);}};
+ const save=async()=>{if(locked||!dirty)return;setSaving(true);try{if(ordering.dirty)await ordering.save();if(menus.dirty)await menus.save();if(roleDirty){const saved=toEditablePolicy(await saveRoleAccessPolicy(policy));setPolicy(saved);setOriginal(saved);}showNotification(layout.saved,'success');}catch{showNotification(layout.partial,'error');}finally{setSaving(false);}};
  return <AppPageContainer title={getUiMessage('menu.accessPolicy','Access policy',languageCode)} titleActions={allowed?<Button variant="contained" disabled={locked||!dirty} onClick={save}>{layout.save}</Button>:null}>
  {!allowed?<Alert severity="error">{t.denied}</Alert>:<>
+ {ordering.error&&<Alert severity="error" action={<Button onClick={async()=>{if(!ordering.dirty||await dialogs.confirm('',{purpose:'discard'}))ordering.reload({discard:true});}} disabled={saving}>{layout.reload}</Button>}>{t[ordering.error]}</Alert>}
  {menus.error&&<Alert severity="error" action={<Button onClick={menus.reload} disabled={saving}>{layout.reload}</Button>}>{t[menus.error]}</Alert>}
  {roleError&&<Alert severity="error" action={<Button onClick={loadRoles} disabled={saving}>{layout.reload}</Button>}>{t.failed}</Alert>}
  <Paper variant="outlined" sx={{overflow:'hidden',borderRadius:2}}><TableContainer><Table size="small" stickyHeader sx={{minWidth:1100}}>
  <TableHead><TableRow><TableCell rowSpan={2}>{getUiMessage('accessPolicy.menuTree','Menu structure',languageCode)}</TableCell>{TYPES.map(type=><TableCell key={type} align="center" colSpan={5}>{type==='MANUFACTURER'?t.factory:t.logistics}</TableCell>)}</TableRow><TableRow>{TYPES.map(type=><React.Fragment key={type}><TableCell align="center">{layout.provided}</TableCell>{roles.map((role,index)=><TableCell key={role} align="center">{labels[index]}</TableCell>)}</React.Fragment>)}</TableRow></TableHead>
  <TableBody>{rows.map(row=>{
- if(row.type==='group')return <TableRow key={row.id} sx={{bgcolor:'action.hover'}}><TableCell colSpan={11}><Typography variant="subtitle2" fontWeight={700}>{row.label}</Typography></TableCell></TableRow>;
+ if(row.type==='group')return <TableRow key={row.id} data-menu-group={row.menuGroupKey} sx={{bgcolor:'action.hover'}}><TableCell colSpan={11}><Typography variant="subtitle2" fontWeight={700}>{moveControls(row)}{row.label}</Typography></TableCell></TableRow>;
  return <TableRow key={row.path} data-menu-path={row.path}>
- <TableCell><Typography sx={{pl:row.depth*2}}>{row.label.replace(/[\p{Extended_Pictographic}\uFE0F]/gu,'').trim()}</Typography></TableCell>
+ <TableCell><Typography sx={{pl:row.depth*2}}>{moveControls(row)}{row.label.replace(/[\p{Extended_Pictographic}\uFE0F]/gu,'').trim()}</Typography></TableCell>
  {TYPES.map(type=>{
  const features=row.featureKeys;
  const supported=features.every(feature=>type==='SERVICE'?SERVICE_FEATURES.includes(feature):feature!=='FREIGHT');

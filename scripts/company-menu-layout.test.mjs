@@ -66,7 +66,7 @@ for (const system of [false, true]) {
 test('company groups, direct entry, partner scopes and notifications follow the new workflow', () => {
   const menu = organizeCompanyMenu(source(false), key => key);
   assert.deepEqual(menu.filter(item => item.isParent).map(item => item.menuGroupKey),
-    ['ORDER', 'RECORDS', 'INVENTORY', 'LOGISTICS', 'ADMIN', 'ACCOUNTING', 'OPERATIONS', 'SETTINGS', 'SYSTEM']);
+    ['ORDER', 'RECORDS', 'INVENTORY', 'LOGISTICS', 'ACCOUNTING', 'ADMIN', 'OPERATIONS', 'SETTINGS', 'SYSTEM']);
   for (const [path, group] of [
     ['/account-overview', 'OPERATIONS'], ['/bank-ledger/new', 'ACCOUNTING'], ['/approval-settings', 'SETTINGS'],
     ['/attendance', 'ADMIN'], ['/payroll', 'ACCOUNTING'], ['/payroll/2026-11', 'ACCOUNTING'], ['/employee-system', 'SETTINGS'],
