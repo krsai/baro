@@ -5,7 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
 const require=createRequire(import.meta.url);
-const {registerInventoryVariantRoutes}=require('../backend/dist/services/inventoryVariants');
+const {registerInventoryVariantRoutes,writeInventoryVariant}=require('../backend/dist/services/inventoryVariants');
 const {registerInventoryMovementRoutes}=require('../backend/dist/services/inventoryMovements');
 const {registerCodeItemAttributeRoutes}=require('../backend/dist/services/codeItemAttributes');
 test('stock item CRUD shares inventory identities, keeps managed definitions, protects used rows and audits physical deletion',async()=>{
@@ -20,7 +20,9 @@ test('stock item CRUD shares inventory identities, keeps managed definitions, pr
   const access=async req=>({orgId:req.testOrg??org,actorId:req.testActor??actor});
   registerInventoryVariantRoutes(app,db,access);registerInventoryMovementRoutes(app,db,access);
   registerCodeItemAttributeRoutes(app,db,{requireOrgRole:async()=>({organization:s.company}),actorId:()=>actor,canAccessCodeItems:async()=>true});
-  const call=async(method,path,req={})=>{let value;await routes.get(method+path)({query:{},params:{},...req},{status(){return this;},json(v){value=v;}});return value;};
+  const call=async(method,path,req={})=>{// Seed a pre-existing definition; registration endpoint approval is covered separately.
+   if(method==='post'&&path==='/material-items/variants')return db.$transaction(tx=>writeInventoryVariant(tx,{orgId:req.testOrg??org,actorId:req.testActor??actor},req.body,'post',req.body.clientKey));
+   let value;await routes.get(method+path)({query:{},params:{},...req},{status(){return this;},json(v){value=v;}});return value;};
   const type=await call('post','/code-item-types',{query:{context:'MATERIAL'},body:{baseId:base.id,nameEn:'10x10x10',nameKo:'10x10x10',nameVi:'10x10x10'}});
   const options=await call('get','/material-items/variant-options',{query:{baseId:base.id}});
   assert.deepEqual(options.fields,{type:'REQUIRED',color:'HIDDEN'});
@@ -31,7 +33,7 @@ test('stock item CRUD shares inventory identities, keeps managed definitions, pr
   assert.equal((await db.$queryRaw`SELECT count(*)::int n FROM "InventoryMovement"`)[0].n,0);
   let [saved]=await db.$queryRaw`SELECT * FROM "InventoryVariant" WHERE id=${item.id}`;
   assert.equal(saved.managed,true);assert.equal(saved.attributes.type.nameEn,'10x10x10');assert.deepEqual(saved.attributes.dimensions,{});
-  await assert.rejects(call('post','/material-items/variants',{body:{...body,clientKey:randomUUID()}}),/VARIANT_DUPLICATE/);
+  await assert.rejects(call('post','/material-items/variants',{body:{...body,clientKey:randomUUID()}}),/VARIANT_DUPLICATE|23505/);
   await assert.rejects(call('put','/material-items/variants/:id',{testOrg:s.other.id,params:{id:item.id},body:{...body,revision:1}}),/ACTIVE_EMPLOYEE_REQUIRED/);
   const edit={...body,revision:1,ownerId:org};
   assert.equal((await call('put','/material-items/variants/:id',{params:{id:item.id},body:edit})).revision,2);

@@ -9,7 +9,7 @@ import {seedExpenseVariant} from './helpers/expense-variant-fixture.mjs';
 const require=createRequire(import.meta.url);
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
 const {registerMaterialItemRoutes,systemMaterialOptions}=require('../backend/dist/services/materialItems');
-const {registerInventoryVariantRoutes}=require('../backend/dist/services/inventoryVariants');
+const {registerInventoryVariantRoutes,writeInventoryVariant}=require('../backend/dist/services/inventoryVariants');
 const {postLedgerEntry}=require('../backend/dist/services/bankLedger');
 const {expensePaymentComparison}=require('../backend/dist/services/expensePaymentComparison');
 const {listAccountingAlerts,acknowledgeAccountingAlert}=require('../backend/dist/services/accountingAlerts');
@@ -29,7 +29,9 @@ test('material expense selects a real registered variant; VAT payments require d
   const code=await db.transactionCode.create({data:{ownerOrgId:org,serviceTypeId:s.code.serviceTypeId,baseId:base.id,systemDefaultId:template.id,taxTreatmentId:tax.id,vatEnabled:true,code:'TSTV',nameEn:'Cartons VAT',nameKo:'카톤 박스',nameVi:'Thùng carton'}});
   const routes=new Map(),app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,h)=>routes.set(method+path,h)]));
   registerInventoryVariantRoutes(app,db,async()=>({orgId:org,actorId:actor}));
-  const call=async(method,path,req)=>{let result;await routes.get(method+path)(req,{json(v){result=v;},status(){return this;}});return result;};
+  const call=async(method,path,req)=>{// Seed a pre-existing definition; registration endpoint approval is covered separately.
+   if(method==='post'&&path==='/material-items/variants')return db.$transaction(tx=>writeInventoryVariant(tx,{orgId:req.testOrg??org,actorId:req.testActor??actor},req.body,'post',req.body.clientKey));
+   let result;await routes.get(method+path)(req,{json(v){result=v;},status(){return this;}});return result;};
   const [master]=await systemMaterialOptions(db,org,base.id);
   const variant=await call('post','/material-items/variants',{body:{clientKey:randomUUID(),baseId:base.id,masterId:master.id,ownerId:org,typeId:null,colorId:null}});
   const [saved]=await db.$queryRaw`SELECT * FROM "InventoryVariant" WHERE id=${variant.id}`;

@@ -5,7 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
 const require=createRequire(import.meta.url);
 const {registerInventoryMovementRoutes}=require('../backend/dist/services/inventoryMovements');
-const {registerInventoryVariantRoutes}=require('../backend/dist/services/inventoryVariants');
+const {registerInventoryVariantRoutes,writeInventoryVariant}=require('../backend/dist/services/inventoryVariants');
 const {saveApprovalActionBatch}=require('../backend/dist/services/approvalActions');
 test('negative inventory uses approved balances per company and actual variant; approval/deletion recalculate without blocking negative issues',async()=>{
  const f=await changeApprovalFixture();try{
@@ -20,7 +20,9 @@ test('negative inventory uses approved balances per company and actual variant; 
   const routes=new Map(),seen=[],app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,fn)=>routes.set(method+path,fn)]));
   const access=async(req,res,feature)=>{seen.push(feature);if(req.denied===feature)throw Error('ACCESS_DENIED');return {orgId:req.testOrg??orgId,actorId:req.testActor??actorId};};
   registerInventoryVariantRoutes(app,db,access);registerInventoryMovementRoutes(app,db,access);
-  const call=async(method,path,input={})=>{let data;await routes.get(method+path)({query:{},params:{},...input},{status(){return this;},setHeader(){},json(value){data=value;}});return data;};
+  const call=async(method,path,input={})=>{// Seed a pre-existing definition; registration endpoint approval is covered separately.
+   if(method==='post'&&path==='/material-items/variants')return db.$transaction(tx=>writeInventoryVariant(tx,{orgId:input.testOrg??orgId,actorId:input.testActor??actorId},input.body,'post',input.body.clientKey));
+   let data;await routes.get(method+path)({query:{},params:{},...input},{status(){return this;},setHeader(){},json(value){data=value;}});return data;};
   const opts=await call('get','/material-items/variant-options',{query:{baseId}});
   const variant=await call('post','/material-items/variants',{body:{clientKey:randomUUID(),baseId,masterId:opts.master.id,ownerId:s.vendor.id}});
   const items=await call('get','/inventory-entry/items'),masterId=items.find(row=>row.id===variant.id).masterId;

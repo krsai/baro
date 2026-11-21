@@ -1,3 +1,4 @@
+import {materialRegistrationText} from '../frontend/src/constants/materialRegistration.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -18,17 +19,22 @@ try{
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
  for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],writes=[];page.setDefaultTimeout(10000);page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
-  const t=materialItemText[lang],m=materialVariantManagementText[lang],a=ITEM_ATTRIBUTE_TEXT[lang];
+  const reg=materialRegistrationText[lang],t=materialItemText[lang],m=materialVariantManagementText[lang],a=ITEM_ATTRIBUTE_TEXT[lang];
   const mock=(p,body)=>page.route(p,r=>r.fulfill({contentType:'application/javascript',body}));
   await mock('**/src/context/AuthContext.jsx*','export const useAuth=()=>({activeOrgId:1});');
   await mock('**/src/context/LanguageContext.jsx*',`export const useLanguage=()=>({languageCode:${JSON.stringify(lang)}});`);
   await mock('**/src/context/AppContext.jsx*','const noop=()=>{};export const useAppActions=()=>({showNotification:message=>{window.notice=message;},setUnsavedChangesGuard:noop,clearUnsavedChangesGuard:noop,markTabChanged:noop,clearTabChanged:noop});');
   const names=name=>({nameEn:name,nameKo:name,nameVi:name}),unit={id:1,...names('Each')},owners=[{id:1,code:'BARO',name:'BARO'},{id:2,code:'TSAN',name:'THE SAN'}];
   const code={baseId:1,base:{id:1,code:'CTN',...names('Carton Box'),materialUnitId:1}},master={id:'system:1:1:1',baseId:1,unitId:1,data:{...names('Carton Box'),unit}};
-  let types=[],rows=[{id:'used-item',baseId:1,masterId:'master',revision:1,used:true,unit,ownerId:1,attributes:{owner:owners[0],type:{id:9,...names('Used item')}}}],attempt=0,typeWrites=0;
+  let types=[],rows=[{id:'used-item',baseId:1,masterId:'master',revision:1,used:true,unit,ownerId:1,attributes:{owner:owners[0],type:{id:9,...names('Used item')}}}],attempt=0,typeWrites=0,requests=[];
+  const approval={policy:{revision:0},drafter:{id:2,name:'Requester',orgRole:'OPERATOR'},complete:true,stages:[{key:'step1',role:'ADMIN',gradeMatch:'ANY',employeeId:1,name:'Admin',candidates:[{id:1,name:'Admin',orgRole:'ADMIN'}]}]};
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route(/\/(material-items|code-item-options|code-item-types)(\/|\?)/,r=>{
    const req=r.request(),url=new URL(req.url()),path=url.pathname;if(req.method()==='OPTIONS')return r.fulfill({headers,status:204});
+   if(path==='/material-items/options')return r.fulfill({headers,json:rows.map(row=>({id:row.masterId,variantId:row.id,variantRevision:row.revision,data:{...names('Carton Box'),variantId:row.id,itemOwnerSnapshot:row.attributes.owner,itemAttributeSnapshot:{type:row.attributes.type},unit}}))});
+   if(path==='/material-items/registration-preview')return r.fulfill({headers,json:approval});
+   if(path==='/material-items/registration-requests')return r.fulfill({headers,json:requests});
+   if(path.endsWith('/decision')){const body=req.postDataJSON();writes.push({method:'DECISION',body});const q=requests[0];q.status='APPROVED';q.canDecide=false;rows.push({id:q.id,baseId:1,masterId:'master',revision:1,used:true,unit,attributes:{owner:owners[1],type:{id:11,...names(q.payload.typeText)}}});return r.fulfill({headers,json:{status:'APPROVED'}});}
    if(path==='/material-items/catalogue')return r.fulfill({headers,json:{codes:[code,{...code,baseId:2,base:{...code.base,id:2,code:'MPP'}}],units:[unit]}});
    if(path==='/material-items/variants'&&req.method()==='GET')return r.fulfill({headers,json:rows});
    if(path==='/material-items/variant-options')return r.fulfill({headers,json:{master,fields:{type:url.searchParams.get('baseId')==='2'?'HIDDEN':'REQUIRED',color:'HIDDEN'},colors:[]}});
@@ -37,6 +43,7 @@ try{
    const body=req.postDataJSON();writes.push({method:req.method(),body});
    if(req.method()==='DELETE'){rows=rows.filter(row=>row.id!=='new-item');return r.fulfill({headers,json:{deleted:true}});}
    if(req.method()==='POST'&&++attempt===1)return r.fulfill({headers,status:503,json:{error:'UNAVAILABLE'}});
+   if(req.method()==='POST'){requests=[{id:body.clientKey,revision:1,status:'PENDING',canDecide:true,drafterName:'Requester',baseId:1,payload:{typeText:body.typeText,snapshot:{owner:owners[1]}},steps:[{position:0,stage:{name:'Admin',employeeId:1},decision:null}]}];return r.fulfill({headers,json:{id:body.clientKey,pending:true}});}
    const row={id:'new-item',baseId:1,masterId:'master',ownerId:body.ownerId,revision:req.method()==='PUT'?2:1,managed:true,used:false,unit,attributes:{owner:owners.find(o=>o.id===body.ownerId),type:types.find(type=>type.id===body.typeId),color:null,dimensions:{}}};rows=[rows[0],row];return r.fulfill({headers,json:{id:row.id,revision:row.revision}});
   });
   await page.goto(`http://127.0.0.1:${port}/${fixture.split('/')[1]}`);
@@ -66,19 +73,14 @@ try{
   editor=page.getByRole('dialog').last();assert.equal(await editor.getByRole('textbox',{name:t.unit,exact:true}).inputValue(),'Each');
   assert.equal(await editor.getByRole('textbox',{name:t.unit,exact:true}).getAttribute('readonly'),'');
   assert.equal(await editor.getByRole('textbox',{name:t.color,exact:true}).isDisabled(),true);
-  await editor.getByRole('button',{name:t.save,exact:true}).click();await page.waitForFunction(message=>window.notice===message,m.failed);
+  await editor.getByRole('button',{name:reg.request,exact:true}).click();await page.getByRole('button',{name:t.retry,exact:true}).waitFor();
   assert.equal(await editor.getByRole('textbox',{name:a.owner,exact:true}).inputValue(),'THE SAN');
   await editor.getByRole('button',{name:t.retry,exact:true}).click();
   await page.getByRole('dialog').waitFor({state:'hidden'});
-  await page.getByRole('cell',{name:'10x10x10',exact:true}).waitFor();assert.deepEqual(writes[0].body,writes[1].body);assert.equal(writes[1].body.quantity,undefined);
-  const row=page.getByRole('row').filter({has:page.getByRole('cell',{name:'10x10x10',exact:true})});
-  await row.getByRole('button',{name:m.edit,exact:true}).click();editor=page.getByRole('dialog').last();
-  await editor.getByRole('textbox',{name:a.owner,exact:true}).fill('BARO');await editor.getByRole('textbox',{name:a.owner,exact:true}).press('Enter');
-  await editor.getByRole('button',{name:t.save,exact:true}).click();await page.waitForFunction(message=>window.notice===message,m.saved);
-  await row.getByRole('cell',{name:'BARO',exact:true}).waitFor();
-  assert.equal(typeWrites,1,'existing type is reused on edit and retry');
-  await row.getByRole('button',{name:m.remove,exact:true}).click();await row.waitFor({state:'hidden'});
-  assert.equal(writes.at(-1).method,'DELETE');assert.equal(writes.at(-1).body.revision,2);assert.deepEqual(errors,[]);await page.close();
+  assert.deepEqual(writes[0].body,writes[1].body);assert.equal(typeWrites,0,'pending registration creates no types');assert.equal(writes[1].body.quantity,undefined);assert.equal(rows.length,1,'pending registration creates no selectable item');
+  await page.locator('header').getByRole('button',{name:reg.requests,exact:true}).click();let queue=page.getByRole('dialog');await queue.getByRole('button',{name:reg.review,exact:true}).click();await queue.getByRole('button',{name:reg.approve,exact:true}).click();await queue.getByRole('button',{name:reg.review,exact:true}).waitFor();await queue.getByRole('button',{name:reg.cancel,exact:true}).click();await queue.waitFor({state:'hidden'});
+  await page.getByRole('cell',{name:'10x10x10',exact:true}).waitFor();assert.equal(rows.length,2);assert.equal(writes.at(-1).method,'DECISION');assert.deepEqual(errors,[]);await page.close();
+
  }
- console.log('PASS stock item CRUD ko/en/vi desktop/mobile: type creation, owner edit, fixed unit, used-item protection, retained draft/retry and delete');
+ console.log('PASS material registration request/retry/administrator approval ko/en/vi desktop/mobile');
 }finally{await browser?.close();server.kill();if(existsSync(fixture))unlinkSync(fixture);}

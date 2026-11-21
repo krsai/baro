@@ -1,3 +1,4 @@
+import {materialRegistrationText} from '../frontend/src/constants/materialRegistration.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -32,8 +33,10 @@ try{
   const option={id:'master',baseId:8,industryId:1,unitId:1,variantId:'variant-existing',variantRevision:1,data:{...names('Carton Box'),variantId:'variant-existing',variantRevision:1,itemOwnerOrgId:1,itemOwnerSnapshot:{id:1,name:'BARO'},itemAttributeSnapshot:{type:names('40x50x60')},unit}};
   let options=[option],fail=lang==='ko'&&width===1440;
   await page.route('**/material-items/**',r=>{const req=r.request(),url=new URL(req.url());if(req.method()==='OPTIONS')return r.fulfill({headers,status:204});assert.equal(url.searchParams.get('orgId'),'1');
+   if(url.pathname.endsWith('/registration-preview'))return r.fulfill({headers,json:{policy:{revision:0},drafter:{id:1,name:'BARO',orgRole:'ADMIN'},complete:true,stages:[{key:'step1',employeeId:1,role:'ADMIN',gradeMatch:'ANY',candidates:[{id:1,name:'BARO',orgRole:'ADMIN'}]}]}});
+   if(url.pathname.endsWith('/variants')&&req.method()==='GET')return r.fulfill({headers,json:[]});
    if(url.pathname.endsWith('/variant-options'))return r.fulfill({headers,json:{master:{id:'master',data:{unit}},fields:{type:'HIDDEN',color:'HIDDEN'},colors:[]}});
-   if(url.pathname.endsWith('/variants')&&req.method()==='POST'){const body=req.postDataJSON();writes.push(body);assert.equal(body.ownerId,1);assert.equal(body.baseId,8);const created={...option,variantId:body.clientKey,data:{...option.data,variantId:body.clientKey}};options=[created];return r.fulfill({headers,json:{id:body.clientKey,revision:1}});}
+   if(url.pathname.endsWith('/variants')&&req.method()==='POST'){const body=req.postDataJSON();writes.push(body);assert.equal(body.ownerId,1);assert.equal(body.baseId,8);return r.fulfill({headers,json:{id:body.clientKey,pending:true}});}
    assert.equal(url.searchParams.get('variants'),'1');return r.fulfill({headers,status:fail?503:200,json:fail?{error:'TEMPORARY'}:options});
   });
   await page.route('**/code-item-options?*',r=>r.fulfill({headers,json:{owners:[{id:1,code:'BARO',name:'BARO'}],types:[]}}));
@@ -46,8 +49,8 @@ try{
   await page.getByRole('dialog').getByRole('button',{name:t.add,exact:true}).click();
   const editor=page.getByRole('dialog');await editor.getByText(m.add,{exact:true}).waitFor();
   const owner=editor.getByRole('textbox',{name:new RegExp(t.owner)});await owner.fill('BARO');await owner.press('Enter');
-  await editor.getByRole('button',{name:t.save,exact:true}).click();
-  await page.waitForFunction(()=>Boolean(document.querySelector('output')?.textContent));assert.equal(writes.length,1);
+  await editor.getByRole('button',{name:materialRegistrationText[lang].request,exact:true}).click();
+  await editor.waitFor({state:'hidden'});assert.equal(await page.locator('output').textContent(),'');assert.equal(writes.length,1);options=[option];
   await page.goto(`http://127.0.0.1:${port}/expense-material-payment-test.html?line`);
   const codeField=page.locator('[data-testid="expense-line"]').getByRole('textbox',{name:ACCOUNTING_CODE_TEXT[lang].code,exact:true});await codeField.fill('CTNV');await codeField.press('Enter');
   await page.locator('[data-lookup-dialog="true"]').getByRole('cell',{name:'40x50x60',exact:true}).waitFor();
