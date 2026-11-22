@@ -151,7 +151,7 @@ export function registerShippingRequestRoutes(app:any,db:any,gates:any){
  };
  const route=(method:string,path:string,work:any)=>app[method]('/shipping-requests'+path,async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await work(scope,req));});
  route('get','',({orgId,actorId}:any)=>listShippingRequests(db,orgId,actorId));
- route('get','/options',async({orgId,actorId,org}:any)=>({self:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true,address:true,phone:true,email:true,representative:true}}).then((row:any)=>row?{...row,contactName:row.representative}:row),customers:await freightOptions(db,orgId,actorId),forwarders:org.type==='SERVICE'?[]:(await transportPartners(db,orgId)).filter((p:any)=>p.type==='SERVICE')}));
+ route('get','/options',async({orgId,actorId,org}:any)=>({self:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true,country:true,address:true,phone:true,email:true,representative:true}}).then((row:any)=>row?{...row,contactName:row.representative}:row),customers:await freightOptions(db,orgId,actorId),forwarders:org.type==='SERVICE'?[]:(await transportPartners(db,orgId)).filter((p:any)=>p.type==='SERVICE')}));
  route('get','/presets',(scope:any,req:any)=>listShippingPresets(db,scope,Number(req.query.customerId),String(req.query.kind)));
  route('get','/requesters',({orgId,actorId}:any)=>listShippingRequesters(db,orgId,actorId));
  route('post','/general-customer',({orgId,actorId,org}:any)=>{
