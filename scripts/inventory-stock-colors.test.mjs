@@ -1,0 +1,67 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
+import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
+import {seedInventoryPurchase} from './helpers/inventory-purchase-fixture.mjs';
+const require=createRequire(import.meta.url);
+const {registerInventoryVariantRoutes,writeInventoryVariant}=require('../backend/dist/services/inventoryVariants');
+const {registerInventoryMovementRoutes}=require('../backend/dist/services/inventoryMovements');
+const {registerCodeItemAttributeRoutes}=require('../backend/dist/services/codeItemAttributes');
+test('definitions, palette stock colors, audited partial classification, retries and isolation',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
+  const unit=await db.expenseUnit.create({data:{code:'ITEMS',nameEn:'Each',nameKo:'개',nameVi:'Cái'}});
+  const base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}});
+  await db.accountingCodeIndustry.create({data:{baseId:base.id,systemIndustryId:base.serviceTypeId}});
+  await db.settingServiceDefault.update({where:{id:base.serviceTypeId},data:{materialManagement:true,materialManagementRevision:{increment:1}}});
+  await db.transactionCodeBase.update({where:{id:base.id},data:{materialUnitId:unit.id,materialSettings:{enabled:true,stockFields:['unit'],unitInput:'REQUIRED',colorInput:'HIDDEN',masterInputs:{owner:'REQUIRED',type:'REQUIRED',color:'HIDDEN'}},materialRevision:{increment:1}}});
+  const routes=new Map(),app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,h)=>routes.set(method+path,h)]));
+  const access=async req=>({orgId:req.testOrg??org,actorId:req.testActor??actor});
+  registerInventoryVariantRoutes(app,db,access);registerInventoryMovementRoutes(app,db,access);
+  registerCodeItemAttributeRoutes(app,db,{requireOrgRole:async()=>({organization:s.company}),actorId:()=>actor,canAccessCodeItems:async()=>true});
+  const call=async(method,path,req={})=>{
+   let value;await routes.get(method+path)({query:{},params:{},...req},{status(){return this;},json(v){value=v;}});return value;};
+  const type=await call('post','/code-item-types',{query:{context:'MATERIAL'},body:{baseId:base.id,nameEn:'10x10x10',nameKo:'10x10x10',nameVi:'10x10x10'}});
+  const options=await call('get','/material-items/variant-options',{query:{baseId:base.id}});
+
+  const def=await call('post','/material-items/variants',{body:{clientKey:randomUUID(),baseId:base.id,masterId:options.master.id,ownerId:s.vendor.id,typeId:type.id}});
+  const [definition]=await db.$queryRaw`SELECT * FROM "InventoryVariant" WHERE id=${def.id}`;
+  const movement={clientKey:randomUUID(),masterId:definition.masterId,variantId:def.id,variantRevision:1,date:'2026-11-22',quantity:'10',remark:'Original receipt',approvalRevision:0};
+  const receipt=await call('post','/inventory-entry',{body:movement});
+  const before=await call('get','/inventory-entry/history');
+  const white=await db.attrColor.create({data:{code:'WHT',name:'White',nameEn:'White',nameKo:'White',nameVi:'White'}});
+  const blue=await db.attrColor.create({data:{code:'BLU',name:'Blue',nameEn:'Blue',nameKo:'Blue',nameVi:'Blue'}});
+  const settings={...base.materialSettings,enabled:true,stockFields:['unit'],colorInput:'REQUIRED',masterInputs:{owner:'REQUIRED',type:'REQUIRED',color:'REQUIRED'}};
+  await db.transactionCodeBase.update({where:{id:base.id},data:{materialSettings:settings,materialRevision:{increment:1}}});
+  assert.equal((await call('get','/material-items/variant-options',{query:{baseId:base.id}})).fields.color,'HIDDEN');
+  const second=await call('post','/material-items/variants',{body:{clientKey:randomUUID(),baseId:base.id,masterId:definition.masterId,ownerId:org,typeId:type.id}});
+  assert.ok(second.id,'required stock color never prevents registering a colorless definition');
+  await assert.rejects(call('post','/inventory-entry',{body:{...movement,clientKey:randomUUID()}}),/STOCK_COLOR_REQUIRED/);
+  const transfer={clientKey:randomUUID(),sourceId:def.id,revision:1,colorId:white.id,quantity:'4'};
+  const saved=await call('post','/inventory-entry/color-transfers',{body:transfer});
+  assert.deepEqual(await call('post','/inventory-entry/color-transfers',{body:transfer}),saved);
+  await assert.rejects(call('post','/inventory-entry/color-transfers',{body:{...transfer,quantity:'3'}}),/INVENTORY_RETRY_MISMATCH/);
+  let stock=await call('get','/inventory-entry/stock');
+  assert.equal(stock.find(r=>r.id===def.id).quantity,'6.0000');assert.equal(stock.find(r=>r.id===def.id).colorMissing,true);
+  const colored=stock.find(r=>r.attributes.color?.id===white.id);assert.equal(colored.quantity,'4.0000');
+  await assert.rejects(call('post','/inventory-entry/color-transfers',{body:{...transfer,clientKey:randomUUID(),quantity:'7'}}),/STOCK_COLOR_BALANCE_CHANGED/);
+  assert.equal((await db.$queryRaw`SELECT count(*)::int n FROM "InventoryColorTransfer"`)[0].n,1,'failed split rolls back');
+  await call('post','/inventory-entry/color-transfers',{body:{...transfer,clientKey:randomUUID(),colorId:blue.id,quantity:'6'}});
+  await call('post','/inventory-entry',{body:{...movement,clientKey:randomUUID(),colorId:white.id,quantity:'2'}});
+  stock=await call('get','/inventory-entry/stock');assert.equal(stock.find(r=>r.attributes.color?.id===white.id).quantity,'6.0000');assert.equal(stock.find(r=>r.attributes.color?.id===blue.id).quantity,'6.0000');assert.ok(!stock.some(r=>r.colorMissing));
+  assert.deepEqual((await call('get','/inventory-entry/history')).find(r=>r.id===receipt.id),before.find(r=>r.id===receipt.id),'original movement and attributes remain unchanged');
+  assert.equal((await call('get','/inventory-entry/items')).length,2,'palette stock rows are not new master definitions');
+  const purchase=await seedInventoryPurchase(db,s,definition.masterId);
+  const costBefore=await db.partnerTransactionCost.findUnique({where:{id:purchase.expenseItemId}});
+  const ownReceipt=await call('post','/inventory-entry',{body:{...movement,clientKey:randomUUID(),variantId:second.id,colorId:white.id,quantity:'3',...purchase}});
+  assert.ok(ownReceipt.id,'a colored stock receipt links its colorless definition purchase through the actual FK');
+  assert.deepEqual(await db.partnerTransactionCost.findUnique({where:{id:purchase.expenseItemId}}),costBefore,'stock colors never rewrite financial source snapshots');
+  assert.deepEqual(await call('get','/inventory-entry/color-transfers',{testOrg:s.other.id}),[]);
+  await assert.rejects(call('post','/inventory-entry/color-transfers',{testOrg:s.other.id,body:{...transfer,clientKey:randomUUID()}}),/ACTIVE_EMPLOYEE_REQUIRED/);
+  await assert.rejects(db.$executeRaw`DELETE FROM "InventoryColorTransfer" WHERE id=${saved.id}`,/STOCK_COLOR_HISTORY_IMMUTABLE/);
+  const sql=readFileSync('backend/prisma/migrations/20261122030000_inventory_stock_colors/migration.sql','utf8');await f.pg.exec(sql);await f.pg.exec(sql);
+  assert.equal((await call('get','/inventory-entry/color-transfers')).length,2);
+ }finally{await f.close();}
+});

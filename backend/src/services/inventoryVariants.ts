@@ -4,14 +4,14 @@ import {systemMaterialOptions,resolveSystemMaterialMaster} from './materialItems
 import {materialOwnerScope,MATERIAL_OWNER_SELECT} from './materialOwner';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const inputMode=(value:any)=>value==='REQUIRED'?'REQUIRED':value==='OPTIONAL'?'OPTIONAL':'HIDDEN';
-const requirements=(base:any)=>{const settings=base.materialSettings??{},inputs=settings.masterInputs;return {type:inputMode(inputs===undefined?base.attributeInputs?.type:inputs.type),color:inputMode(inputs===undefined?settings.colorInput:inputs.color)};};
+const requirements=(base:any)=>{const settings=base.materialSettings??{},inputs=settings.masterInputs;return {type:inputMode(inputs===undefined?base.attributeInputs?.type:inputs.type),color:'HIDDEN'};};
 export function registerInventoryVariantRoutes(app:any,db:any,access:any){
  app.get('/material-items/variant-options',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;
   const baseId=Number(req.query.baseId);if(!Number.isSafeInteger(baseId)||baseId<=0)fail('INVALID_MATERIAL_CODE');
   const [master]=await systemMaterialOptions(db,scope.orgId,baseId);if(!master)fail('INVALID_MATERIAL_CODE');
   const base=await db.transactionCodeBase.findUnique({where:{id:master.baseId}});
-  res.json({master,fields:requirements(base),colors:await db.attrColor.findMany({orderBy:{code:'asc'}})});
+  res.json({master,fields:requirements(base),colors:[]});
  });
  for(const method of ['post','put','delete'])app[method]('/material-items/variants'+(method==='post'?'':'/:id'),async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;
@@ -29,7 +29,7 @@ export async function writeInventoryVariant(tx:any,scope:any,body:any,method:str
    if(!await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']}}}))fail('ACTIVE_EMPLOYEE_REQUIRED',403);
    await tx.$queryRaw`SELECT set_config('baro.variant_actor',${String(actorId)},true)`;
    const [old]=await tx.$queryRaw`SELECT * FROM "InventoryVariant" WHERE id=${id} AND "orgId"=${orgId} FOR UPDATE`;
-   if(old&&(method==='put'||method==='delete')&&(await tx.$queryRaw`SELECT id FROM "PartnerTransactionCost" WHERE "orgId"=${orgId} AND "materialVariantId"=${id} UNION ALL SELECT id FROM "MaterialRegistrationRequest" WHERE "orgId"=${orgId} AND "resultVariantId"=${id} UNION ALL SELECT id FROM "BankLedgerEntry" WHERE "orgId"=${orgId} AND "materialVariantId"=${id} LIMIT 1`).length)fail('VARIANT_IN_USE',409);
+   if(old&&(method==='put'||method==='delete')&&(await tx.$queryRaw`SELECT "variantId" AS id FROM "InventoryStockItem" WHERE "orgId"=${orgId} AND ("variantId"=${id} OR "definitionId"=${id}) UNION ALL SELECT id FROM "PartnerTransactionCost" WHERE "orgId"=${orgId} AND "materialVariantId"=${id} UNION ALL SELECT id FROM "MaterialRegistrationRequest" WHERE "orgId"=${orgId} AND "resultVariantId"=${id} UNION ALL SELECT id FROM "BankLedgerEntry" WHERE "orgId"=${orgId} AND "materialVariantId"=${id} LIMIT 1`).length)fail('VARIANT_IN_USE',409);
    if(method==='delete'){
     if(!old){const [prior]=await tx.$queryRaw`SELECT id FROM "InventoryVariantEvent" WHERE "orgId"=${orgId} AND "originalId"=${id} AND action='DELETE' AND "actorId"=${actorId} AND revision=${body.revision+1}`;if(prior)return {deleted:true};fail('VARIANT_NOT_FOUND',404);}
     if(old.revision!==body.revision)fail('VARIANT_CHANGED',409);

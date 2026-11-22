@@ -10,7 +10,7 @@ export async function prepareInventoryPurchase(tx:any,orgId:number,masterId:stri
  }
  if(typeof body.expenseItemId!=='string'||!body.expenseItemId||body.expenseItemId.length>100||!Number.isSafeInteger(body.expenseRequestVersion))throw createHttpError(400,'INVENTORY_PURCHASE_REQUIRED');
  const cost=await tx.partnerTransactionCost.findFirst({where:{id:body.expenseItemId,orgId},select:{materialItemSnapshot:true}});
- if(cost?.materialItemSnapshot?.variantId&&cost.materialItemSnapshot.variantId!==variantId)throw createHttpError(400,'INVALID_INVENTORY_PURCHASE');
+ if(cost?.materialItemSnapshot?.variantId&&cost.materialItemSnapshot.variantId!==variantId){const [link]=await tx.$queryRaw`SELECT "definitionId" FROM "InventoryStockItem" WHERE "orgId"=${orgId} AND "variantId"=${variantId}`;if(link?.definitionId!==cost.materialItemSnapshot.variantId)throw createHttpError(400,'INVALID_INVENTORY_PURCHASE');}
  await tx.$queryRaw`SELECT r.id FROM "ExpenseRequest" r JOIN "PartnerTransactionCost" c ON c."expenseRequestId"=r.id AND c."orgId"=r."orgId" WHERE c.id=${body.expenseItemId} AND c."orgId"=${orgId} FOR SHARE OF r,c`;
  const [row]=await tx.$queryRaw`SELECT baro_inventory_purchase_source(${orgId}::integer,${masterId}::text,${body.expenseItemId}::text,${body.expenseRequestVersion}::integer) AS source`;
  if(!row?.source)throw createHttpError(409,'INVENTORY_PURCHASE_CHANGED');

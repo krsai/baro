@@ -1,3 +1,5 @@
+import {inventoryColorText} from '../../../constants/inventoryColors';
+import StockColorDialog,{StockColorHistory} from '../../../components/StockColorDialog';
 import Dialog from '../../../components/AppDialog';
 import TableStatusRow from '../../../components/TableStatusRow';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -59,6 +61,9 @@ function MovementForm({orgId,onClose,onSaved}){
  const [receipt,issue,itemLabel,add,ownerLabel,typeLabel,qty,dateLabel,remarkLabel,saved,directionLabel]=labels[languageCode]||labels.en;
  const [items,setItems]=useState(null),[employees,setEmployees]=useState(null),[user,setUser]=useState(null),[selectedItem,setSelectedItem]=useState(null);
  const master=selectedItem?{id:selectedItem.masterId,data:selectedItem.master}:null,variant=selectedItem;
+ const [stockOptions,setStockOptions]=useState(null),[color,setColor]=useState(null),[colorError,setColorError]=useState(false),[colorReload,setColorReload]=useState(0);
+ const colorMode=selectedItem?.materialSettings?.masterInputs?.color??selectedItem?.materialSettings?.colorInput??'HIDDEN';
+ useEffect(()=>{let active=true;setStockOptions(null);setColor(selectedItem?.attributes.color||null);setColorError(false);if(selectedItem&&colorMode!=='HIDDEN')requestJSON('/inventory-entry/options'+buildQueryString({orgId,masterId:selectedItem.masterId}),{skipCache:true}).then(data=>{if(active)setStockOptions(data);}).catch(()=>{if(active)setColorError(true);});return()=>{active=false;};},[selectedItem?.id,colorMode,orgId,colorReload]);
  const [direction,setDirection]=useState('IN'),[date,setDate]=useState(today),[quantity,setQuantity]=useState(''),[remark,setRemark]=useState('');
  const [purchase,setPurchase]=useState(null),[purchaseRows,setPurchaseRows]=useState(null),[purchaseError,setPurchaseError]=useState('');
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0);
@@ -79,11 +84,11 @@ function MovementForm({orgId,onClose,onSaved}){
  useEffect(()=>{let active=true;setError('');setItems(null);setEmployees(null);Promise.all([request('/items',orgId),request('/employees',orgId)]).then(([rows,people])=>{if(!active)return;setItems(rows);setEmployees(people.employees);if(initialUser.current===null){initialUser.current=people.currentEmployeeId;setUser(people.employees.find(person=>person.id===people.currentEmployeeId)||null);}}).catch(()=>{if(active)setError(t.failed);});return()=>{active=false;};},[orgId,reload,t.failed]);
  const unavailable=busy||Boolean(pending.current),positive=/^\d{1,16}(\.\d{1,4})?$/;
  const validQuantity=positive.test(quantity)&&Number(quantity)>0;
- const validVariant=Boolean(variant);
+ const validVariant=Boolean(variant&&(colorMode==='HIDDEN'||stockOptions&&!colorError&&(colorMode!=='REQUIRED'||color)));
  const save=async()=>{
   if(locked.current||!user||!master||!validQuantity||!validVariant||!approval||approval.stages.some(stage=>!stage.employeeId)||needsPurchase&&(!purchase||!purchaseRows||purchaseError))return;
   locked.current=true;setBusy(true);setError('');
-  const payload=pending.current||{clientKey:crypto.randomUUID(),masterId:master.id,variantId:variant?.id??null,variantRevision:variant?.revision,userEmployeeId:user.id,expenseItemId:needsPurchase?purchase.expenseItemId:null,expenseRequestVersion:needsPurchase?purchase.version:null,approvalRevision:approval.policy.revision,approvalSelection:Object.fromEntries(approval.stages.map(stage=>[stage.key+'EmployeeId',stage.employeeId])),date,quantity:(direction==='OUT'?'-':'')+quantity,remark};
+  const payload=pending.current||{clientKey:crypto.randomUUID(),masterId:master.id,variantId:variant?.id??null,variantRevision:variant?.revision,colorId:colorMode!=='HIDDEN'?color?.id??null:null,userEmployeeId:user.id,expenseItemId:needsPurchase?purchase.expenseItemId:null,expenseRequestVersion:needsPurchase?purchase.version:null,approvalRevision:approval.policy.revision,approvalSelection:Object.fromEntries(approval.stages.map(stage=>[stage.key+'EmployeeId',stage.employeeId])),date,quantity:(direction==='OUT'?'-':'')+quantity,remark};
   pending.current=payload;
   try{
    await request('',orgId,{method:'POST',body:JSON.stringify(payload)});
@@ -112,12 +117,13 @@ function MovementForm({orgId,onClose,onSaved}){
   <Box sx={{p:2}}><Stack spacing={2}>
   {(!items||!employees)&&!error&&<LinearProgress/>}
   <TableContainer data-testid="inventory-entry-lines"><Table size="small" data-table-layout="wide" sx={{minWidth:1000,tableLayout:'fixed','& th,& td':{px:1},'& td':{verticalAlign:'top'},'& .MuiFormControl-root':{minWidth:0}}}>
-   <colgroup><col style={{width:216}}/><col style={{width:132}}/><col/><col style={{width:140}}/><col style={{width:100}}/></colgroup>
-   <TableHead><TableRow>{[e.user,e.direction,e.material,qty,t.unit].map(label=><TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead>
+   <colgroup><col style={{width:216}}/><col style={{width:132}}/><col/>{colorMode!=='HIDDEN'&&<col style={{width:180}}/>}<col style={{width:140}}/><col style={{width:100}}/></colgroup>
+   <TableHead><TableRow>{[e.user,e.direction,e.material,...(colorMode!=='HIDDEN'?[t.color]:[]),qty,t.unit].map(label=><TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead>
    <TableBody><TableRow>
     <TableCell>{lookup(e.user,employees||[],user,setUser,languageCode,row=>row.name||row.employeeNo||'',{hideLabel:true,required:true,disabled:unavailable||!employees,getCode:row=>row.employeeNo,columns:[{key:'code',label:e.employeeNo,value:row=>row.employeeNo},{key:'name',label:e.user,value:row=>row.name}]})}</TableCell>
     <TableCell><TextField id="inventory-entry-direction" select size="small" value={direction} slotProps={{select:{inputProps:{'aria-label':e.direction}}}} disabled={unavailable} onChange={e=>setDirection(e.target.value)} fullWidth><MenuItem value="IN">{receipt}</MenuItem><MenuItem value="OUT">{issue}</MenuItem></TextField></TableCell>
     <TableCell><ExpenseLookupField label={e.material} hideLabel required disabled={unavailable||!items} options={items||[]} value={selectedItem} onChange={setSelectedItem} languageCode={languageCode} getCode={row=>row.master.baseSnapshot.code} getOptionLabel={row=>[row.master.baseSnapshot.code,materialItemName(row.master,languageCode),variantName(row.attributes,languageCode)].filter(Boolean).join(' / ')} columns={[{key:'code',label:t.code,value:row=>row.master.baseSnapshot.code},{key:'name',label:t.name,value:row=>materialItemName(row.master,languageCode)},{key:'owner',label:ownerLabel,value:row=>ownerName(row.attributes.owner,languageCode)},{key:'type',label:typeLabel,value:row=>materialItemName(row.attributes.type,languageCode)},{key:'color',label:t.color,value:row=>[row.attributes.color?.code,materialItemName(row.attributes.color,languageCode)].filter(Boolean).join(' / ')}]}/></TableCell>
+    {colorMode!=='HIDDEN'&&<TableCell><ExpenseLookupField label={t.color} hideLabel required={colorMode==='REQUIRED'} disabled={unavailable||!stockOptions} options={stockOptions?.colors||[]} value={color} onChange={setColor} languageCode={languageCode} getCode={row=>row.code} getOptionLabel={row=>[row.code,materialItemName(row,languageCode)].filter(Boolean).join(' / ')} columns={[{key:'code',label:t.code,value:row=>row.code},{key:'name',label:t.color,value:row=>materialItemName(row,languageCode)}]}/>{colorError&&<AppNotice severity="error" action={<Button onClick={()=>setColorReload(n=>n+1)}>{t.retry}</Button>}>{t.failed}</AppNotice>}</TableCell>}
     <TableCell><TextField required fullWidth size="small" value={quantity} disabled={unavailable} slotProps={{htmlInput:{inputMode:'decimal','aria-label':qty}}} onChange={event=>setQuantity(event.target.value)}/></TableCell>
     <TableCell><TextField fullWidth size="small" value={master?materialItemName(master.data.unit,languageCode):''} slotProps={{input:{readOnly:true},htmlInput:{'aria-label':t.unit}}}/></TableCell>
    </TableRow></TableBody>
@@ -147,22 +153,23 @@ export function InventoryRows({view,keyword='',start='',end=''}){
  const [rows,setRows]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(false),[reload,setReload]=useState(0);
  const history=view==='history',location=useLocation(),variantId=new URLSearchParams(location.search).get('variantId')||undefined;
  const a=inventoryApprovalText[languageCode]||inventoryApprovalText.en;
- const [deleting,setDeleting]=useState(null);
+ const [deleting,setDeleting]=useState(null),[classifying,setClassifying]=useState(null);
+ const c=inventoryColorText[languageCode]||inventoryColorText.en;
  useEffect(()=>{
   let active=true;
   setError(false);setLoading(true);
   requestJSON('/inventory-entry/'+(history?'history':'stock')+buildQueryString({orgId,...(history&&variantId?{variantId}:{})}),{skipCache:true}).then(data=>{if(active)setRows(data);}).catch(()=>{if(active)setError(true);}).finally(()=>{if(active)setLoading(false);});
   return()=>{active=false;};
  },[orgId,history,reload,variantId]);
- useWorkspaceRefreshOnEvent({orgId,topics:[history?'inventory-movements':'inventory-stock'],onRefresh:()=>setReload(n=>n+1)});
- const columns=[...(history?[dateLabel,(inventoryEntryText[languageCode]||inventoryEntryText.en).user]:[]),masterLabels[languageCode]||masterLabels.en,itemLabel,qty,t.unit,...(history?[a.purchase,remarkLabel,a.status,a.actions]:[])];
+ useWorkspaceRefreshOnEvent({orgId,topics:[history?'inventory-movements':'inventory-stock'],isBlocked:Boolean(classifying),onRefresh:()=>setReload(n=>n+1)});
+ const columns=[...(history?[dateLabel,(inventoryEntryText[languageCode]||inventoryEntryText.en).user]:[]),masterLabels[languageCode]||masterLabels.en,itemLabel,qty,t.unit,...(history?[a.purchase,remarkLabel,a.status,a.actions]:[t.color,a.actions])];
  const displayed=rows?.filter(row=>(!history||(!start||row.date>=start)&&(!end||row.date<=end))&&[row.master.baseSnapshot.code,materialItemName(row.master,languageCode),variantName(row.attributes,languageCode),row.remark,row.userSnapshot?.name,row.userSnapshot?.employeeNo].join(' ').toLowerCase().includes(keyword.trim().toLowerCase()));
- return <Stack spacing={2}>{error&&<AppNotice severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{t.failed}</AppNotice>}{history&&<InventoryApprovalPanel onChanged={()=>setReload(n=>n+1)}/>}<TableContainer component={Paper} variant="outlined" aria-busy={loading}><Table size="small">
+ return <Stack spacing={2}>{error&&<AppNotice severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{t.failed}</AppNotice>}{history&&<InventoryApprovalPanel onChanged={()=>setReload(n=>n+1)}/>}{!history&&<><StockColorHistory orgId={orgId} languageCode={languageCode}/>{rows?.some(row=>row.colorMissing)&&<AppNotice severity="warning">{c.missing}</AppNotice>}</>}<TableContainer component={Paper} variant="outlined" aria-busy={loading}><Table size="small">
   <TableHead><TableRow>{columns.map((column,index)=><TableCell key={column} sx={history&&index===columns.length-1?{position:'sticky',right:0,bgcolor:'background.paper'}:undefined}>{column}</TableCell>)}</TableRow></TableHead>
   <TableBody>{displayed?.map(row=><TableRow key={row.id}>
    {history&&<><TableCell>{row.date}</TableCell><TableCell>{row.userSnapshot?[row.userSnapshot.employeeNo,row.userSnapshot.name].filter(Boolean).join(' / '):'\u2014'}</TableCell></>}<TableCell>{materialItemName(row.master,languageCode)}</TableCell>
    <TableCell>{variantName(row.attributes,languageCode)}</TableCell><TableCell>{quantityText(row.quantity)}</TableCell>
-   <TableCell>{materialItemName(row.master.unit,languageCode)}</TableCell>{history&&<><TableCell>{row.purchaseSnapshot?[row.purchaseSnapshot.managementNumber||row.purchaseSnapshot.requestId,row.purchaseSnapshot.line].join(' / '):'\u2014'}</TableCell><TableCell>{row.remark}</TableCell><TableCell>{row.deletePending?a.DELETE+' \u00b7 '+a.PENDING:a[row.status]}</TableCell><TableCell sx={{position:'sticky',right:0,bgcolor:'background.paper'}}><Button disabled={row.deletePending} onClick={()=>setDeleting(row)}>{a.delete}</Button></TableCell></>}
+   <TableCell>{materialItemName(row.master.unit,languageCode)}</TableCell>{!history&&<><TableCell>{materialItemName(row.attributes.color,languageCode)||row.attributes.color?.code||'\u2014'}</TableCell><TableCell>{row.colorMissing&&<Button onClick={()=>setClassifying(row)}>{c.classify}</Button>}</TableCell></>}{history&&<><TableCell>{row.purchaseSnapshot?[row.purchaseSnapshot.managementNumber||row.purchaseSnapshot.requestId,row.purchaseSnapshot.line].join(' / '):'\u2014'}</TableCell><TableCell>{row.remark}</TableCell><TableCell>{row.deletePending?a.DELETE+' \u00b7 '+a.PENDING:a[row.status]}</TableCell><TableCell sx={{position:'sticky',right:0,bgcolor:'background.paper'}}><Button disabled={row.deletePending} onClick={()=>setDeleting(row)}>{a.delete}</Button></TableCell></>}
   </TableRow>)}{(loading||error||!displayed?.length)&&<TableStatusRow colSpan={columns.length} languageCode={languageCode} loading={loading} error={error} onRetry={()=>setReload(n=>n+1)}/>}</TableBody>
- </Table></TableContainer>{deleting&&<InventoryDeleteDialog row={deleting} onClose={()=>setDeleting(null)} onSaved={()=>{setDeleting(null);setReload(n=>n+1);}}/>}</Stack>;
+ </Table></TableContainer>{classifying&&<StockColorDialog row={classifying} orgId={orgId} languageCode={languageCode} onClose={()=>setClassifying(null)} onSaved={()=>{setClassifying(null);setReload(n=>n+1);}}/>}{deleting&&<InventoryDeleteDialog row={deleting} onClose={()=>setDeleting(null)} onSaved={()=>{setDeleting(null);setReload(n=>n+1);}}/>}</Stack>;
 }

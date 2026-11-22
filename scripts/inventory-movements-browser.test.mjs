@@ -34,13 +34,14 @@ try{
    if(path.endsWith('/approval-preview')){const drafter={id:3,name:'Drafter',orgRole:'ADMIN',gradeId:1,grade:{id:1,name:'Director',nameEn:'Director',nameKo:'Director',nameVi:'Director'}};return r.fulfill({headers,json:{policy:{revision:1},drafter,automatic:true,stages:[{employeeId:3,name:'Drafter',role:'ADMIN',key:'final-self',candidates:[drafter]}]}});}
    if(path.endsWith('/approvals'))return r.fulfill({headers,json:[]});
    if(path.endsWith('/purchase-expenses'))return r.fulfill({headers,json:[{expenseItemId:'purchase-line',requestId:1,version:1,managementNumber:'EXP-1',requestDate:'2026-11-19',line:1,description:'Carton purchase',quantity:'100'}]});
-   if(path.endsWith('/items'))return r.fulfill({headers,json:items});
+   if(path.endsWith('/items'))return r.fulfill({headers,json:items.map(row=>({...row,materialSettings:{masterInputs:{color:mode==='other'?'REQUIRED':'HIDDEN'}}}))});
+   if(path.endsWith('/options'))return r.fulfill({headers,json:{colors:[{id:1,code:'WHT',nameEn:'White',nameKo:'White',nameVi:'White'}]}});
    if(path.endsWith('/employees'))return r.fulfill({headers,json:{currentEmployeeId:3,employees:people}});
    if(path.endsWith('/history'))return r.fulfill({headers,json:[{id:'one',status:'PENDING',revision:1,date:'2026-11-20',quantity:mode==='issue'?'-1250.0000':'1250.0000',remark:'Remark test',master:master.data,attributes:item.attributes,userSnapshot:people[1]}]});
    if(req.method()!=='POST')throw Error('Unexpected endpoint '+path);
    writes.push(req.postDataJSON());return r.fulfill({headers,status:201,json:{id:'one'}});
   });
-  await page.goto('http://127.0.0.1:'+port+'/inventory-movement-acceptance.html');
+  await page.goto('http://127.0.0.1:'+port+'/inventory-movement-acceptance.html',{timeout:60000});
   await page.getByRole('heading',{name:a.register,exact:true}).waitFor();
   const header=page.getByTestId('document-entry-header'),lines=page.getByTestId('inventory-entry-lines');
   assert.equal(await header.getByRole('textbox',{name:e.user,exact:true}).count(),0);
@@ -54,10 +55,12 @@ try{
   const target=chooser.getByRole('row').filter({has:page.getByRole('cell',{name:mode==='self'?'BARO':'THE SAN',exact:true})});
   await target.getByRole('button',{name:l.select,exact:true}).click();await chooser.waitFor({state:'hidden'});
   assert.match(await material.inputValue(),mode==='self'?/10x10x10/:/20x20x20/);
+  if(mode==='other'){const color=lines.getByRole('textbox',{name:t.color,exact:true});await color.fill('WHT');await color.press('Enter');}
+  else assert.equal(await lines.getByRole('textbox',{name:t.color,exact:true}).count(),0);
   const unit=lines.getByRole('textbox',{name:t.unit,exact:true});assert.equal(await unit.inputValue(),'Each');assert.equal(await unit.getAttribute('readonly'),'');
   if(mode==='self'){await page.getByRole('textbox',{name:a.purchase,exact:true}).fill('EXP-1-1');await page.getByRole('textbox',{name:a.purchase,exact:true}).press('Enter');}
   else assert.equal(await page.getByRole('textbox',{name:a.purchase,exact:true}).count(),0);
-  await lines.locator('tbody td').nth(3).getByRole('textbox').fill('1250');await page.getByRole('textbox',{name:e.remark,exact:true}).fill('Remark test');
+  await lines.locator('tbody td').nth(mode==='other'?4:3).getByRole('textbox').fill('1250');await page.getByRole('textbox',{name:e.remark,exact:true}).fill('Remark test');
   if(width===1440){const boxes=await lines.locator('tbody td').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().y));assert.ok(Math.max(...boxes)-Math.min(...boxes)<1);}
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'table scroll stays inside page');
   if(lang==='ko'&&width===1440&&mode==='other')await page.screenshot({path:'logs/inventory-entry-preview.png'});
@@ -66,7 +69,7 @@ try{
   await page.getByRole('dialog').getByRole('button',{name:a.cancel,exact:true}).click();assert.equal(await page.getByRole('textbox',{name:e.remark,exact:true}).inputValue(),'Remark test');
   await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByRole('button',{name:a.submit,exact:true}).click();
   await page.getByRole('cell',{name:mode==='issue'?'-1,250':'1,250',exact:true}).waitFor();
-  assert.equal(writes.length,1);assert.equal(writes[0].masterId,'box');assert.equal(writes[0].variantId,item.id);assert.equal(writes[0].variantRevision,item.revision);assert.equal(writes[0].userEmployeeId,4);assert.equal(writes[0].quantity,mode==='issue'?'-1250':'1250');assert.equal(writes[0].remark,'Remark test');assert.equal(writes[0].expenseItemId,mode==='self'?'purchase-line':null);
+  assert.equal(writes.length,1);assert.equal(writes[0].colorId,mode==='other'?1:null);assert.equal(writes[0].masterId,'box');assert.equal(writes[0].variantId,item.id);assert.equal(writes[0].variantRevision,item.revision);assert.equal(writes[0].userEmployeeId,4);assert.equal(writes[0].quantity,mode==='issue'?'-1250':'1250');assert.equal(writes[0].remark,'Remark test');assert.equal(writes[0].expenseItemId,mode==='self'?'purchase-line':null);
   assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS ko/en/vi PC/mobile: date header, employee/direction/item/quantity/unit row, registered item picker, read-only unit, remark, purchase and approval flow.');

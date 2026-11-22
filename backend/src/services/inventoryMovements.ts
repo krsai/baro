@@ -1,3 +1,4 @@
+import {stockColorVariant,registerStockColorRoutes} from './inventoryStockColors';
 import {negativeInventoryBalances} from './inventoryBalanceAlerts';
 import {createHash,randomUUID} from 'node:crypto';
 import {Prisma} from '@prisma/client';
@@ -27,6 +28,7 @@ async function readMaster(db:any,orgId:number,id:string,actorId?:number){
 
 export function registerInventoryMovementRoutes(app:any,db:any,access:any){
  registerInventoryApprovalRoutes(app,db,access);
+ registerStockColorRoutes(app,db,access);
  app.get('/inventory-entry/negative-stock',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_STOCK');if(!scope)return;
   const dashboard=await access(req,res,'DASHBOARD');if(!dashboard)return;
@@ -42,9 +44,9 @@ export function registerInventoryMovementRoutes(app:any,db:any,access:any){
   const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
   const allowed=await systemMaterialOptions(db,scope.orgId),ids=allowed.map((row:any)=>row.baseId);
   if(!ids.length){res.json([]);return;}
-  res.json(await db.$queryRaw`SELECT v.id,v."masterId",v."baseId",v.revision,v.attributes,i.data AS master
+  res.json(await db.$queryRaw`SELECT v.id,v."masterId",v."baseId",v.revision,v.attributes,i.data AS master,b."materialSettings" AS "materialSettings"
    FROM "InventoryVariant" v JOIN "MaterialItem" i ON i.id=v."masterId" AND i."orgId"=v."orgId" AND i."baseId"=v."baseId"
-   WHERE v."orgId"=${scope.orgId} AND v."baseId"=ANY(${ids}::integer[]) ORDER BY i.data->'baseSnapshot'->>'code',v.id`);
+   JOIN "TransactionCodeBase" b ON b.id=v."baseId" WHERE NOT EXISTS(SELECT 1 FROM "InventoryStockItem" stock WHERE stock."orgId"=v."orgId" AND stock."variantId"=v.id) AND v."orgId"=${scope.orgId} AND v."baseId"=ANY(${ids}::integer[]) ORDER BY i.data->'baseSnapshot'->>'code',v.id`);
  });
  app.get('/inventory-entry/purchase-expenses',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
@@ -106,9 +108,10 @@ export function registerInventoryMovementRoutes(app:any,db:any,access:any){
    let variantId=body.variantId;
    if(variantId){
     if(typeof variantId!=='string')throw invalid();
-    const [selected]=await tx.$queryRaw`SELECT id,revision FROM "InventoryVariant" WHERE id=${variantId} AND "orgId"=${orgId} AND "masterId"=${master.id} FOR UPDATE`;
+    const [selected]=await tx.$queryRaw`SELECT * FROM "InventoryVariant" WHERE id=${variantId} AND "orgId"=${orgId} AND "masterId"=${master.id} FOR UPDATE`;
     if(!selected)throw invalid();
     if(body.variantRevision!==undefined&&(!Number.isSafeInteger(body.variantRevision)||selected.revision!==body.variantRevision))throw createHttpError(409,'VARIANT_CHANGED');
+    variantId=await stockColorVariant(tx,orgId,selected,body.colorId,fields);
    }else{
     if(!Number.isSafeInteger(body.ownerId)||body.ownerId<=0)throw invalid();
     const owner=await tx.organization.findFirst({where:{AND:[materialOwnerScope(orgId),{id:body.ownerId}]},select:MATERIAL_OWNER_SELECT});
@@ -131,7 +134,7 @@ export function registerInventoryMovementRoutes(app:any,db:any,access:any){
     if(!existing)await tx.$executeRaw`INSERT INTO "InventoryVariant" (id,"orgId","masterId","baseId","ownerId","colorId","typeId",attributes,identity)
      VALUES (${variantId},${orgId},${master.id},${master.baseId},${owner.id},${colorId},${typeId},${JSON.stringify({owner,color,type,dimensions})}::jsonb,${identity})`;
    }
-   const purchase=await prepareInventoryPurchase(tx,orgId,master.id,variantId,body.quantity,body);
+   const purchase=await prepareInventoryPurchase(tx,orgId,master.id,body.variantId||variantId,body.quantity,body);
    const id=randomUUID();
    await tx.$executeRaw`INSERT INTO "InventoryMovement" (id,"orgId","variantId","actorId","userEmployeeId","userSnapshot","clientKey","requestHash","movementDate",quantity,remark,status,"purchaseRequired","expenseItemId","expenseRequestId","expenseRequestVersion","purchaseSnapshot")
     VALUES (${id},${orgId},${variantId},${actorId},${user.id},${JSON.stringify(user)}::jsonb,${body.clientKey},${hash},${body.date}::date,${body.quantity}::numeric,${body.remark.trim()},'PENDING',${purchase.required},${purchase.source?.expenseItemId??null},${purchase.source?.requestId??null},${purchase.source?.version??null},${purchase.source?JSON.stringify(purchase.source):null}::jsonb)`;
@@ -150,8 +153,10 @@ export function registerInventoryMovementRoutes(app:any,db:any,access:any){
  });
  app.get('/inventory-entry/stock',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_STOCK');if(!scope)return;
-  res.json(await db.$queryRaw`SELECT v.id,v.attributes,i.data AS master,SUM(m.quantity)::text AS quantity
-   FROM "InventoryVariant" v JOIN "MaterialItem" i ON i.id=v."masterId" JOIN "InventoryMovement" m ON m."variantId"=v.id
-   WHERE v."orgId"=${scope.orgId} AND m.status='APPROVED' GROUP BY v.id,i.id ORDER BY v.id`);
+  res.json(await db.$queryRaw`SELECT v.id,v.revision,v."masterId",v.attributes,i.data AS master,balance.quantity::text AS quantity,
+    (v."colorId" IS NULL AND balance.quantity>0 AND b."isActive" AND b."materialSettings"->>'enabled'='true' AND coalesce(b."materialSettings"->'masterInputs'->>'color',b."materialSettings"->>'colorInput','HIDDEN')<>'HIDDEN') AS "colorMissing"
+   FROM baro_inventory_stock_balances(${scope.orgId}::integer) balance JOIN "InventoryVariant" v ON v.id=balance.id AND v."orgId"=${scope.orgId}
+   JOIN "MaterialItem" i ON i.id=v."masterId" AND i."orgId"=v."orgId" JOIN "TransactionCodeBase" b ON b.id=v."baseId"
+   WHERE balance.quantity<>0 ORDER BY v.id`);
  });
 }

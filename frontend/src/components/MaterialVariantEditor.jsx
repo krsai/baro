@@ -1,3 +1,4 @@
+import {inventoryColorText} from '../constants/inventoryColors';
 import ListDetailDialog from './ListDetailDialog';
 import DialogRecordList from './DialogRecordList';
 import DialogDetailPanel from './DialogDetailPanel';
@@ -28,7 +29,7 @@ export default function MaterialVariantEditor({orgId,baseId,row,languageCode,onC
 }
 function VariantForm({orgId,baseId,row,languageCode,onClose,onSaved,selector,dirty,locked,closeForm,title}){
  const t=materialItemText[languageCode]||materialItemText.en,m=materialVariantManagementText[languageCode]||materialVariantManagementText.en,dialogs=usePageDialogs();
- const a=materialRegistrationText[languageCode]||materialRegistrationText.en;
+ const a=materialRegistrationText[languageCode]||materialRegistrationText.en,c=inventoryColorText[languageCode]||inventoryColorText.en;
  const [preview,setPreview]=useState(null);
  const [registered,setRegistered]=useState(null);
  const [options,setOptions]=useState(null),[attributes,setAttributes]=useState(null),[reload,setReload]=useState(0),[error,setError]=useState(''),[busy,setBusy]=useState(false);
@@ -39,7 +40,7 @@ function VariantForm({orgId,baseId,row,languageCode,onClose,onSaved,selector,dir
  useEffect(()=>{let active=true;setError('');setOptions(null);setAttributes(null);Promise.all([requestJSON('/material-items/variant-options'+buildQueryString({orgId,baseId}),{skipCache:true}),requestJSON('/code-item-options'+buildQueryString({orgId,baseId,context:'MATERIAL'}),{skipCache:true})]).then(([data,attrs])=>{if(active){setOptions(data);setAttributes(attrs);}}).catch(()=>{if(active)setError(m.failed);});return()=>{active=false;};},[orgId,baseId,reload,m.failed]);
  useEffect(()=>{if(row)return;let active=true;setRegistered(null);requestJSON('/material-items/variants'+buildQueryString({orgId,baseId}),{skipCache:true}).then(data=>{if(active)setRegistered(data.filter(v=>v.baseId===baseId));}).catch(()=>{if(active)setError(a.failed);});return()=>{active=false;};},[orgId,baseId,reload]);
  const close=async()=>{if(locked.current)return;if(!changed||await dialogs.confirm('',{purpose:'discard'}))onClose();};closeForm.current=close;
- const typeEnabled=options?.fields.type!=='HIDDEN',colorEnabled=options?.fields.color!=='HIDDEN';
+ const typeEnabled=options?.fields.type!=='HIDDEN';
  const save=async()=>{
   if(lock.current)return;lock.current=true;locked.current=true;setBusy(true);setError('');
   try{
@@ -58,21 +59,20 @@ function VariantForm({orgId,baseId,row,languageCode,onClose,onSaved,selector,dir
   }catch(e){if(live.current){if(e.status>=400&&e.status<500)pending.current=null;setError(variantManagementError(e,m));}}
   finally{lock.current=false;if(live.current){locked.current=Boolean(pending.current);setBusy(false);}}
  };
- const isLocked=busy||Boolean(pending.current),invalid=!options||!attributes||!row&&registered===null||!owner?.id||options.fields.type==='REQUIRED'&&!typeText.trim()||options.fields.color==='REQUIRED'&&!color;
- const columns=[{key:'owner',label:t.owner,value:value=>materialVariantOwner(value,languageCode)},{key:'type',label:t.type,value:value=>materialVariantType(value,languageCode)},{key:'color',label:t.color,value:value=>[value.attributes?.color?.code,materialItemName(value.attributes?.color,languageCode)].filter(Boolean).join(' · ')},{key:'unit',label:t.unit,value:value=>materialItemName(value.unit,languageCode)}];
+ const isLocked=busy||Boolean(pending.current),invalid=!options||!attributes||!row&&registered===null||!owner?.id||options.fields.type==='REQUIRED'&&!typeText.trim();
+ const columns=[{key:'owner',label:t.owner,value:value=>materialVariantOwner(value,languageCode)},{key:'type',label:t.type,value:value=>materialVariantType(value,languageCode)},{key:'unit',label:t.unit,value:value=>materialItemName(value.unit,languageCode)}];
  const actions=<DialogRecordActions busy={busy} saveDisabled={!pending.current&&invalid} onSave={save} saveLabel={pending.current&&error?t.retry:t.save}/>;
  const form=<Stack spacing={2}>
   {error&&<AppNotice severity="error" action={!options||!attributes||!row&&registered===null?<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>:undefined}>{error}</AppNotice>}
   {!options&&!error&&<LinearProgress/>}
   <TextField label={t.unit} value={materialItemName(row?.unit||options?.master?.data.unit,languageCode)} slotProps={{input:{readOnly:true},inputLabel:{shrink:true}}}/>
   {attributes&&<ExpenseLookupField label={t.owner} required options={attributes.owners} value={owner} onChange={setOwner} disabled={isLocked} languageCode={languageCode} getCode={value=>value.code} getOptionLabel={value=>value[languageCode==='ko'?'nameKo':languageCode==='vi'?'nameVi':'name']||value.name||''} columns={[{key:'code',label:t.code,value:value=>value.code},{key:'name',label:t.owner,value:value=>value.name}]}/>}
-  {options&&<><Autocomplete freeSolo disabled={isLocked||!typeEnabled||!attributes} options={attributes?.types||[]} getOptionLabel={value=>typeof value==='string'?value:materialItemName(value,languageCode)} inputValue={typeText} onInputChange={(_,value)=>{createdType.current=null;setTypeText(value);}} onChange={(_,value)=>{createdType.current=null;setTypeText(typeof value==='string'?value:materialItemName(value,languageCode));}} renderInput={params=><TextField {...params} label={t.variant} required={options.fields.type==='REQUIRED'} slotProps={{htmlInput:{...params.inputProps,maxLength:100}}}/>}/>
-  <ExpenseLookupField label={t.color} required={options.fields.color==='REQUIRED'} options={options.colors} value={color} onChange={setColor} disabled={isLocked||!colorEnabled} languageCode={languageCode} getCode={value=>value.code} getOptionLabel={value=>[value.code,materialItemName(value,languageCode)].filter(Boolean).join(' / ')} columns={[{key:'code',label:t.code,value:value=>value.code},{key:'name',label:t.color,value:value=>materialItemName(value,languageCode)}]}/></>}
+  {options&&<><Autocomplete freeSolo disabled={isLocked||!typeEnabled||!attributes} options={attributes?.types||[]} getOptionLabel={value=>typeof value==='string'?value:materialItemName(value,languageCode)} inputValue={typeText} onInputChange={(_,value)=>{createdType.current=null;setTypeText(value);}} onChange={(_,value)=>{createdType.current=null;setTypeText(typeof value==='string'?value:materialItemName(value,languageCode));}} renderInput={params=><TextField {...params} label={t.variant} required={options.fields.type==='REQUIRED'} slotProps={{htmlInput:{...params.inputProps,maxLength:100}}}/>}/></>}
  </Stack>;
  return <ListDetailDialog open title={title} slotProps={{paper:{'aria-labelledby':undefined,'aria-label':title}}} onClose={close} maxWidth={row?'sm':false}
   tools={selector&&React.cloneElement(selector,{disabled:isLocked})}
-  onNew={!row?()=>setPreview(null):undefined} newLabel={m.add} newDisabled={isLocked}
-  list={!row?<DialogRecordList rows={rankMaterialCandidates(registered||[],typeText,owner?.id)} columns={columns} selectedKey={preview?.id} onSelect={setPreview} disabled={isLocked} loading={registered===null&&!error} error={registered===null&&Boolean(error)} onRetry={()=>setReload(n=>n+1)} languageCode={languageCode}/>:<DialogDetailPanel footer={actions}>{form}</DialogDetailPanel>}
-  detail={row?null:preview?<DialogDetailPanel title={a.similar}><RecordDetails framed={false} fields={columns.map(column=>({...column,value:column.value(preview)}))}/></DialogDetailPanel>:<DialogDetailPanel title={m.add} footer={actions}>{form}</DialogDetailPanel>}
+  onNew={!row?()=>setPreview(null):undefined} newLabel={c.new} newDisabled={isLocked}
+  list={!row?<DialogRecordList rows={rankMaterialCandidates(registered||[],typeText,owner?.id)} columns={columns} selectedKey={preview?.id} onSelect={value=>setPreview(current=>current?.id===value.id?null:value)} disabled={isLocked} loading={registered===null&&!error} error={registered===null&&Boolean(error)} onRetry={()=>setReload(n=>n+1)} languageCode={languageCode}/>:<DialogDetailPanel footer={actions}>{form}</DialogDetailPanel>}
+  detail={row?null:preview?<DialogDetailPanel title={a.similar} footer={<Button disabled={isLocked} onClick={()=>setPreview(null)}>{c.clear}</Button>}><RecordDetails framed={false} fields={columns.map(column=>({...column,value:column.value(preview)}))}/></DialogDetailPanel>:<DialogDetailPanel title={m.add} footer={actions}>{form}</DialogDetailPanel>}
   actions={<Button disabled={isLocked} onClick={close}>{t.close}</Button>}/>;
 }

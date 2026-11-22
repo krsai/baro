@@ -1,3 +1,4 @@
+import {inventoryColorText} from '../frontend/src/constants/inventoryColors.js';
 import {materialRegistrationText} from '../frontend/src/constants/materialRegistration.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -58,7 +59,7 @@ try{
   const registration=page.getByRole('dialog',{name:t.registerMaster,exact:true});
   await registration.getByRole('combobox',{name:t.variant,exact:true}).waitFor();
   assert.equal(await registration.getByRole('combobox',{name:t.variant,exact:true}).isDisabled(),true);
-  assert.equal(await registration.getByRole('textbox',{name:t.color,exact:true}).isDisabled(),true);
+  assert.equal(await registration.getByRole('textbox',{name:t.color,exact:true}).count(),0);
   await registration.getByRole('textbox',{name:t.code,exact:true}).fill('CTN');
   await registration.getByRole('textbox',{name:t.code,exact:true}).press('Enter');
   assert.equal(writes.length,0,'selecting a code must not write');
@@ -71,12 +72,14 @@ try{
   await existing.click();
   assert.equal(await editor.locator('[data-record-details]').count(),1,'existing item opens shared details');
   assert.equal(writes.length,0,'preview must not register or select a material');
-  await editor.getByRole('button',{name:m.add,exact:true}).click();
+  await existing.click();assert.equal(await editor.getByRole('combobox',{name:t.variant,exact:true}).inputValue(),'10x10x10');
+  await existing.click();
+  await editor.getByRole('button',{name:(inventoryColorText[lang]||inventoryColorText.en).clear,exact:true}).click();
   assert.equal(await editor.getByRole('combobox',{name:t.variant,exact:true}).inputValue(),'10x10x10','returning from preview preserves the new draft');
   assert.equal(await editor.getByRole('button',{name:t.addVariant,exact:true}).count(),0);
   editor=page.getByRole('dialog').last();assert.equal(await editor.getByRole('textbox',{name:t.unit,exact:true}).inputValue(),'Each');
   assert.equal(await editor.getByRole('textbox',{name:t.unit,exact:true}).getAttribute('readonly'),'');
-  assert.equal(await editor.getByRole('textbox',{name:t.color,exact:true}).isDisabled(),true);
+  assert.equal(await editor.getByRole('textbox',{name:t.color,exact:true}).count(),0);
   await editor.getByRole('button',{name:t.save,exact:true}).click();await page.getByRole('button',{name:t.retry,exact:true}).waitFor();
   assert.equal(await editor.getByRole('textbox',{name:a.owner,exact:true}).inputValue(),'THE SAN');
   await editor.getByRole('button',{name:t.retry,exact:true}).click();
