@@ -9,6 +9,17 @@ const name = (path,lang='ko') => resolvePageNaming(path,lang,key=>({
   'menu.customer':'고객사','menu.personalSettings':'개인 설정',
 }[key] || key));
 
+test('shipping query detail follows the shared list/detail naming without renaming for modal forms',()=>{
+ for(const language of ['ko','en','vi'])for(const route of ['/shipping','/transport-exchange']){
+  const resolve=path=>resolvePageNaming(path,language,()=> 'Transport');
+  assert.equal(resolve(route).mode,'list');
+  assert.equal(resolve(route+'?form=new').mode,'list');
+  assert.equal(resolve(route+'?id=job1&stage=setup').mode,'detail');
+  assert.equal(resolve(route+'?id=job1&form=edit').title,resolve(route+'?id=job2').title);
+  assert.equal(resolve(route).menuLabel,resolve(route+'?id=job1').menuLabel);
+ }
+});
+
 test('retired industry menu link inherits the unified access policy identity',()=>{
  const page=resolvePageNaming('/system-setting/industry-menus','ko',key=>key==='menu.accessPolicy'?'접근 권한':key);
  assert.equal(page.key,'accessPolicy');assert.equal(page.title,'접근 권한');assert.equal(page.mode,'page');

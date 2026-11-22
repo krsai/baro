@@ -2,8 +2,8 @@
 // describe the screen's purpose; dirty state and record IDs never rename it.
 export const PAGE_ROUTES = [
   ['/system-setting/industry-menus','accessPolicy','page'],
-  ['/shipping','transportList','page'],
-  ['/transport-exchange','transportList','page'],
+  ['/shipping','transportList','list'],
+  ['/transport-exchange','transportList','list'],
   ['/freight','freight','page'],
   ['/account-overview','accountOverview','page'],
   ['/bank-ledger','bankLedger','list'],
@@ -74,6 +74,7 @@ export function resolvePageNaming(path, languageCode, translate) {
   const rest = pathname.slice(base.length);
   let mode = rest ? childMode || 'detail' : baseMode;
   if (rest === '/new') mode = 'create';
+  if (['/shipping','/transport-exchange'].includes(base) && !rest && url.searchParams.has('id')) mode = 'detail';
   if(base==='/bank-ledger'&&rest.startsWith('/edit/'))mode='edit';
   if (base === '/customer' && rest) mode = rest === '/new' ? 'create' : 'edit';
   if (base === '/invoices' && rest === '/new' && url.searchParams.has('revision')) mode = 'revise';
