@@ -1,3 +1,4 @@
+import EntityCountryPhoneFields from '../../../components/EntityCountryPhoneFields';
 import CompanyNameField from "../../../components/CompanyNameField";
 import EntityPhoneField from '../../../components/EntityPhoneField';
 import { phoneForCountry } from '../../../utils/entityPhone.mjs';
@@ -319,7 +320,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
             />
           </Grid>
 
-          <Grid size={{xs:12,sm:6,md:4}}><TextField fullWidth select size="small" label={localText.country} name="country" value={formData.country} onChange={handleInputChange}>{countryOptions.map(option=><MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}</TextField></Grid>
+
           <Grid size={{xs:12}}>
             <Stack spacing={2} data-testid="company-industry-settings">{industryError&&<Alert severity="error" action={<Button onClick={()=>setIndustryReload(value=>value+1)}>{industryText.retry}</Button>}>{industryError}</Alert>}{industryProfile&&<PartnerClassificationFields inline value={classification} onChange={setClassification} orgId={activeOrgId} languageCode={languageCode} disabled={isSaving||!industryProfile.canEdit} onReady={setIndustryReady}/>}</Stack>
           </Grid>
@@ -330,19 +331,19 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
 
       <EntityDetailSection title={contactText.title}>
         <Grid container spacing={2}>
-          <Grid size={{xs:12,md:4}}>
+          <Grid size={{xs:12,md:3}}>
             <TextField fullWidth size="small" label={contactText.representative} name="representative" value={formData.representative} onChange={handleInputChange} inputProps={{maxLength:200}}/>
           </Grid>
-          <Grid size={{xs:12,md:4}}>
-            <EntityPhoneField
+          <Grid size={{xs:12,md:6}}>
+            <EntityCountryPhoneFields countryField={<TextField fullWidth select size="small" label={localText.country} name="country" value={formData.country} onChange={handleInputChange}>{countryOptions.map(option=><MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}</TextField>} phoneField={<EntityPhoneField
               country={formData.country}
               label={contactText.phone}
               name="phone"
               value={formData.phone}
               onChange={handleInputChange}
-            />
+            />}/>
           </Grid>
-          <Grid size={{xs:12,md:4}}>
+          <Grid size={{xs:12,md:3}}>
             <TextField
               fullWidth
               size="small"

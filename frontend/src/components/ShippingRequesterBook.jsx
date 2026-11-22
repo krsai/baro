@@ -1,3 +1,5 @@
+import {shippingEnglishValid,shippingEnglishText} from '../utils/shippingEnglish.mjs';
+import EntityCountryPhoneFields from './EntityCountryPhoneFields';
 import {splitEntityPhone} from '../utils/entityPhone.mjs';
 import {displayEntityPhone} from '../utils/entityPhone.mjs';
 import EntityCountryField from './EntityCountryField';
@@ -22,7 +24,8 @@ export default function ShippingRequesterBook({orgId,customerId,resolveCustomer,
  const [scopeId,setScopeId]=useState(customerId),[rows,setRows]=useState([]),[edit,setEdit]=useState(()=>draft(current)),[query,setQuery]=useState(''),[loading,setLoading]=useState(!!customerId),[readError,setReadError]=useState(false),[saveError,setSaveError]=useState(false),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[reload,setReload]=useState(0);
  const baseline=useRef(JSON.stringify(edit)),pending=useRef(null),lock=useRef(false),alive=useRef(true);
  const dirty=JSON.stringify(edit)!==baseline.current,blocked=disabled||busy||uncertain;
- const valid=!!edit.name.trim()&&edit.name.length<=200&&/^\d{1,80}$/.test(edit.phone)&&edit.address.length<=1000;
+ const englishValid=shippingEnglishValid(edit,JSON.parse(baseline.current));
+ const valid=englishValid&&!!edit.name.trim()&&edit.name.length<=200&&/^\d{1,80}$/.test(edit.phone)&&edit.address.length<=1000;
  const visible=rows.filter(row=>[row.data.name,row.data.phone,row.data.address].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
  useUnsavedChanges(dirty||uncertain);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
@@ -51,10 +54,11 @@ export default function ShippingRequesterBook({orgId,customerId,resolveCustomer,
   search={<SearchInput sx={{width:'100%'}} placeholder={t.requesterSearch} inputProps={{'aria-label':t.requesterSearch}} value={query} disabled={blocked} onChange={event=>setQuery(event.target.value)}/>}
   list={<DialogRecordList rows={visible} columns={[{key:'name',label:t.requesterName,value:row=>row.data.name},{key:'phone',label:t.requesterPhone,value:row=>displayEntityPhone(row.data.phone,row.data.country)}]} selectedKey={edit.id} onSelect={open} disabled={blocked} loading={loading} error={readError} onRetry={blocked?undefined:()=>setReload(v=>v+1)} languageCode={languageCode}/>}
   frameDetail detailTitle={t.requesterDetails} detail={<Stack spacing={2}>
+   {!englishValid&&<Alert severity="error">{shippingEnglishText[languageCode]||shippingEnglishText.en}</Alert>}
    {saveError&&<Alert severity="error">{t.failed}</Alert>}
    <TextField fullWidth required label={t.requesterName} value={edit.name} disabled={blocked} slotProps={{htmlInput:{maxLength:200}}} onChange={event=>setEdit(v=>({...v,name:event.target.value}))}/>
-   <EntityCountryField label={t.country} languageCode={languageCode} value={edit.country} disabled={blocked} onChange={country=>setEdit(v=>({...v,country,phone:v.phone.startsWith('+')?splitEntityPhone(v.phone,v.country).local.replace(/\D/g,''):v.phone}))}/>
-   <EntityPhoneField digitsOnly localValue country={edit.country} fullWidth required label={t.requesterPhone} value={edit.phone} disabled={blocked} slotProps={{htmlInput:{maxLength:80,inputMode:'numeric',pattern:'[0-9]*'}}} onChange={event=>setEdit(v=>({...v,phone:event.target.value.replace(/\D/g,'')}))}/>
+   <EntityCountryPhoneFields countryField={<EntityCountryField label={t.country} languageCode={languageCode} value={edit.country} disabled={blocked} onChange={country=>setEdit(v=>({...v,country,phone:v.phone.startsWith('+')?splitEntityPhone(v.phone,v.country).local.replace(/\D/g,''):v.phone}))}/>} phoneField={
+   <EntityPhoneField digitsOnly localValue country={edit.country} fullWidth required label={t.requesterPhone} value={edit.phone} disabled={blocked} slotProps={{htmlInput:{maxLength:80,inputMode:'numeric',pattern:'[0-9]*'}}} onChange={event=>setEdit(v=>({...v,phone:event.target.value.replace(/\D/g,'')}))}/>}/>
    <TextField fullWidth label={t.savedAddress} value={edit.address} disabled={blocked} slotProps={{htmlInput:{maxLength:1000}}} onChange={event=>setEdit(v=>({...v,address:event.target.value}))}/>
   </Stack>}
   detailFooter={<DialogRecordActions onDelete={edit.version!=null?()=>mutate(true):undefined} deleteLabel={t.deletePreset} deleteDisabled={blocked} busy={busy} onSave={()=>mutate()} saveLabel={uncertain?t.retry:edit.version?t.savePreset:t.addRequester} saveDisabled={disabled||!uncertain&&(!valid||loading||readError||!!edit.version&&!dirty)}/>}

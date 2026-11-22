@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {assertShippingEnglish} from './shippingEnglish';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {scopedParty} from './freightOperations';
@@ -39,6 +40,7 @@ export async function saveShippingPreset(db:any,scope:any,input:any,remove=false
   const kind=remove?old.kind:input.kind,data=remove?old.data:presetFields(kind,input.data,partyId),label=remove?old.label:clean(input.label,200);
   if(kind==='REQUESTER'&&(scope.org.type!=='SERVICE'||await shippingGeneralCustomerId(tx,scope.orgId)!==input.customerId))fail('SHIPPING_ACCESS_DENIED',403);
   if(!label)fail();
+  if(!remove){assertShippingEnglish(data,old?.data);assertShippingEnglish({label},{label:old?.label},['label']);}
   if(!remove&&old&&!old.deletedAt&&old.partyId===partyId&&old.kind===kind&&old.label===label&&JSON.stringify(presetFields(kind,old.data,partyId))===JSON.stringify(data))return old;
   if(old&&(old.deletedAt||old.version!==input.version))fail('SHIPPING_CHANGED',409);
   const rows=old?await tx.$queryRawUnsafe('UPDATE "ShippingPreset" SET label=$1,data=$2::jsonb,"deletedAt"=$3,version=version+1,"updatedByEmployeeId"=$4,"updatedAt"=CURRENT_TIMESTAMP,"partyId"=$6 WHERE id=$5 RETURNING *',label,JSON.stringify(data),remove?new Date():null,scope.actorId,input.id,partyId):await tx.$queryRawUnsafe('INSERT INTO "ShippingPreset"(id,"orgId","customerId",kind,label,data,"partyId","createdByEmployeeId","updatedByEmployeeId") VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$8) RETURNING *',input.id,scope.orgId,input.customerId,kind,label,JSON.stringify(data),partyId,scope.actorId);

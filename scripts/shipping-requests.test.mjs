@@ -20,6 +20,7 @@ test('one owner job from submission through receipt; actual Prisma types, privac
   const financial=async()=>Promise.all(['BankLedgerEntry','ExpenseRequest','PartnerTransactionCost','Invoice'].map(table=>db.$queryRawUnsafe(`SELECT coalesce(jsonb_agg(to_jsonb(t)),'[]'::jsonb) rows FROM "${table}" t`)));
   const before=await financial();
   const input={clientKey:randomUUID(),forwarderOrgId:forwarder,mode:'SEA',data:{origin:'Hai Phong',destination:'Busan',shipper:'BARO',consignee:'Buyer',cargo:'Garments',quantity:'12',weightKg:'30',cbm:'0.5',workScope:{start:'ORIGIN_TERMINAL',end:'DESTINATION_TERMINAL'}}};
+  await assert.rejects(submitShippingRequest(db,customerOrg,employee,{...input,clientKey:randomUUID(),data:{...input.data,origin:'한글 주소'}}),/SHIPPING_ENGLISH_REQUIRED/);
   const sent=await submitShippingRequest(db,customerOrg,employee,input);
   assert.equal(sent.ownerOrgId,forwarder);assert.equal(sent.receiptStatus,'PENDING');
   assert.equal((await submitShippingRequest(db,customerOrg,employee,input)).id,sent.id);

@@ -1,3 +1,4 @@
+import EntityCountryPhoneFields from './EntityCountryPhoneFields';
 import CompanyNameField from './CompanyNameField';
 import EntityPhoneField from './EntityPhoneField';
 import { phoneForCountry, countryCallingCode } from '../utils/entityPhone.mjs';
@@ -32,16 +33,15 @@ export default function PartnerProfileFields({value,onChange,disabled=false,lang
  return <Stack spacing={2}>
   <EntityDetailSection title={common.identity} actions={onUseDefaults?<Button size="small" disabled={disabled} onClick={value.contactMode==='DEFAULT'&&onUseLocal?onUseLocal:onUseDefaults}>{value.contactMode==='DEFAULT'&&onUseLocal?contact.local:defaultSourceKind==='REGISTRATION'?contact.registration:contact.defaults}</Button>:null}>
    <Box sx={grid}>
-   {field('country',common.country,{select:true,children:[<MenuItem key="empty" value="">—</MenuItem>,...getStaticOptionOptions('country',languageCode).map(row=><MenuItem key={row.value} value={row.value}>{row.label}</MenuItem>)]})}
     {field('partyKind',party.label,{select:true,InputLabelProps:{shrink:true},SelectProps:{displayEmpty:true,renderValue:kind=>party[kind]||party.legacy},children:['INDIVIDUAL','CORPORATE'].map(kind=><MenuItem key={kind} value={kind}>{party[kind]}</MenuItem>)})}
     {field('businessNumber',common.businessNumber,{required:value.partyKind==='CORPORATE'})}
     {value.linkedCompany?<TextField fullWidth size="small" label={party.codeLabel} value={value.linkedCompany.code||''} InputProps={{readOnly:true}}/>:field('code',value.partyKind==='CORPORATE'?party.codeLabel:text.code,{required:value.partyKind==='CORPORATE',helperText:hideGuidance?undefined:value.partyKind==='INDIVIDUAL'?party.codeHelp:value.partyKind==='CORPORATE'?party.corporateCodeHelp:(ENTITY_CODE_TEXT[languageCode]||ENTITY_CODE_TEXT.en).help,inputProps:{maxLength:value.partyKind==='CORPORATE'?4:40}})}
     <Box sx={{gridColumn:'1 / -1',display:'grid',gap:2,gridTemplateColumns:{xs:'minmax(0,1fr)',md:'repeat(3,minmax(0,1fr))'}}}>{field('name',text.name,{autoFocus})}{field('nameKo',text.nameKo)}{field('nameVi',text.nameVi)}</Box>
    </Box>
   </EntityDetailSection>
-  <EntityDetailSection title={contact.title}><Box sx={{...grid,gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))',md:'repeat(3,minmax(0,1fr))'}}}>
+  <EntityDetailSection title={contact.title}><Box sx={{...grid,gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))',md:'repeat(4,minmax(0,1fr))'}}}>
    {field('contactName',contact.contactName,{inputProps:{maxLength:200}})}{field('email',contact.email,{type:'email',inputProps:{maxLength:254}})}
-   <EntityPhoneField name="contactPhone" label={contact.phone} country={resolved('country')} value={resolved('contactPhone')} disabled={disabled} InputProps={{readOnly:fieldLocks.includes('contactPhone')}} inputProps={{maxLength:100}} onChange={event=>{if(!fieldLocks.includes('contactPhone'))onChange('contactPhone',event.target.value);}}/>
+   <Box sx={{gridColumn:{sm:"1 / -1",md:"span 2"}}}><EntityCountryPhoneFields countryField={field('country',common.country,{select:true,children:[<MenuItem key="empty" value="">—</MenuItem>,...getStaticOptionOptions('country',languageCode).map(row=><MenuItem key={row.value} value={row.value}>{row.label}</MenuItem>)]})} phoneField={<EntityPhoneField name="contactPhone" label={contact.phone} country={resolved('country')} value={resolved('contactPhone')} disabled={disabled} InputProps={{readOnly:fieldLocks.includes('contactPhone')}} inputProps={{maxLength:100}} onChange={event=>{if(!fieldLocks.includes('contactPhone'))onChange('contactPhone',event.target.value);}}/>}/></Box>
    <Box sx={{gridColumn:'1 / -1'}}>{field('address',contact.address,{inputProps:{maxLength:1000}})}</Box>
   </Box></EntityDetailSection>
  </Stack>;

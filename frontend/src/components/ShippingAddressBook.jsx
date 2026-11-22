@@ -1,3 +1,4 @@
+import {shippingEnglishValid,shippingEnglishText} from '../utils/shippingEnglish.mjs';
 import ListDetailDialog from './ListDetailDialog';
 import DialogRecordList from './DialogRecordList';
 import DialogRecordActions from './DialogRecordActions';
@@ -19,7 +20,7 @@ export default function ShippingAddressBook({orgId,customerId,current,registered
  const [initial]=useState(()=>({id:crypto.randomUUID(),...addressValue(current)}));
  const [scopeCustomerId,setScopeCustomerId]=useState(customerId),[rows,setRows]=useState([]),[edit,setEdit]=useState(initial),[query,setQuery]=useState(''),[loading,setLoading]=useState(!!customerId),[busy,setBusy]=useState(false),[readError,setReadError]=useState(false),[saveError,setSaveError]=useState(false),[uncertain,setUncertain]=useState(false),[reload,setReload]=useState(0);
  const baseline=useRef(JSON.stringify(initial)),pending=useRef(null),lock=useRef(false),alive=useRef(true),content=useRef(null);
- const blocked=disabled||busy||uncertain,dirty=JSON.stringify(edit)!==baseline.current,addressValid=!!edit.address.trim()&&edit.address.length<=160&&(!personLabel||!!edit.label.trim());
+ const blocked=disabled||busy||uncertain,dirty=JSON.stringify(edit)!==baseline.current,englishValid=shippingEnglishValid(edit,JSON.parse(baseline.current),['label','address','contactName']),addressValid=englishValid&&!!edit.address.trim()&&edit.address.length<=160&&(!personLabel||!!edit.label.trim());
  const url='/shipping-requests/presets'+buildQueryString({orgId,customerId:scopeCustomerId,kind:'LOCATION'});
  useUnsavedChanges(dirty||uncertain);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
@@ -64,6 +65,7 @@ export default function ShippingAddressBook({orgId,customerId,current,registered
   list={<DialogRecordList rows={filtered} columns={[{key:'name',label:personLabel||t.addressTitle,value:row=>row.label,width:'40%'},{key:'address',label:t.savedAddress,value:row=>row.data.address}]} selectedKey={edit.version!=null?edit.id:null} onSelect={open} disabled={blocked} loading={loading} error={readError} loaded={!!scopeCustomerId||!!resolveCustomer} onRetry={blocked?undefined:()=>setReload(v=>v+1)} languageCode={languageCode}/>}
   frameDetail detailTitle={t.addressHeading} detail={<Stack spacing={2}>
    {edit.address.length>160&&<Alert severity="error">{t.routeAddressTooLong}</Alert>}
+   {!englishValid&&<Alert severity="error">{shippingEnglishText[languageCode]||shippingEnglishText.en}</Alert>}
    {saveError&&<Alert severity="error">{t.failed}</Alert>}
    <ShippingAddressFields value={edit} onChange={setEdit} t={t} languageCode={languageCode} disabled={blocked} autoFocus personLabel={personLabel}/>
   </Stack>}

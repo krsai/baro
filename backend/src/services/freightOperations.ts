@@ -1,4 +1,5 @@
 import {assertDistinctShippingParties} from './shippingParties';
+import {assertShippingEnglishData} from './shippingEnglish';
 import {shippingCargo,validateOogTransition} from './shippingCargo';
 import {generalCustomerFields,shippingGeneralCustomer,SHIPPING_GENERAL_CUSTOMER_CODE,SHIPPING_GENERAL_CUSTOMER_NAMES} from './shippingGeneralCustomer';
 import {shippingRouteFields} from './shippingRoute';
@@ -95,6 +96,7 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any,
    data[role+'Party'].country=d[role+'Party'].country;
   }
  }
+ assertShippingEnglishData({...d,...data},previous||{});
  assertDistinctShippingParties(data.shipperParty,data.consigneeParty);
  if(d.customerRole!=null){
   data.customerRole=member(d.customerRole,['shipper','consignee','notify']);

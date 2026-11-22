@@ -1,3 +1,4 @@
+import {assertShippingEnglishData} from './shippingEnglish';
 import {assertDistinctShippingParties} from './shippingParties';
 import {listShippingPresets,saveShippingPreset} from './shippingPresets';
 import {shippingGeneralCustomer} from './shippingGeneralCustomer';
@@ -80,6 +81,7 @@ export async function submitShippingRequest(db:any,orgId:number,actorId:number,i
   const key=`shipping:${orgId}:${input.clientKey}`;
   const previous=(await tx.$queryRawUnsafe('SELECT * FROM "FreightJob" WHERE "orgId"=$1 AND "clientKey"=$2',input.forwarderOrgId,key))[0];
   if(previous){if(previous.requestHash!==digest||previous.requesterOrgId!==orgId)fail('SHIPPING_CHANGED',409);return projection(previous);}
+  assertShippingEnglishData(value.data);
   // Resolve the forwarder's own local customer by explicit company connections.
   // Never infer identity from names or copy the sender's foreign IDs.
   const customers=await tx.$queryRawUnsafe(`SELECT p.id,p.name FROM "Organization" p WHERE p."isActive" AND p.id<>$1 AND (p."ownerOrgId"=$1 OR p."dataOwnerOrgId"=$1 OR EXISTS(SELECT 1 FROM "OrgRelationship" r WHERE r."manufacturerOrgId"=$1 AND r."brandOrgId"=p.id)) AND baro_shipping_customer_org($1::integer,p.id)=$2 ORDER BY p.id LIMIT 2`,input.forwarderOrgId,orgId);
@@ -107,6 +109,7 @@ export async function actOnShippingRequest(db:any,orgId:number,actorId:number,id
    updated=await tx.$queryRawUnsafe('UPDATE "FreightJob" SET "sharedSnapshot"=$1::jsonb,"updatedByEmployeeId"=$2,version=version+1,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$3 RETURNING *',JSON.stringify(snapshot),actorId,id);
   }else if(input.action==='EDIT'&&row.receiptStatus==='PENDING'){
    const value=requestFields({mode:input.mode,data:input.data});
+   assertShippingEnglishData(value.data,row.data);
    validateOogTransition(value.data,row.data);
    await validateShippingPorts(tx,value.data,row.data);
    const oldPublic=transportSnapshot(row).data;

@@ -1,3 +1,5 @@
+import {shippingEnglishValid,shippingEnglishText} from '../utils/shippingEnglish.mjs';
+import EntityCountryPhoneFields from './EntityCountryPhoneFields';
 import {splitEntityPhone} from '../utils/entityPhone.mjs';
 import EntityCountryField from './EntityCountryField';
 import EntityPhoneField from './EntityPhoneField';
@@ -26,7 +28,7 @@ function PartyPresets({orgId,customerId,current,parties=[],fixedPartyId,language
  const t=shippingEditorText[languageCode]||shippingEditorText.en,dialogs=usePageDialogs(),{showNotification}=useAppActions();
  const [edit,setEdit]=useState(()=>({id:crypto.randomUUID(),...draft(current)})),[query,setQuery]=useState(''),[rows,setRows]=useState([]),[error,setError]=useState(false),[saveError,setSaveError]=useState(false),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[reload,setReload]=useState(0),[uncertain,setUncertain]=useState(false);
  const baseline=useRef(JSON.stringify(edit)),lock=useRef(false),pending=useRef(null),live=useRef(true);
- const blocked=busy||uncertain,dirty=JSON.stringify(edit)!==baseline.current,valid=!!edit.name.trim();
+ const blocked=busy||uncertain,dirty=JSON.stringify(edit)!==baseline.current,englishValid=shippingEnglishValid(edit,JSON.parse(baseline.current)),valid=!!edit.name.trim()&&englishValid;
  useUnsavedChanges(dirty||uncertain);
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
  useEffect(()=>{let active=true;setLoading(true);setError(false);requestJSON('/shipping-requests/presets'+buildQueryString({orgId,customerId,kind:'PARTY'}),{skipCache:true}).then(value=>{if(active)setRows(value);}).catch(()=>active&&setError(true)).finally(()=>active&&setLoading(false));return()=>{active=false;};},[orgId,customerId,reload]);
@@ -45,9 +47,12 @@ function PartyPresets({orgId,customerId,current,parties=[],fixedPartyId,language
   search={<SearchInput sx={{width:'100%'}} label={t.addressSearch} value={query} disabled={blocked||loading} onChange={event=>setQuery(event.target.value)}/>}
   list={<DialogRecordList rows={visible} selectedKey={edit.version?edit.id:null} columns={[{key:'name',label:t.partyName,value:row=>row.label},{key:'address',label:t.savedAddress,value:row=>row.data.address}]} onSelect={open} disabled={blocked} loading={loading} error={error} onRetry={blocked?undefined:()=>setReload(v=>v+1)} languageCode={languageCode}/>}
   frameDetail detailTitle={title||t.presets} detail={<Stack spacing={2}>
+   {!englishValid&&<Alert severity="error">{shippingEnglishText[languageCode]||shippingEnglishText.en}</Alert>}
    {saveError&&<Alert severity="error">{t.failed}</Alert>}
-   <EntityCountryField label={t.country} languageCode={languageCode} value={edit.country} disabled={blocked} onChange={country=>setEdit({...edit,country,phone:edit.phone.startsWith('+')?splitEntityPhone(edit.phone,edit.country).local.replace(/\D/g,''):edit.phone})}/>
-   {fields.map(key=>{const Field=key==='phone'?EntityPhoneField:TextField;return <Field {...(key==='phone'?{country:edit.country,digitsOnly:true,localValue:true}:{})} key={key} fullWidth label={labels[key]} required={key==='name'} value={edit[key]} disabled={blocked||key==='name'&&edit.partyId!=null} slotProps={{htmlInput:{maxLength:key==='name'?200:key==='address'?1000:320,...(key==='phone'?{inputMode:'numeric',pattern:'[0-9]*'}:{})}}} onChange={event=>setEdit({...edit,[key]:key==='phone'?event.target.value.replace(/\D/g,''):event.target.value})}/>;})}
+   <TextField fullWidth label={labels.name} required value={edit.name} disabled={blocked||edit.partyId!=null} slotProps={{htmlInput:{maxLength:200}}} onChange={event=>setEdit({...edit,name:event.target.value})}/>
+   <EntityCountryPhoneFields countryField={<EntityCountryField label={t.country} languageCode={languageCode} value={edit.country} disabled={blocked} onChange={country=>setEdit({...edit,country,phone:edit.phone.startsWith('+')?splitEntityPhone(edit.phone,edit.country).local.replace(/\D/g,''):edit.phone})}/>} phoneField={<EntityPhoneField country={edit.country} digitsOnly localValue fullWidth label={labels.phone} value={edit.phone} disabled={blocked} slotProps={{htmlInput:{maxLength:320,inputMode:'numeric',pattern:'[0-9]*'}}} onChange={event=>setEdit({...edit,phone:event.target.value.replace(/\D/g,'')})}/>}/>
+   {['address','contactName','email'].map(key=><TextField key={key} fullWidth label={labels[key]} value={edit[key]} disabled={blocked} slotProps={{htmlInput:{maxLength:key==='address'?1000:320}}} onChange={event=>setEdit({...edit,[key]:event.target.value})}/>)}
+
   </Stack>}
   detailFooter={<DialogRecordActions onDelete={edit.version?()=>mutate(true):undefined} deleteLabel={t.deletePreset} busy={busy} deleteDisabled={blocked} onSave={()=>mutate()} saveLabel={uncertain?t.retry:t.savePreset} saveDisabled={!uncertain&&(loading||error||!valid||!!edit.version&&!dirty)}/>}
   actions={<PageActions secondary={<Button disabled={blocked} onClick={async()=>{if(await leave())onClose();}}>{t.close}</Button>} primary={<Button variant="contained" disabled={blocked||!valid} onClick={()=>{onLoad({id:edit.partyId,...(edit.country?{country:edit.country}:{}),...Object.fromEntries(fields.map(key=>[key,edit[key]]))});onClose();}}>{t.loadPreset}</Button>}/>}/>;

@@ -71,8 +71,9 @@ export function registerJobRoutes(app:any,db:any,access:any){
   const previous=req.params.id?await job(db,orgId,req.params.id):null;
   // The new editor never writes legacy BL columns; preserve their historical values.
   if(!['shipper','consignee'].every(role=>req.body?.data?.[role+'Id']||req.body?.data?.[role+'Party']?.name?.trim()))fail('FREIGHT_PARTIES_REQUIRED');
-  const role=req.body.data.customerRole||(req.body.customerId===req.body.data.shipperId?'shipper':req.body.customerId===req.body.data.consigneeId?'consignee':null);
-  if(!role||!['shipper','consignee','notify'].includes(role)||req.body.data[role+'Id']!==req.body.customerId)fail('FREIGHT_CUSTOMER_ROLE');
+  const general=req.body.service==='EXPRESS'&&req.body.data.generalCustomer===true;
+  const role=general?null:req.body.data.customerRole||(req.body.customerId===req.body.data.shipperId?'shipper':req.body.customerId===req.body.data.consigneeId?'consignee':null);
+  if(general?req.body.data.customerRole!=null:!role||!['shipper','consignee','notify'].includes(role)||req.body.data[role+'Id']!==req.body.customerId)fail('FREIGHT_CUSTOMER_ROLE');
   if(!req.body.data.workScope)fail('FREIGHT_SCOPE_REQUIRED');
   req.body={...req.body,data:{...req.body.data,customerRole:role}};
   // Registration receives the job; progress is owned by operational workflows.
