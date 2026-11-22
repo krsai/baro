@@ -19,9 +19,9 @@ import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {shippingEditorText} from '../constants/shippingEditor';
 
 const draft=row=>({id:row?.id||crypto.randomUUID(),version:row?.version,name:row?.data?.name||row?.name||'',phone:row?.data?.phone||row?.phone||'',address:row?.data?.address||row?.address||'',country:row?.data?.country||row?.country||''});
-export default function ShippingRequesterBook({orgId,customerId,resolveCustomer,current,languageCode,onSelect,onClose,disabled=false}){
+export default function ShippingRequesterBook({orgId,customerId,resolveCustomer,current,languageCode,onSelect,onClose,disabled=false,initialQuery=''}){
  const t=shippingEditorText[languageCode]||shippingEditorText.en,dialogs=usePageDialogs(),{showNotification}=useAppActions();
- const [scopeId,setScopeId]=useState(customerId),[rows,setRows]=useState([]),[edit,setEdit]=useState(()=>draft(current)),[query,setQuery]=useState(''),[loading,setLoading]=useState(!!customerId),[readError,setReadError]=useState(false),[saveError,setSaveError]=useState(false),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[reload,setReload]=useState(0);
+ const [scopeId,setScopeId]=useState(customerId),[rows,setRows]=useState([]),[edit,setEdit]=useState(()=>draft(current)),[query,setQuery]=useState(initialQuery),[loading,setLoading]=useState(!!customerId),[readError,setReadError]=useState(false),[saveError,setSaveError]=useState(false),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[reload,setReload]=useState(0);
  const baseline=useRef(JSON.stringify(edit)),pending=useRef(null),lock=useRef(false),alive=useRef(true);
  const dirty=JSON.stringify(edit)!==baseline.current,blocked=disabled||busy||uncertain;
  const englishValid=shippingEnglishValid(edit,JSON.parse(baseline.current));

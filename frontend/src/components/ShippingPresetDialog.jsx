@@ -25,9 +25,9 @@ export default function ShippingPresetDialog(props){
  if(props.kind==='LOCATION')return <ShippingAddressBook {...props}/>;
  return <PartyPresets {...props}/>;
 }
-function PartyPresets({orgId,customerId,current,parties=[],fixedPartyId,excludedParty,languageCode,onLoad,onClose,title}){
+function PartyPresets({orgId,customerId,current,parties=[],fixedPartyId,excludedParty,languageCode,onLoad,onClose,title,initialQuery=''}){
  const t=shippingEditorText[languageCode]||shippingEditorText.en,dialogs=usePageDialogs(),{showNotification}=useAppActions();
- const [edit,setEdit]=useState(()=>({id:crypto.randomUUID(),...draft(current)})),[query,setQuery]=useState(''),[rows,setRows]=useState([]),[error,setError]=useState(false),[saveError,setSaveError]=useState(false),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[reload,setReload]=useState(0),[uncertain,setUncertain]=useState(false);
+ const [edit,setEdit]=useState(()=>({id:crypto.randomUUID(),...draft(current)})),[query,setQuery]=useState(initialQuery),[rows,setRows]=useState([]),[error,setError]=useState(false),[saveError,setSaveError]=useState(false),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[reload,setReload]=useState(0),[uncertain,setUncertain]=useState(false);
  const [historyLoading,setHistoryLoading]=useState(!fixedPartyId);
  const [recent,setRecent]=useState([]),[found,setFound]=useState([]),[directoryError,setDirectoryError]=useState(false),[directoryLoading,setDirectoryLoading]=useState(false),[directoryReload,setDirectoryReload]=useState(0);
  const choices=[...parties.map(row=>recent.some(previous=>previous.id===row.id)?{...row,recentShippingParty:true}:row),...recent,...found,...(current?.id?[current]:[])].filter((row,index,all)=>all.findIndex(other=>other.id===row.id)===index).sort((a,b)=>Number(!!b.recentShippingParty)-Number(!!a.recentShippingParty));
