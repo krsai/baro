@@ -17,7 +17,7 @@ import AppPageContainer from '../../components/AppPageContainer';
 import DateRangeSelector from '../../components/DateRangeSelector';
 import { TRANSACTION_TEXT, OUTSOURCING_REQUEST_TEXT, serviceName } from '../../components/OutsourcingServiceDialog';
 import { EXPENSE_REQUEST_TEXT } from '../../constants/expenseRequest';
-import { EXPENSE_LIST_TEXT } from '../../constants/expenseList';
+import { EXPENSE_LIST_TEXT, EXPENSE_DRAFT_ACCESS_TEXT } from '../../constants/expenseList';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useManagementPeriod } from '../../context/ManagementPeriodContext';
@@ -40,8 +40,17 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   const docText = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
   const workflow=approvalWorkflowText[languageCode]||approvalWorkflowText.en;
   const text = EXPENSE_LIST_TEXT[languageCode] || EXPENSE_LIST_TEXT.ko;
-  const [canDraft,setCanDraft]=useState(null);
-  useEffect(()=>{let live=true;setCanDraft(null);requestJSON('/expense-approval-settings'+buildQueryString({orgId:activeOrgId}),{skipCache:true,skipGlobalLoading:true}).then(data=>{if(live)setCanDraft(data.canDraft!==false);}).catch(()=>{});return()=>{live=false;};},[activeOrgId]);
+  const accessText=EXPENSE_DRAFT_ACCESS_TEXT[languageCode]||EXPENSE_DRAFT_ACCESS_TEXT.en;
+  const [draftAccess,setDraftAccess]=useState(null),[accessReload,setAccessReload]=useState(0);
+  const currentAccess=draftAccess?.orgId===activeOrgId?draftAccess:null;
+  const canDraft=currentAccess?.allowed??null;
+  useEffect(()=>{
+    let live=true;setDraftAccess(null);
+    if(activeOrgId)requestJSON('/expense-approval-settings'+buildQueryString({orgId:activeOrgId}),{skipCache:true,skipGlobalLoading:true})
+      .then(data=>{if(live){if(typeof data?.canDraft!=='boolean')throw Error('INVALID_DRAFT_ACCESS');setDraftAccess({orgId:activeOrgId,allowed:data.canDraft,error:false});}})
+      .catch(()=>{if(live)setDraftAccess({orgId:activeOrgId,allowed:null,error:true});});
+    return()=>{live=false;};
+  },[activeOrgId,accessReload]);
   const [rows,setRows] = useState([]), [documents,setDocuments] = useState([]), [view] = useState('items');
   const [loading,setLoading] = useState(true), [errors,setErrors] = useState({ items:'',documents:'' });
   const [search,setSearch] = useState(''), [partner,setPartner] = useState(''), [industry,setIndustry] = useState(''), [currency,setCurrency] = useState('');
@@ -136,9 +145,10 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   const descriptionSummary=items=>accountingSummary(items.map(item=>expenseLineDescription(item,languageCode)),languageCode);
   const openRowOnClick = (event,row) => {event.stopPropagation();editRow(row);};
   return <AppPageContainer title={labels.costs} titleActions={<div className="cc-actions">
-      <Button variant="contained" disableElevation className="cc-primary" disabled={canDraft===false || loading || Boolean(errors.items) || !onNewRequest} onClick={onNewRequest}>{labels.addCost}</Button>
+      <Button variant="contained" disableElevation className="cc-primary" disabled={canDraft!==true || loading || Boolean(errors.items) || !onNewRequest} onClick={onNewRequest}>{labels.addCost}</Button>
     </div>}><div className="compact-costs cc-live">
     {canDraft===false&&<Alert severity="info">{(expenseDeletionText[languageCode]||expenseDeletionText.en).notAllowed}</Alert>}
+    {currentAccess?.error&&<Alert severity="error" eventKey={accessReload} action={<Button onClick={()=>{setDraftAccess(null);setAccessReload(value=>value+1);}}>{accessText.retry}</Button>}>{accessText.failed}</Alert>}
     <SearchPanel title={text.query}  disabled={loading} onReset={reset}
       search={<SearchInput value={search} onChange={event=>setSearch(event.target.value)} placeholder={text.search} inputProps={{'aria-label':text.search}} />}
       filters={<FormControlLabel sx={{m:0}} control={<Checkbox size="small" checked={hidePaid} disabled={loading} onChange={event=>setHidePaid(event.target.checked)}/>} label={text.hideBankPaid}/> }
