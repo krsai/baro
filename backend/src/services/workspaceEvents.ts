@@ -31,7 +31,7 @@ const isReferencePath=(path:string)=>/^\/system-setting-defaults\/(services|part
 export const workspaceTopics=(path:string):string[]=>{
  const route=path.split('?')[0]||'';
  if(/\/(?:acknowledge|read-receipt)(?:\/|$)/.test(route))return [];
- if(route==='/dashboard/alert-recipients')return ['accounting-alerts'];
+  if(route==='/dashboard/alert-recipients'||route==='/dashboard/widget-policy')return ['accounting-alerts'];
  if(isReferencePath(route))return referenceTopics;
  if(/^\/management-targets\/INVOICE\/?$/i.test(route))return ['orders','invoice-drafts'];
  if(/(?:\/|-)(preview|validate|search|recipients)(?:\/|$)/.test(route))return [];

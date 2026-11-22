@@ -1,6 +1,9 @@
 import Dialog from './AppDialog';
+import DashboardWidgetPolicy,{useDashboardWidgetPolicy,widgetPolicyText} from './DashboardWidgetPolicy';
+import {useAuth} from '../context/AuthContext';
+import {dashboardRole} from '../utils/dashboardAccess.mjs';
 import React,{useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
-import {Box,Button,Checkbox,DialogActions,DialogContent,DialogTitle,FormControlLabel,IconButton,MenuItem,Paper,Stack,TextField,Typography} from '@mui/material';
+import {Box,Button,Checkbox,CircularProgress,DialogActions,DialogContent,DialogTitle,FormControlLabel,IconButton,MenuItem,Paper,Stack,TextField,Typography} from '@mui/material';
 import Alert from "./AppNotice";
 import DashboardCustomizeIcon from '@mui/icons-material/DashboardCustomize';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
@@ -35,12 +38,18 @@ function PreviewTile({item,label,onWidth,onMove,t}){
   </Paper>
  </Box>;
 }
-export default function DashboardWidgets({title,widgets,companyId,userId,languageCode,onSaved,children,onWidgetSettings,canManageWidgetSettings=true}){
+export default function DashboardWidgets({title,widgets:allWidgets,companyId,userId,languageCode,onSaved,children,onWidgetSettings,canManageWidgetSettings=true}){
  const t=TEXT[languageCode]||TEXT.en,key=dashboardWidgetStorageKey(companyId,userId);
  const [stored,setStored]=useState(()=>readStoredLayout(key)),[open,setOpen]=useState(false),[draft,setDraft]=useState([]),[error,setError]=useState(false);
  const [settingsId,setSettingsId]=useState(null),[gridHeight,setGridHeight]=useState(null),gridRef=useRef(null),s=SETTINGS_TEXT[languageCode]||SETTINGS_TEXT.en;
  const [directSettings,setDirectSettings]=useState(false);
  useEffect(()=>{setStored(readStoredLayout(key));setOpen(false);setError(false);},[key]);
+ const auth=useAuth()||{},[policyOpen,setPolicyOpen]=useState(false);
+ const companyScope=Number(companyId)>0&&!!auth.activeProfile?.employeeId&&auth.activeProfile?.entryType!=='SYSTEM';
+ const policy=useDashboardWidgetPolicy(companyId,auth.activeProfile?.employeeId,companyScope,open||policyOpen);
+ const widgets=companyScope?allWidgets.filter(widget=>policy.value?.allowed?.includes(widget.id)):allWidgets;
+ const pt=widgetPolicyText[languageCode]||widgetPolicyText.en;
+ useEffect(()=>setPolicyOpen(false),[key]);
  const savedValue=stored?.key===key?stored.value:readStoredLayout(key).value;
  const layout=resolveDashboardWidgetLayout(savedValue,widgets);
  const byId=useMemo(()=>new Map(widgets.map(widget=>[widget.id,widget])),[widgets]);
@@ -54,14 +63,22 @@ export default function DashboardWidgets({title,widgets,companyId,userId,languag
  const dirty=JSON.stringify(draft)!==JSON.stringify(layout);
  const close=()=>{setOpen(false);setSettingsId(null);setDirectSettings(false);setError(false);};
  const openWidgetSettings=id=>{setDraft(layout);setSettingsId(id);setDirectSettings(true);setError(false);setOpen(true);};
- const save=()=>{const next=normalizeDashboardWidgets(draft,widgets);try{localStorage.setItem(key,JSON.stringify({version:2,items:next,defaultsApplied:widgets.map(widget=>widget.defaultTag).filter(Boolean)}));}catch{setError(true);return;}setStored({key,value:{version:2,items:next,defaultsApplied:widgets.map(widget=>widget.defaultTag).filter(Boolean)}});close();onSaved?.(t.saved);};
- return <AppPageContainer title={title} titleActions={<Button variant="outlined" startIcon={<DashboardCustomizeIcon/>} onClick={()=>{setDraft(layout);setSettingsId(null);setDirectSettings(false);setError(false);setOpen(true);}}>{t.select}</Button>}>
+ const save=()=>{
+  const next=[...normalizeDashboardWidgets(draft,widgets),...(Array.isArray(savedValue?.items)?savedValue.items.filter(item=>!widgets.some(widget=>widget.id===item.id)):[])];
+  const value={version:2,items:next,defaultsApplied:[...new Set([...(savedValue?.defaultsApplied||[]),...widgets.map(widget=>widget.defaultTag).filter(Boolean)])]};
+  try{localStorage.setItem(key,JSON.stringify(value));}catch{setError(true);return;}
+  setStored({key,value});close();onSaved?.(t.saved);
+ };
+ return <AppPageContainer title={title} titleActions={<Button variant="outlined" startIcon={<DashboardCustomizeIcon/>} disabled={companyScope&&!policy.value} onClick={()=>{setDraft(layout);setSettingsId(null);setDirectSettings(false);setError(false);setOpen(true);}}>{t.select}</Button>}>
   <Box ref={gridRef} data-testid="dashboard-widget-layout" sx={{display:layout.length?'grid':'none',height:gridHeight??'calc(100dvh - 180px)',minHeight:0,gridTemplateColumns:{xs:'minmax(0,1fr)',lg:'repeat(2,minmax(0,1fr))'},gridAutoRows:'minmax(0,1fr)',gap:2,alignItems:'stretch'}}>
    {layout.map(item=><Box key={item.id} data-dashboard-widget={item.id} sx={{gridColumn:{lg:item.width==='full'?'span 2':'span 1'},minWidth:0,minHeight:0,'& > .MuiPaper-root':{height:'100%',minHeight:0,boxSizing:'border-box',overflow:'hidden'}}}><DashboardWidgetSettingsContext.Provider value={canManageWidgetSettings?{label:byId.get(item.id)?.label+' '+s.settings,open:()=>onWidgetSettings?onWidgetSettings({id:item.id,label:byId.get(item.id)?.label}):openWidgetSettings(item.id)}:null}>{typeof byId.get(item.id)?.content==='function'?byId.get(item.id).content(item):byId.get(item.id)?.content}</DashboardWidgetSettingsContext.Provider></Box>)}
   </Box>
-  {!layout.length&&<Typography color="text.secondary">{t.empty}</Typography>}
+  {companyScope&&!policy.value&&!policy.error&&<CircularProgress size={22}/>}
+  {!layout.length&&(!companyScope||policy.value)&&<Typography color="text.secondary">{t.empty}</Typography>}
+  {companyScope&&policy.error&&<Alert severity="error" action={<Button onClick={policy.retry}>{pt.retry}</Button>}>{pt.failed}</Alert>}
+  {policyOpen&&companyScope&&dashboardRole(auth)==='ADMIN'&&<DashboardWidgetPolicy key={key} orgId={companyId} languageCode={languageCode} onClose={()=>setPolicyOpen(false)} onSaved={onSaved}/>}
   {children}
-  <Dialog open={open} onClose={()=>settingsId&&!directSettings?setSettingsId(null):close()} fullWidth maxWidth="md"><DialogTitle>{settingsId?dashboardSettingsTitle(byId.get(settingsId)?.label,languageCode):t.select}</DialogTitle><DialogContent>{settingsId?<Stack spacing={2} data-testid="dashboard-widget-settings">
+  <Dialog open={open} onClose={()=>settingsId&&!directSettings?setSettingsId(null):close()} fullWidth maxWidth="md"><DialogTitle>{settingsId?dashboardSettingsTitle(byId.get(settingsId)?.label,languageCode):t.select}</DialogTitle><DialogContent>{!settingsId&&companyScope&&dashboardRole(auth)==='ADMIN'&&<Button sx={{mb:2}} onClick={()=>setPolicyOpen(true)}>{pt.title}</Button>}{settingsId?<Stack spacing={2} data-testid="dashboard-widget-settings">
    <TextField select size="small" label={t.width} value={draft.find(item=>item.id===settingsId)?.width||'half'} onChange={event=>setDraft(current=>current.map(item=>item.id===settingsId?{...item,width:event.target.value}:item))}><MenuItem value="half">{t.half}</MenuItem><MenuItem value="full">{t.full}</MenuItem></TextField>
    {byId.get(settingsId)?.options?.map(option=><FormControlLabel key={option.id} label={option.label} control={<Checkbox checked={draft.find(item=>item.id===settingsId)?.settings?.[option.id]!==false} onChange={event=>setDraft(current=>current.map(row=>row.id===settingsId?{...row,settings:{...row.settings,[option.id]:event.target.checked}}:row))}/>}/>)}</Stack>:<Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'200px minmax(0,1fr)'},gap:2}}>
    <Stack><Typography variant="subtitle2" sx={{mb:1}}>{t.available}</Typography>{[...draft.map(item=>byId.get(item.id)).filter(Boolean),...widgets.filter(widget=>!draft.some(item=>item.id===widget.id))].map(widget=>{const index=draft.findIndex(item=>item.id===widget.id),item=draft[index];return <Box key={widget.id}>

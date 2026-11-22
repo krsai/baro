@@ -1,4 +1,5 @@
 import {createHttpError} from '../utils/http';
+import {registerDashboardWidgetPolicyRoutes} from './dashboardWidgetPolicy';
 import {retryEditTransaction} from '../utils/editRevision';
 import {companyIndustryMenuFeatures} from './industryMenuPolicy';
 
@@ -46,6 +47,7 @@ export async function saveDashboardRecipients(db:any,orgId:number,actorId:number
  });
 }
 export function registerDashboardRecipientRoutes(app:any,db:any,gates:any){
+ registerDashboardWidgetPolicyRoutes(app,db,gates);
  const access=async(req:any,res:any)=>{
   const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN'],allowSystemAdmin:false});if(!ctx)return;
   const orgId=ctx.organization.id,actorId=gates.actorId();await admin(db,orgId,actorId);
