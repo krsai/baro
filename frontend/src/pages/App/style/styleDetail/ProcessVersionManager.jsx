@@ -1,6 +1,7 @@
+import Dialog from '../../../../components/AppDialog';
 import VersionAssignmentBoard from '../../../../components/VersionAssignmentBoard';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,Typography} from '@mui/material';
+import {Button,Chip,DialogActions,DialogContent,DialogTitle,Typography} from '@mui/material';
 import Alert from "../../../../components/AppNotice";
 import VersionApplicationStart from '../../../../components/VersionApplicationStart';
 import { confirmStyleProcessVersion, fetchStyleProcessVersions, saveStyleProcessVersionBoundaries } from '../../../../utils/styleApi';

@@ -1,8 +1,9 @@
+import Dialog from '../../components/AppDialog';
 import {workTimeText} from '../../constants/workTime';
 import {useAuth} from '../../context/AuthContext';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import React, { useEffect, useState } from 'react';
-import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Paper, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import {Box,Button,Chip,DialogActions,DialogContent,DialogTitle,Paper,Stack,TextField,ToggleButton,ToggleButtonGroup,Typography} from '@mui/material';
 import SaveButton from '../../components/SaveButton';
 import { getPayTypeLabel } from '../../constants/payType';
 import { labelChipSx, LABEL_PALETTE } from '../../theme/labelPalette';

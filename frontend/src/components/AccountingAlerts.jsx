@@ -1,3 +1,4 @@
+import Dialog from './AppDialog';
 import ListPagination from './ListPagination';
 import {formatLedgerMoney} from '../utils/bankLedgerMoney.mjs';
 import useChangeDrivenEffect from '../hooks/useChangeDrivenEffect';
@@ -5,7 +6,7 @@ import {accountingPendingText} from '../utils/approvalCard';
 import DashboardAlertItem from './DashboardAlertItem';
 import React,{useEffect,useRef,useState} from 'react';
 import DashboardDocumentDialog from './DashboardDocumentDialog';
-import {Box,Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,Stack,Typography} from '@mui/material';
+import {Box,Button,CircularProgress,DialogActions,DialogContent,DialogTitle,Stack,Typography} from '@mui/material';
 import Alert from "./AppNotice";
 import {accountingAlertText,accountingAlertTitle} from '../constants/accountingAlerts';
 import {requestJSON,buildQueryString} from '../utils/apiClient';

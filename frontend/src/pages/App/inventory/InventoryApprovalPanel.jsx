@@ -1,7 +1,8 @@
+import Dialog from '../../../components/AppDialog';
 import {inventoryEntryText} from '../../../constants/inventoryEntry';
 import {approvalDefaultsText} from '../../../constants/approvalDefaults';
 import React,{useEffect,useRef,useState} from 'react';
-import {Button,Dialog,DialogActions,DialogContent,DialogTitle,Paper,Stack,Typography} from '@mui/material';
+import {Button,DialogActions,DialogContent,DialogTitle,Paper,Stack,Typography} from '@mui/material';
 import {useNavigate} from 'react-router-dom';
 import {useAuth} from '../../../context/AuthContext';
 import {useLanguage} from '../../../context/LanguageContext';
@@ -34,7 +35,7 @@ export function InventoryDeleteDialog({row,onClose,onSaved}){
   catch(e){if(live.current){if(e.status>=400&&e.status<500)pending.current=null;setError(inventoryApprovalError(e,t,m.failed));}}
   finally{lock.current=false;if(live.current)setBusy(false);}
  };
- return <Dialog open fullWidth maxWidth="md" onClose={()=>!busy&&!pending.current&&onClose()}><DialogTitle>{t.deleteTitle}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}>
+ return <Dialog open fullWidth maxWidth="md" onClose={()=>!busy&&!pending.current&&onClose()}><DialogTitle>{t.deleteTitle}</DialogTitle><DialogContent><Stack spacing={2}>
   <Typography>{[row.date,materialItemName(row.master,languageCode),row.quantity,materialItemName(row.master.unit,languageCode)].join(' · ')}</Typography><Typography>{t.deleteConfirm}</Typography>
   {error&&<AppNotice severity="error" action={<Button disabled={busy} onClick={()=>pending.current?save():setReload(n=>n+1)}>{m.retry}</Button>}>{error}</AppNotice>}
   {preview?<ApprovalStageFlow drafter={preview.drafter} stages={stagesFor(preview.stages)} languageCode={languageCode} value={selection} onChange={(key,id)=>setSelection(current=>({...current,[key+'EmployeeId']:id}))} disabled={busy||Boolean(pending.current)}/>:<Button onClick={()=>navigate('/approval-settings?menu=INVENTORY')}>{t.settings}</Button>}

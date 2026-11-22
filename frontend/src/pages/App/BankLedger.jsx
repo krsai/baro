@@ -1,3 +1,4 @@
+import Dialog from '../../components/AppDialog';
 import ListPagination from '../../components/ListPagination';
 import {keyboardAction} from '../../utils/keyboardPolicy.mjs';
 import SearchInput from '../../components/SearchInput';
@@ -7,7 +8,7 @@ import LedgerActivityTable from '../../components/LedgerActivityTable';
 import LedgerBalanceDialog from '../../components/LedgerBalanceDialog';
 import {ledgerBalanceText} from '../../constants/ledgerBalance';
 import React,{useEffect,useRef,useState} from 'react';
-import {Box,Button,Checkbox,FormControlLabel,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,TextField} from '@mui/material';
+import {Box,Button,Checkbox,FormControlLabel,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,TextField} from '@mui/material';
 import Alert from "../../components/AppNotice";
 import dayjs from 'dayjs';
 import AppPageContainer from '../../components/AppPageContainer';

@@ -1,10 +1,11 @@
+import Dialog from '../../../components/AppDialog';
 import PayrollTargetSettings from './PayrollTargetSettings';
 import {calendarPayrollText} from '../../../constants/calendarPayroll';
 import {tenureRecognitionText} from '../../../constants/tenureRecognition';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import {Box,Button,Chip,CircularProgress,Dialog,DialogContent,DialogTitle,Divider,IconButton,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography,Tooltip,alpha} from '@mui/material';
+import {Box,Button,Chip,CircularProgress,DialogContent,DialogTitle,Divider,IconButton,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography,Tooltip,alpha} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import LockOpenOutlinedIcon from "@mui/icons-material/LockOpenOutlined";

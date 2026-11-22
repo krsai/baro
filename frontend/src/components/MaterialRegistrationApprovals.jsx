@@ -1,7 +1,8 @@
+import Dialog from './AppDialog';
 import {changeApprovalText} from '../constants/changeApprovals';
 import {materialItemName} from '../constants/materialItems';
 import React,{useEffect,useState} from 'react';
-import {Button,Dialog,DialogTitle,DialogContent,DialogActions,Stack,Table,TableHead,TableBody,TableRow,TableCell,TextField,Typography,TableContainer} from '@mui/material';
+import {Button,DialogTitle,DialogContent,DialogActions,Stack,Table,TableHead,TableBody,TableRow,TableCell,TextField,Typography,TableContainer} from '@mui/material';
 import AppNotice from './AppNotice';
 import MaterialItemPicker from './MaterialItemPicker';
 import {materialRegistrationText} from '../constants/materialRegistration';
@@ -13,7 +14,7 @@ export default function MaterialRegistrationApprovals({orgId,languageCode,onClos
  const review=row=>{setSelected(row);setTypeText(row.payload.typeText||'');setReason('');setExisting(null);setError('');};
  const decide=async action=>{if(busy)return;setBusy(true);setError('');try{await requestJSON('/material-items/registration-requests/'+selected.id+'/decision'+buildQueryString({orgId}),{method:'POST',body:JSON.stringify({revision:selected.revision,action,typeText,reason,variantId:existing?.variantId,variantRevision:existing?.variantRevision??existing?.data?.variantRevision})});setSelected(null);setReload(n=>n+1);onChanged();}catch{setError(t.failed);}finally{setBusy(false);}};
  const next=selected?.steps?.find(s=>!s.decision),final=Boolean(next)&&!selected.steps.some(s=>s.position>next.position);
- return <Dialog open fullWidth maxWidth="md" onClose={busy?undefined:onClose}><DialogTitle>{t.requests}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}>
+ return <Dialog open fullWidth maxWidth="md" onClose={busy?undefined:onClose}><DialogTitle>{t.requests}</DialogTitle><DialogContent><Stack spacing={2}>
  {error&&<AppNotice severity="error" action={<Button onClick={()=>{setSelected(null);setReload(n=>n+1);}} disabled={busy}>{t.retry}</Button>}>{error}</AppNotice>}
  {!selected?<TableContainer><Table size="small" sx={{minWidth:600,'& th:last-child, & td:last-child':{position:'sticky',right:0,bgcolor:'background.paper',width:88}}}><TableHead><TableRow><TableCell>{t.drafter}</TableCell><TableCell>{t.name}</TableCell><TableCell>{t.status}</TableCell><TableCell/></TableRow></TableHead><TableBody>{rows.map(row=><TableRow key={row.id}><TableCell>{row.drafterName}</TableCell><TableCell>{row.payload.typeText}{row.status==='APPROVED'&&<Typography variant="body2">{materialItemName(row.steps?.at(-1)?.decision?.variantSnapshot?.type,languageCode)}</Typography>}</TableCell><TableCell>{t[row.status]}</TableCell><TableCell><Button onClick={()=>review(row)} disabled={busy}>{t.review}</Button></TableCell></TableRow>)}</TableBody></Table></TableContainer>:<>
  <Typography>{selected.drafterName} / {selected.payload.snapshot?.owner?.name}</Typography>

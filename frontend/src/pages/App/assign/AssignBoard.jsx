@@ -1,3 +1,4 @@
+import Dialog from '../../../components/AppDialog';
 import {assignmentCollisionDetection as assignBoardCollisionDetection,assignmentDropEvent} from '../../../utils/assignmentKeyboard.mjs';
 import { editableAssignmentStyleIds } from './utils/assignmentLoading.mjs';
 import { usePageNaming } from '../../../context/PageNamingContext';
@@ -7,7 +8,7 @@ import QueryFeedback from '../../../components/QueryFeedback';
 import useEditRevision, { isStaleEditError } from '../../../hooks/useEditRevision';
 import StaleEditNotice from '../../../components/StaleEditNotice';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {Box,Button,Chip,Checkbox,FormControlLabel,CircularProgress,Divider,Dialog,DialogActions,DialogContent,DialogTitle,Drawer,IconButton,Menu,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import {Box,Button,Chip,Checkbox,FormControlLabel,CircularProgress,Divider,DialogActions,DialogContent,DialogTitle,Drawer,IconButton,Menu,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import CloseIcon from '@mui/icons-material/Close';
 import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';

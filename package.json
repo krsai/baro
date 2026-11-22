@@ -27,6 +27,7 @@
     "test:keyboard-domains": "node scripts/keyboard-domain-browser.test.mjs",
     "test:keyboard-navigation": "node scripts/keyboard-navigation-browser.test.mjs && node scripts/global-lookup-browser.test.mjs && node scripts/workspace-dialog-browser.test.mjs",
     "test:selection-input": "node scripts/selection-input-browser.test.mjs && node scripts/ledger-approval-row-browser.test.mjs && node scripts/expense-editor-browser.test.mjs --lookup-only",
+    "test:dialogs": "node scripts/dialog-shell-browser.test.mjs && node scripts/dialog-style-browser.test.mjs && node scripts/workspace-dialog-browser.test.mjs",
     "test:global-lookup": "node scripts/global-lookup-browser.test.mjs && node scripts/compact-lookup-browser.test.mjs && node scripts/lookup-sticky-header-browser.test.mjs",
     "test:lookup-multiple-keyboard": "node scripts/lookup-multiple-keyboard-browser.test.mjs",
     "test:lookup-chip-input": "node scripts/lookup-chip-input-browser.test.mjs",

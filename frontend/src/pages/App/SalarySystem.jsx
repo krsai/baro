@@ -1,3 +1,4 @@
+import Dialog from '../../components/AppDialog';
 import {activateOnKeyboard} from '../../utils/keyboardPolicy.mjs';
 import {calendarPayrollText} from '../../constants/calendarPayroll';
 import ActionNotice from '../../components/ActionNotice';
@@ -12,7 +13,7 @@ import { useLocation } from 'react-router-dom';
 import useEditRevision, { isStaleEditError } from '../../hooks/useEditRevision';
 import StaleEditNotice from '../../components/StaleEditNotice';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {Box,Button,Checkbox,Chip,Dialog,DialogActions,DialogContent,DialogTitle,FormControl,FormControlLabel,FormHelperText,IconButton,InputAdornment,InputLabel,ListItemText,MenuItem,Paper,Select,Stack,Tab,Tabs,TextField,Tooltip,Typography} from '@mui/material';
+import {Box,Button,Checkbox,Chip,DialogActions,DialogContent,DialogTitle,FormControl,FormControlLabel,FormHelperText,IconButton,InputAdornment,InputLabel,ListItemText,MenuItem,Paper,Select,Stack,Tab,Tabs,TextField,Tooltip,Typography} from '@mui/material';
 
 import AddIcon from '@mui/icons-material/Add';
 import FunctionsIcon from '@mui/icons-material/Functions';
@@ -621,7 +622,7 @@ const SalarySystem = () => {
         getVersionSubtitle={version => version.versionNumber === 1 ? (languageCode === 'ko' ? '기본 버전' : languageCode === 'vi' ? 'Phiên bản cơ sở' : 'Base version') : versionBoundaries[version.id] || t('미지정')} />
     </DialogContent><DialogActions><Button onClick={() => setVersionDialogOpen(false)} disabled={versionBusy}>{languageCode === 'ko' ? '닫기' : languageCode === 'vi' ? 'Đóng' : 'Close'}</Button><Button variant="contained" onClick={saveVersionBoundaries} disabled={versionBusy || saving || edit.stale || !edit.revision || !hasVersionBoundaryChanges}>{t('저장')}</Button></DialogActions></Dialog>
 
-    <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 항목 추가')}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
+    <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 항목 추가')}</DialogTitle><DialogContent><Stack spacing={2}>
       <LocalizedNameFields value={draft} languageCode={languageCode} autoFocus onChange={(field, value) => setDraft(prev => ({ ...prev, [field]: value }))} />
       <FormControl fullWidth size="small"><InputLabel>{t('급여 구분')}</InputLabel><Select label={t('급여 구분')} value={draft.category} onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}>{Object.entries(CATEGORIES).filter(([key])=>!isService||key!=='INCENTIVE').map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}</Select></FormControl>
       {calculationFields(draft, (field, value) => setDraft((prev) => ({ ...prev, [field]: value })))}

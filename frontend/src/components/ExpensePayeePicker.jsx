@@ -1,10 +1,11 @@
+import DialogDetailPanel from './DialogDetailPanel';
 import ReadOnlyField from './ReadOnlyField';
 import BankAccountEditorDialog from './BankAccountEditorDialog';
 import LookupInput from './LookupInput';
 import LookupSearchDialog from './LookupSearchDialog';
 import {partnerIndustryLabel} from '../utils/partnerIndustry.mjs';
 import React,{useEffect,useRef,useState} from 'react';
-import {Box,Button,CircularProgress,Paper,Stack,Typography} from '@mui/material';
+import {Box,Button,CircularProgress,Stack,Typography} from '@mui/material';
 import Alert from "./AppNotice";
 import BusinessPartnerDialog from './BusinessPartnerDialog';
 import {expenseHeaderActions} from '../constants/expenseHeaderActions';
@@ -29,8 +30,8 @@ const InformationRows=({rows})=><Box component="dl" sx={{m:0,display:'grid',grid
 export function PayeeDetails({draft,accounts=[],busy,error,languageCode,onRetry,onManage,t,showAccounts=true}){
  const employee=draft?.type==='EMPLOYEE'||Boolean(draft?.employeeId);
  const labels=ENTITY_TEXT[languageCode]||ENTITY_TEXT.en,detail=DETAIL_TEXT[languageCode]||DETAIL_TEXT.en,industry=INDUSTRY_TREE_TEXT[languageCode]||INDUSTRY_TREE_TEXT.en;
- return <Paper variant="outlined" data-testid="payee-details" sx={{minWidth:0,display:'flex',flexDirection:'column',maxHeight:{sm:360},overflow:'hidden'}}>
-  <Box sx={{p:1.5,overflowY:'auto',minHeight:0}}><Stack spacing={1.25} divider={<Box sx={{borderBottom:1,borderColor:'divider'}}/>}>
+ return <DialogDetailPanel data-testid="payee-details" footer={onManage&&<Button size="small" variant="outlined" fullWidth disabled={!draft||busy} onClick={onManage}>{t.information}</Button>}>
+  <Stack spacing={1.25} divider={<Box sx={{borderBottom:1,borderColor:'divider'}}/>}>
    <Stack spacing={.75}>
     <Typography variant="subtitle2" fontWeight={700} color={draft?'text.primary':'text.secondary'} sx={{overflowWrap:'anywhere'}}>{draft?.name||t.payee}</Typography>
     {draft&&<Box><StatusLabel label={payeeTypeLabel(draft,languageCode)} tone="blue"/></Box>}
@@ -48,9 +49,8 @@ export function PayeeDetails({draft,accounts=[],busy,error,languageCode,onRetry,
      </Box>;
     })}
    </Stack>}
-  </Stack></Box>
-   {onManage&&<Box sx={{p:1,borderTop:1,borderColor:'divider'}}><Button size="small" variant="outlined" fullWidth disabled={!draft||busy} onClick={onManage}>{t.information}</Button></Box>}
- </Paper>;
+  </Stack>
+ </DialogDetailPanel>;
 }
 
 export default function ExpensePayeePicker({orgId,languageCode,options,value,disabled,lockSelection,onChange,onSaved,...rootProps}){

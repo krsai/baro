@@ -1,5 +1,6 @@
+import Dialog from './AppDialog';
 import React, { useState } from 'react';
-import { Button, Dialog, DialogTitle, DialogContent, DialogActions, Tooltip, IconButton } from '@mui/material';
+import {Button,DialogTitle,DialogContent,DialogActions,Tooltip,IconButton} from '@mui/material';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { requestJSON, buildQueryString } from '../utils/apiClient';
 import DeleteActionButton from './DeleteActionButton';

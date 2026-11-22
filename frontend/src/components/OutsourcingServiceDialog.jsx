@@ -1,3 +1,4 @@
+import Dialog from './AppDialog';
 import {dialogTitle} from '../constants/dialogTitles';
 import {systemIndustryUsageReason} from '../utils/systemIndustryUsage.mjs';
 import LocalizedNameFields from './LocalizedNameFields';
@@ -6,7 +7,7 @@ import SettingInheritanceControls from './SettingInheritanceControls';
 import SettingDeleteButton from './SettingDeleteButton';
 import React, { useEffect, useState } from 'react';
 import { INDUSTRY_TREE_TEXT } from '../constants/industryHierarchy';
-import {Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,MenuItem,Stack,TextField} from '@mui/material';
+import {Button,Checkbox,DialogActions,DialogContent,DialogTitle,FormControlLabel,MenuItem,Stack,TextField} from '@mui/material';
 import Alert from "./AppNotice";
 import { buildQueryString, requestJSON } from '../utils/apiClient';
 

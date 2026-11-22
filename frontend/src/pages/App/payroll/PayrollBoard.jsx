@@ -1,3 +1,4 @@
+import Dialog from '../../../components/AppDialog';
 import GlobalNotice from "../../../components/AppNotice";
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import PayrollTargetSettings from './PayrollTargetSettings';
@@ -11,7 +12,7 @@ import SearchInput from '../../../components/SearchInput';
 import {periodMonthKeys} from "../../../utils/periodRange.mjs";
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography,Tooltip} from '@mui/material';
+import {Box,Button,Chip,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography,Tooltip} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import CalculateIcon from '@mui/icons-material/Calculate';
 

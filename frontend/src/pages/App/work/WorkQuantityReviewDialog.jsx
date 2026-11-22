@@ -1,5 +1,6 @@
+import Dialog from '../../../components/AppDialog';
 import React from 'react';
-import {Button,Dialog,DialogTitle,DialogContent,DialogActions,Stack,Typography,Table,TableHead,TableBody,TableRow,TableCell,TableContainer} from '@mui/material';
+import {Button,DialogTitle,DialogContent,DialogActions,Stack,Typography,Table,TableHead,TableBody,TableRow,TableCell,TableContainer} from '@mui/material';
 
 const texts={
  ko:{title:'생산 수량 확인',hint:'주문 번호를 확인하세요. 같은 스타일의 다른 주문으로 변경할 수 있습니다.',order:'주문',process:'공정',target:'주문 수량',previous:'기존 기록',incoming:'이번 입력',excess:'초과 수량',other:'같은 스타일의 다른 주문',change:'이 주문으로 변경',confirm:'초과 수량 확인 후 저장'},

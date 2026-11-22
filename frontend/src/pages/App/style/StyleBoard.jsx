@@ -1,3 +1,4 @@
+import Dialog from '../../../components/AppDialog';
 import TableStatusRow from '../../../components/TableStatusRow';
 import useChangeDrivenEffect from '../../../hooks/useChangeDrivenEffect';
 import AppNotice from '../../../components/AppNotice';
@@ -8,25 +9,7 @@ import DeleteActionButton from '../../../components/DeleteActionButton';
 import { waitForAtSyncJob } from '../../../utils/atSyncJob.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
-import {
-  Paper,
-  Button,
-  Chip,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Box,
-  IconButton,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-  Tooltip,
-} from '@mui/material';
+import {Paper,Button,Chip,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Box,IconButton,DialogActions,DialogContent,DialogContentText,DialogTitle,Tooltip} from '@mui/material';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';

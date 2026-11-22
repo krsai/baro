@@ -1,8 +1,9 @@
+import Dialog from '../../components/AppDialog';
 import ActionNotice from '../../components/ActionNotice';
 import SearchPanel from '../../components/SearchPanel';
 import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {Box,Button,Chip,CircularProgress,Dialog,DialogContent,DialogTitle,FormControl,FormControlLabel,InputLabel,LinearProgress,IconButton,Menu,MenuItem,Paper,Select,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Tooltip,Typography,Switch} from '@mui/material';
+import {Box,Button,Chip,CircularProgress,DialogContent,DialogTitle,FormControl,FormControlLabel,InputLabel,LinearProgress,IconButton,Menu,MenuItem,Paper,Select,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Tooltip,Typography,Switch} from '@mui/material';
 import Alert from "../../components/AppNotice";
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';

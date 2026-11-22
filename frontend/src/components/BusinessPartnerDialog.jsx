@@ -1,3 +1,4 @@
+import Dialog from './AppDialog';
 import {partnerHandledItemsText} from '../constants/partnerHandledItems';
 import PartnerHandledItemsFields from './PartnerHandledItemsFields';
 import {companyDocumentContactError,partnerContactText} from '../constants/companyDocumentContact';
@@ -15,7 +16,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {partnerEditorText} from '../constants/partnerEditor';
 import {getSizeSetOptions,normalizeSizeSetCode} from '../constants/productAttributes';
 import {hasApparelBrandIndustry} from '../utils/orderDefaultsIndustry.mjs';
-import {Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,LinearProgress,MenuItem,Slide,Stack,TextField,useMediaQuery} from '@mui/material';
+import {Box,Button,DialogActions,DialogContent,DialogTitle,LinearProgress,MenuItem,Slide,Stack,TextField,useMediaQuery} from '@mui/material';
 import Alert from "./AppNotice";
 import { buildQueryString, requestJSON } from '../utils/apiClient';
 import { emitWorkspaceDataChanged } from '../utils/workspaceDataEvents';

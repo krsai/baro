@@ -1,5 +1,6 @@
+import Dialog from './AppDialog';
 import React,{useEffect,useRef,useState} from 'react';
-import {Button,Checkbox,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,Stack,Typography} from '@mui/material';
+import {Button,Checkbox,CircularProgress,DialogActions,DialogContent,DialogTitle,FormControlLabel,Stack,Typography} from '@mui/material';
 import AppNotice from './AppNotice';
 import {useAppActions} from '../context/AppContext';
 import {usePageDialogs} from './PageDialogProvider';
@@ -27,7 +28,7 @@ export default function DashboardRecipientSettings({orgId,widget,languageCode,on
  };
  return <Dialog open onClose={close} fullWidth maxWidth="sm" aria-labelledby="dashboard-recipients-title">
   <DialogTitle id="dashboard-recipients-title">{dashboardSettingsTitle(widget.label,languageCode)}</DialogTitle>
-  <DialogContent><Stack spacing={2} sx={{pt:1}}>
+  <DialogContent><Stack spacing={2}>
    {error&&<AppNotice severity="error" action={<Button disabled={busy} onClick={error==='save'?save:refresh}>{error==='changed'?t.reload:t.retry}</Button>}>{error==='changed'?t.changed:t.failed}</AppNotice>}
    {!supported?<Typography color="text.secondary">{t.empty}</Typography>:loading?<CircularProgress size={22}/>:loaded?<><Typography fontWeight={600}>{rolesKey==='uncodedRoles'?t.uncoded:t.handled}</Typography><Stack direction="row" useFlexGap flexWrap="wrap" columnGap={2} role="group" aria-label={t.roles}>{['ADMIN','ACCOUNTANT','OPERATOR'].map(role=><FormControlLabel key={role} label={t[role]} control={<Checkbox checked={roles.includes(role)} disabled={busy} onChange={event=>setRoles(current=>['ADMIN','ACCOUNTANT','OPERATOR'].filter(item=>item===role?event.target.checked:current.includes(item)))}/>}/>)}</Stack></>:null}
   </Stack></DialogContent><DialogActions><Button disabled={busy} onClick={close}>{t.close}</Button>{supported&&<Button variant="contained" disabled={!dirty||loading||busy||error==='changed'||error==='load'} onClick={save}>{busy?<CircularProgress size={18}/>:t.save}</Button>}</DialogActions>

@@ -1,5 +1,6 @@
+import Dialog from './AppDialog';
 import React, { useEffect, useState } from 'react';
-import {Button,Dialog,DialogActions,DialogContent,DialogTitle} from '@mui/material';
+import {Button,DialogActions,DialogContent,DialogTitle} from '@mui/material';
 import Alert from "./AppNotice";
 
 export default function StaleEditNotice({ stale, dirty, busy, languageCode, onRefresh }) {

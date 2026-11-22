@@ -1,3 +1,4 @@
+import Dialog from '../../../components/AppDialog';
 import TableStatusRow from '../../../components/TableStatusRow';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageContentStack from '../../../components/PageContentStack';
@@ -11,7 +12,7 @@ import ApprovalStageFlow from '../../../components/ApprovalStageFlow';
 import {usePageDialogs} from '../../../components/PageDialogProvider';
 import InventoryApprovalPanel,{InventoryDeleteDialog} from './InventoryApprovalPanel';
 import React,{useEffect,useRef,useState} from 'react';
-import {Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,LinearProgress,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import {Box,Button,DialogActions,DialogContent,DialogTitle,LinearProgress,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import {Add} from '@mui/icons-material';
 import {useLocation,useNavigate} from 'react-router-dom';
 import {useAuth} from '../../../context/AuthContext';
@@ -130,7 +131,7 @@ function MovementForm({orgId,onClose,onSaved}){
   </Stack></Box>
   <Box sx={{p:3,bgcolor:'grey.50',borderTop:1,borderColor:'divider'}}><TextField fullWidth size="small" label={e.remark} multiline minRows={2} value={remark} disabled={unavailable} slotProps={{htmlInput:{maxLength:500}}} onChange={e=>setRemark(e.target.value)}/>
  </Box></Paper></Box>
- <Dialog open={approvalOpen} fullWidth maxWidth="md" onClose={()=>{if(!unavailable)setApprovalOpen(false);}}><DialogTitle>{a.title} · {a.CREATE}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:2}}>
+ <Dialog open={approvalOpen} fullWidth maxWidth="md" onClose={()=>{if(!unavailable)setApprovalOpen(false);}}><DialogTitle>{a.title} · {a.CREATE}</DialogTitle><DialogContent><Stack spacing={2}>
   <Typography variant="body2">{[date,user?.name,direction==='IN'?receipt:issue,master&&materialItemName(master,languageCode),variant&&variantName(variant.attributes,languageCode),quantity,master&&materialItemName(master.data.unit,languageCode)].filter(Boolean).join(' · ')}</Typography>
   {!approval&&!error&&<LinearProgress/>}
   {approval?.automatic&&<Typography variant="body2">{(approvalVacancyText[languageCode]||approvalVacancyText.en).automatic}</Typography>}

@@ -1,10 +1,11 @@
+import Dialog from './AppDialog';
 import {rankMaterialCandidates} from '../utils/materialSimilarity.mjs';
 import ApprovalStageFlow from './ApprovalStageFlow';
 import MaterialVariantRows from './MaterialVariantRows';
 import {materialRegistrationText} from '../constants/materialRegistration';
 import {useNavigate} from 'react-router-dom';
 import React,{useEffect,useRef,useState} from 'react';
-import {Button,Dialog,DialogActions,DialogContent,DialogTitle,LinearProgress,Stack,TextField} from '@mui/material';
+import {Button,DialogActions,DialogContent,DialogTitle,LinearProgress,Stack,TextField} from '@mui/material';
 import Autocomplete from './SearchableSelect';
 import ExpenseLookupField from './ExpenseLookupField';
 import SaveButton from './SaveButton';
@@ -22,7 +23,7 @@ export default function MaterialVariantEditor({orgId,baseId,row,languageCode,onC
  const changeCode=async value=>{if(locked.current)return;if(value?.baseId===code?.baseId)return;if(dirty.current&&!await dialogs.confirm('',{purpose:'discard'}))return;dirty.current=false;setCode(value);};
  const selector=codes?<ExpenseLookupField label={t.code} getOptionKey={value=>value.baseId} options={codes} value={code} onChange={changeCode} languageCode={languageCode} getCode={value=>value.base.code} getOptionLabel={value=>[value.base.code,materialItemName(value.base,languageCode)].filter(Boolean).join(' / ')} columns={[{key:'code',label:t.code,value:value=>value.base.code},{key:'name',label:t.name,value:value=>materialItemName(value.base,languageCode)}]}/>:null;
  return <Dialog open fullWidth maxWidth="sm" onClose={()=>closeForm.current?closeForm.current():onClose()}><DialogTitle>{codes?t.registerMaster:row?m.edit:m.add}</DialogTitle>
- {selectedBaseId?<VariantForm key={selectedBaseId} {...{orgId,baseId:selectedBaseId,row,languageCode,onClose,onSaved,selector,dirty,locked,closeForm}}/>:<><DialogContent><Stack spacing={2} sx={{pt:2}}>{selector}</Stack></DialogContent><DialogActions><Button onClick={onClose}>{t.cancel}</Button><SaveButton disabled>{t.save}</SaveButton></DialogActions></>}
+ {selectedBaseId?<VariantForm key={selectedBaseId} {...{orgId,baseId:selectedBaseId,row,languageCode,onClose,onSaved,selector,dirty,locked,closeForm}}/>:<><DialogContent><Stack spacing={2}>{selector}</Stack></DialogContent><DialogActions><Button onClick={onClose}>{t.cancel}</Button><SaveButton disabled>{t.save}</SaveButton></DialogActions></>}
  </Dialog>;
 }
 function VariantForm({orgId,baseId,row,languageCode,onClose,onSaved,selector,dirty,locked,closeForm}){
@@ -58,7 +59,7 @@ function VariantForm({orgId,baseId,row,languageCode,onClose,onSaved,selector,dir
   finally{lock.current=false;if(live.current){locked.current=Boolean(pending.current);setBusy(false);}}
  };
  const isLocked=busy||Boolean(pending.current),invalid=!options||!attributes||!row&&(!approval?.complete||registered===null)||!owner?.id||options.fields.type==='REQUIRED'&&!typeText.trim()||options.fields.color==='REQUIRED'&&!color;
- return <><DialogContent><Stack spacing={2} sx={{pt:2}}>{selector&&React.cloneElement(selector,{disabled:isLocked})}
+ return <><DialogContent><Stack spacing={2}>{selector&&React.cloneElement(selector,{disabled:isLocked})}
   {error&&<AppNotice severity="error" action={!options||!attributes||!row&&(!approval||registered===null)?<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>:undefined}>{error}</AppNotice>}
   {!options&&!error&&<LinearProgress/>}
   <TextField label={t.unit} value={materialItemName(row?.unit||options?.master?.data.unit,languageCode)} slotProps={{input:{readOnly:true},inputLabel:{shrink:true}}}/>

@@ -1,3 +1,4 @@
+import Dialog from './AppDialog';
 import TableStatusRow from './TableStatusRow';
 import {approvalStepLabels} from '../utils/approvalStepState.mjs';
 import ApprovalLineSummary from './ApprovalLineSummary';
@@ -10,7 +11,7 @@ import {ledgerFlowText} from '../constants/ledgerFlow';
 import {approvalVacancyText} from '../constants/approvalVacancy';
 import {approvalBandText} from '../constants/approvalBands';
 import React,{useEffect,useRef,useState} from 'react';
-import {Box,Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import {Box,Button,CircularProgress,DialogActions,DialogContent,DialogTitle,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import Alert from "./AppNotice";
 import {ExpenseRequestContent} from './ExpenseRequestView';
 import {requestJSON,buildQueryString} from '../utils/apiClient';

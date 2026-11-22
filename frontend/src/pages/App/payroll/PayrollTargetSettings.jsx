@@ -1,5 +1,6 @@
+import Dialog from '../../../components/AppDialog';
 import React,{useCallback,useState} from 'react';
-import {Box,Dialog,DialogTitle} from '@mui/material';
+import {Box,DialogTitle} from '@mui/material';
 import ManagementTargetSettings from '../../../components/ManagementTargetSettings';
 import PageSettingsButton from '../../../components/PageSettingsButton';
 import {usePageDialogs} from '../../../components/PageDialogProvider';

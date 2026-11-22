@@ -1,3 +1,5 @@
+import PageActions from './PageActions';
+import Dialog from './AppDialog';
 import ApprovalStageFlow from './ApprovalStageFlow';
 import ApprovalLineSummary from './ApprovalLineSummary';
 import {expenseDeletionText} from '../constants/expenseDeletion';
@@ -8,7 +10,7 @@ import {approvalLineText} from '../constants/approvalLine';
 import {approvalStepState,approvalStepLabels,approvalStepTone} from '../utils/approvalStepState.mjs';
 import ArrowForward from '@mui/icons-material/ArrowForward';
 import React,{forwardRef,useEffect,useImperativeHandle,useRef,useState} from 'react';
-import {Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,LinearProgress,Paper,Stack,Typography} from '@mui/material';
+import {Box,Button,DialogActions,DialogContent,DialogTitle,LinearProgress,Paper,Stack,Typography} from '@mui/material';
 import Alert from "./AppNotice";
 import StatusLabel from './StatusLabel';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
@@ -76,7 +78,7 @@ export default forwardRef(function ExpenseApprovalSettings({orgId,languageCode,s
 
     {preview?.stages?.some(stage=>stage.required)&&<Alert severity="error">{rules.accountantRequired}</Alert>}
    </Stack></DialogContent>
-   <DialogActions><Button variant="contained" disabled={busy||!preview?.complete||!!error} onClick={confirm}>{t.confirmSave}</Button></DialogActions>
+   <DialogActions><PageActions secondary={<Button disabled={busy} onClick={close}>{t.cancel}</Button>} primary={<Button variant="contained" disabled={busy||!preview?.complete||!!error} onClick={confirm}>{t.confirmSave}</Button>}/></DialogActions>
   </Dialog>
  </>;
 });

@@ -1,3 +1,4 @@
+import Dialog from './AppDialog';
 import {evidenceReference} from '../utils/evidenceReference.mjs';
 import GlobalNotice from "./AppNotice";
 import {expensePaymentText} from '../constants/expensePaymentSchedule';
@@ -7,7 +8,7 @@ import {ledgerEvidenceText} from '../constants/ledgerEvidence';
 import {cashScheduleText} from '../constants/cashSchedule';
 import { expenseLineDescription, expenseRequestSummary } from '../utils/expenseCodePresentation.mjs';
 import React from 'react';
-import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
+import {Box,Button,DialogActions,DialogContent,DialogTitle,Divider,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
 import { EXPENSE_REQUEST_TEXT } from '../constants/expenseRequest';
 import { TRANSACTION_TEXT, serviceName } from './OutsourcingServiceDialog';
 import { formatCurrency } from '../utils/currencyFormat';

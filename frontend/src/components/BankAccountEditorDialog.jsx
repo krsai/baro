@@ -1,7 +1,8 @@
+import Dialog from './AppDialog';
 import {Checkbox,FormControlLabel} from '@mui/material';
 import {accountingCompactText} from '../constants/accountingCompact';
 import React,{useEffect,useState} from 'react';
-import {Button,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Stack,TextField} from '@mui/material';
+import {Button,DialogActions,DialogContent,DialogTitle,MenuItem,Stack,TextField} from '@mui/material';
 import Alert from "./AppNotice";
 import {ENTITY_TEXT} from '../constants/entityProfile';
 export const bankAccountEditorText={
@@ -17,7 +18,7 @@ export default function BankAccountEditorDialog({open,title,value,onChange,onSav
  const submit=()=>{if(!validBankAccountDraft(value,currencyKey)){setInvalid(true);return;}onSave(value);};
  return <Dialog open={open} onClose={busy?undefined:onClose} scroll="paper" fullWidth maxWidth="sm"><DialogTitle>{title}</DialogTitle>
   {(error||invalid)&&<Alert severity="error" sx={{mx:3,mb:1}} action={errorAction}>{error||t.required}</Alert>}
-  <DialogContent dividers><Stack spacing={2} sx={{pt:1}}>
+  <DialogContent dividers><Stack spacing={2}>
    {allowCash&&<TextField select label={t.kind} value={value?.accountKind||'BANK'} disabled={locked} onChange={e=>change({accountKind:e.target.value})}>{['BANK','CASH'].map(kind=><MenuItem key={kind} value={kind}>{t[kind]}</MenuItem>)}</TextField>}
    {showName&&<TextField label={t.name} required={value?.accountKind==='CASH'} value={value?.displayName||''} disabled={locked} inputProps={{maxLength:160}} onChange={e=>change({displayName:e.target.value})}/>}
    <TextField required select label={labels.currency} SelectProps={{'aria-label':labels.currency}} value={value?.[currencyKey]||''} disabled={locked} onChange={e=>change({[currencyKey]:e.target.value})}>{currencies.map(row=><MenuItem key={row.value} value={row.value}>{row.label}</MenuItem>)}</TextField>

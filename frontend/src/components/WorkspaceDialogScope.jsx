@@ -71,7 +71,7 @@ const WorkspaceDialogRoot = forwardRef(function WorkspaceDialogRoot(props, ref) 
       },
       '& .MuiDialog-paper': {
         margin: '0 !important', minWidth: 0, minHeight: 0, flexShrink: 1,
-        maxHeight: '100% !important', boxSizing: 'border-box', overflow: 'auto',
+        maxHeight: '100% !important', boxSizing: 'border-box', display:'flex',flexDirection:'column',overflow:'hidden',
       },
       '& .MuiDrawer-paper': {
         // Page drawers are bounded by their workspace, not the browser's header.

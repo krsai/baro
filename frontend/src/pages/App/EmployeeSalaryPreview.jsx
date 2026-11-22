@@ -1,9 +1,10 @@
+import Dialog from '../../components/AppDialog';
 import {subscribeWorkspaceDataChanged} from '../../utils/workspaceDataEvents';
 import {calendarPayrollText} from '../../constants/calendarPayroll';
 import {tenureRecognitionText} from '../../constants/tenureRecognition';
 import {formatCurrency} from '../../utils/currencyFormat';
 import React, { useEffect, useState } from 'react';
-import {Box,Button,Checkbox,Chip,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography} from '@mui/material';
+import {Box,Button,Checkbox,Chip,CircularProgress,DialogActions,DialogContent,DialogTitle,FormControlLabel,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography} from '@mui/material';
 import Alert from "../../components/AppNotice";
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
 import { currentVersionMonth } from '../../utils/versionApplication.mjs';

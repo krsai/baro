@@ -17,7 +17,7 @@ const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','1
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/shipping-requests-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
- for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
+ for(const lang of ['ko','en','vi'].filter(value=>!process.argv.some(arg=>arg.startsWith('--lang='))||process.argv.includes('--lang='+value)))for(const width of [1440,390]){
   let job=null,submits=0,accepts=0,clientKey=null,presets=[],presetAttempts=0,posted=[];const t={...freightText[lang],...shippingText[lang]},ownerText={...jobText[lang],...shippingText[lang]},errors=[];
   const makePage=async service=>{
    const page=await browser.newPage({viewport:{width,height:1000}});page.setDefaultTimeout(18000);page.on('dialog',d=>d.accept());page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE_ERROR',e.message);});page.on('response',r=>{if(r.status()>=400&&r.url().includes('127.0.0.1'))console.error('LOAD_ERROR',r.status(),new URL(r.url()).pathname);});
@@ -48,7 +48,7 @@ try{
    });return page;
   };
   const customer=await makePage(false);await customer.goto(`http://127.0.0.1:${port}/shipping-requests-acceptance.html`);
-  const emptyNotice=customer.getByRole('status').filter({hasText:t.empty});await emptyNotice.waitFor();assert.ok((await emptyNotice.locator('xpath=ancestor::td').boundingBox()).height>=80);assert.equal(await customer.getByRole('columnheader').count(),5);
+  const emptyNotice=customer.locator('[data-table-status=empty]').getByRole('status');await emptyNotice.waitFor();assert.ok((await emptyNotice.locator('xpath=ancestor::td').boundingBox()).height>=80);assert.equal(await customer.getByRole('columnheader').count(),5);
   await customer.getByRole('button',{name:t.new,exact:true}).click();const dialog=customer.getByRole('dialog');
   const e=freightJobEditorText[lang],x=shippingEditorText[lang];
   const partner=dialog.getByRole('textbox',{name:e.forwarderCompany,exact:true});await partner.fill('DEXL');await partner.press('Enter');assert.equal(await partner.inputValue(),'DEX');

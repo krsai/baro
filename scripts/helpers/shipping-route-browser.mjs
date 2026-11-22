@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 export async function enterRouteAddress(page,node,address,t){
  const card=page.locator(`button[data-route-node="${node}"]`);await card.click();const dialog=page.getByTestId('route-address-dialog');
  assert.equal(await dialog.getByRole('textbox',{name:t.savedAddress,exact:true}).getAttribute('placeholder'),t.addressPlaceholder);
- assert.equal(await dialog.locator('.MuiDialogActions-root').count(),0);
+ assert.equal(await dialog.locator('.MuiDialogActions-root').count(),1);
+ await dialog.locator('.MuiDialogActions-root').getByRole('button',{name:t.applyLocation,exact:true}).waitFor();
  const addressPaper=dialog.locator('.MuiDialog-paper');if(page.viewportSize().width>=1000)assert.ok((await addressPaper.boundingBox()).width>=800);
  await dialog.getByRole('textbox',{name:t.savedAddress,exact:true}).fill(address);await dialog.getByRole('button',{name:t.applyLocation,exact:true}).click();
  await dialog.waitFor({state:'hidden'});assert.equal(await card.getAttribute('data-complete'),'true');

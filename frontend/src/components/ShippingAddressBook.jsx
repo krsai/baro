@@ -1,8 +1,11 @@
+import ListDetailDialog from './ListDetailDialog';
+import DialogRecordList from './DialogRecordList';
+import DialogRecordActions from './DialogRecordActions';
+import PageActions from './PageActions';
+import SearchInput from './SearchInput';
 import React,{useEffect,useRef,useState} from 'react';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import {Box,Button,Dialog,DialogContent,DialogTitle,List,ListItemButton,Stack,TextField,Typography} from '@mui/material';
+import {Button,Stack} from '@mui/material';
 import Alert from "./AppNotice";
-import SaveButton from './SaveButton';
 import ShippingAddressFields,{addressValue} from './ShippingAddressFields';
 import {usePageDialogs} from './PageDialogProvider';
 import {useAppActions} from '../context/AppContext';
@@ -53,25 +56,18 @@ export default function ShippingAddressBook({orgId,customerId,current,registered
  const registered=registeredParty?.address?.trim()?{id:'registered-party',label:registeredParty.name,data:addressValue({...registeredParty,label:registeredParty.name}),registered:true}:null;
  const filtered=[...(registered?[registered]:[]),...rows].filter(row=>[row.label,row.data.country,row.data.address,row.data.contactName,row.data.phone].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
  const apply=()=>{onLoad(addressValue(edit));onClose();};
- return <Dialog open fullWidth maxWidth="md" onClose={async()=>{if(await leave())onClose();}} data-testid={testId} aria-label={title||t.savedAddresses}>
-  <DialogTitle component="div"><Stack direction="row" justifyContent="space-between" alignItems="center" gap={2} flexWrap="wrap"><Typography variant="h6">{title||t.savedAddresses}</Typography><Button variant="contained" disabled={blocked||!addressValid} onClick={apply}>{t.applyLocation}</Button></Stack></DialogTitle>
-  <DialogContent ref={content} tabIndex={-1}><Box data-address-workspace sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'minmax(0,1fr) minmax(0,1.7fr)'},gap:3,alignItems:'start'}}>
-   <Stack spacing={1.5} data-address-list sx={{minWidth:0}}>
-    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}><Typography variant="subtitle2">{t.savedAddresses}</Typography></Stack>
-    {locationLookup?.(place=>setEdit({id:crypto.randomUUID(),label:place,address:place,contactName:'',phone:''}),blocked)}
-    <TextField fullWidth size="small" label={t.addressSearch} autoComplete="off" value={query} disabled={blocked||!scopeCustomerId&&!resolveCustomer} onChange={e=>setQuery(e.target.value)}/>
-    {!scopeCustomerId&&!resolveCustomer?<Alert severity="info">{t.chooseCustomer}</Alert>:readError?<Alert severity="error" action={<Button disabled={busy||uncertain} onClick={()=>setReload(v=>v+1)}>{t.retry}</Button>}>{t.failed}</Alert>:loading?<Typography role="status">{t.loading}</Typography>:<List disablePadding aria-label={t.savedAddresses} sx={{maxHeight:{xs:160,sm:400},overflowY:'auto'}}>
-     {!filtered.length&&<Typography color="text.secondary">{t.presetEmpty}</Typography>}
-     {filtered.map(row=><ListItemButton key={row.id} selected={edit.version!=null&&row.id===edit.id} aria-pressed={edit.version!=null&&row.id===edit.id} disabled={blocked} onClick={()=>open(row)} sx={{border:1,borderColor:'divider',borderRadius:1,mb:1,px:1.5,py:1.25,gap:1,alignItems:'center',bgcolor:'background.paper','&:last-child':{mb:0},'&:hover':{borderColor:'primary.main',bgcolor:'action.hover'},'&.Mui-selected':{borderColor:'primary.main'},'&.Mui-focusVisible':{outline:'2px solid',outlineColor:'primary.main',outlineOffset:-2}}}><Stack sx={{minWidth:0,flex:1}}><Typography fontWeight={600} sx={{overflowWrap:'anywhere'}}>{row.label}</Typography><Typography variant="caption" color="text.secondary" sx={{overflowWrap:'anywhere'}}>{row.data.address}</Typography></Stack><ChevronRightIcon aria-hidden="true" sx={{flexShrink:0,color:'primary.main'}}/></ListItemButton>)}
-    </List>}
-   </Stack>
-   <Stack spacing={2} data-address-detail sx={{minWidth:0}}>
-    {edit.address.length>160&&<Alert severity="error">{t.routeAddressTooLong}</Alert>}
-    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}><Typography variant="subtitle2">{t.addressHeading}</Typography><Stack direction="row" alignItems="center" gap={1}>{edit.version!=null&&<Button color="error" disabled={blocked} onClick={()=>mutate(true)}>{t.deleteAddress}</Button>}<SaveButton disabled={blocked||!scopeCustomerId&&!resolveCustomer||loading||readError||!edit.label.trim()||!addressValid||!!edit.version&&!dirty} onClick={()=>mutate()}>{edit.version?t.saveAddress:t.addToAddressBook}</SaveButton></Stack></Stack>
-    {saveError&&<Alert severity="error" action={uncertain?<Button disabled={busy} onClick={()=>mutate()}>{t.retry}</Button>:undefined}>{t.failed}</Alert>}
-
-    <ShippingAddressFields value={edit} onChange={setEdit} t={t} languageCode={languageCode} disabled={blocked} autoFocus personLabel={personLabel}/>
-   </Stack>
-  </Box></DialogContent>
- </Dialog>;
+ return <ListDetailDialog open onClose={async()=>{if(await leave())onClose();}} data-testid={testId} aria-label={title||t.savedAddresses} title={title||t.savedAddresses} contentRef={content} contentProps={{tabIndex:-1}}
+  onNew={()=>open()} newLabel={t.newAddress} newDisabled={blocked}
+  tools={<>{!scopeCustomerId&&!resolveCustomer&&<Alert severity="info">{t.chooseCustomer}</Alert>}{locationLookup?.(place=>setEdit({id:crypto.randomUUID(),label:place,address:place,contactName:'',phone:''}),blocked)}</>}
+  search={<SearchInput sx={{width:'100%'}} label={t.addressSearch} autoComplete="off" value={query} disabled={blocked||!scopeCustomerId&&!resolveCustomer} onChange={event=>setQuery(event.target.value)}/>}
+  layoutProps={{'data-address-workspace':true}} listProps={{'data-address-list':true}} detailProps={{'data-address-detail':true}}
+  list={<DialogRecordList rows={filtered} columns={[{key:'name',label:personLabel||t.addressTitle,value:row=>row.label,width:'40%'},{key:'address',label:t.savedAddress,value:row=>row.data.address}]} selectedKey={edit.version!=null?edit.id:null} onSelect={open} disabled={blocked} loading={loading} error={readError} loaded={!!scopeCustomerId||!!resolveCustomer} onRetry={blocked?undefined:()=>setReload(v=>v+1)} languageCode={languageCode}/>}
+  frameDetail detailTitle={t.addressHeading} detail={<Stack spacing={2}>
+   {edit.address.length>160&&<Alert severity="error">{t.routeAddressTooLong}</Alert>}
+   {saveError&&<Alert severity="error">{t.failed}</Alert>}
+   <ShippingAddressFields value={edit} onChange={setEdit} t={t} languageCode={languageCode} disabled={blocked} autoFocus personLabel={personLabel}/>
+  </Stack>}
+  detailFooter={<DialogRecordActions onDelete={edit.version!=null?()=>mutate(true):undefined} deleteLabel={t.deleteAddress} deleteDisabled={blocked} busy={busy} onSave={()=>mutate()} saveLabel={uncertain?t.retry:edit.version?t.saveAddress:t.addToAddressBook} saveDisabled={disabled||!uncertain&&(!scopeCustomerId&&!resolveCustomer||loading||readError||!edit.label.trim()||!addressValid||!!edit.version&&!dirty)}/>}
+  actions={<PageActions secondary={<Button disabled={blocked} onClick={async()=>{if(await leave())onClose();}}>{t.close}</Button>} primary={<Button variant="contained" disabled={blocked||!addressValid} onClick={apply}>{t.applyLocation}</Button>}/>}/>
+ ;
 }

@@ -1,14 +1,11 @@
+import ListDetailDialog from './ListDetailDialog';
+import DialogRecordList from './DialogRecordList';
+import DialogRecordActions from './DialogRecordActions';
 import React,{useEffect,useRef,useState} from 'react';
-import {Button,Dialog,DialogActions,DialogContent,DialogTitle,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField} from '@mui/material';
+import {Button,Stack,TextField} from '@mui/material';
 import Alert from './AppNotice';
-import ListDetailLayout from './ListDetailLayout';
-import EntityDetailSection from './EntityDetailSection';
-import PageSectionHeader from './PageSectionHeader';
 import PageActions from './PageActions';
 import SearchInput from './SearchInput';
-import TableStatusRow from './TableStatusRow';
-import {ui} from '../theme/ui';
-import SaveButton from './SaveButton';
 import ShippingRequesterHistory from './ShippingRequesterHistory';
 import {usePageDialogs} from './PageDialogProvider';
 import {useAppActions} from '../context/AppContext';
@@ -46,21 +43,18 @@ export default function ShippingRequesterBook({orgId,customerId,resolveCustomer,
   }catch(error){const unknown=!error.status||error.status>=500;if(!unknown)pending.current=null;if(alive.current){setUncertain(unknown);setSaveError(true);}}
   finally{lock.current=false;if(alive.current)setBusy(false);}
  };
- return <Dialog open fullWidth maxWidth={false} slotProps={{paper:{sx:{width:ui.dialog.lookupDetailsWidth,height:ui.dialog.lookupHeight,maxWidth:'calc(100% - 32px)',maxHeight:'calc(100% - 32px)'}}}} onClose={async()=>{if(!history&&await leave())onClose();}} aria-label={t.requesterBook} data-testid="shipping-requester-book">
-  <DialogTitle component="div"><PageSectionHeader title={t.requesterBook} titleVariant="h6" actions={<><Button variant="outlined" disabled={blocked} onClick={()=>setHistory(true)}>{t.requesterHistory}</Button><Button variant="contained" disabled={blocked} onClick={()=>open()}>{t.newRequester}</Button></>}/></DialogTitle>
-  <DialogContent dividers><Stack spacing={2}>
-   <SearchInput sx={{width:'100%'}} placeholder={t.requesterSearch} inputProps={{'aria-label':t.requesterSearch}} value={query} disabled={blocked} onChange={event=>setQuery(event.target.value)}/>
-   <ListDetailLayout breakpoint="sm" list={<TableContainer sx={{maxHeight:360,border:1,borderColor:'divider',borderRadius:1}}><Table size="small" stickyHeader data-table-layout="fixed" sx={{tableLayout:'fixed'}}><TableHead><TableRow><TableCell>{t.requesterName}</TableCell><TableCell>{t.requesterPhone}</TableCell></TableRow></TableHead><TableBody>
-    {!loading&&!readError&&visible.map(row=><TableRow key={row.id} hover selected={row.id===edit.id}><TableCell sx={{overflowWrap:'anywhere'}}><Button disabled={blocked} onClick={()=>open(row)} sx={{minWidth:0,p:0,textTransform:'none',textAlign:'left',justifyContent:'flex-start',overflowWrap:'anywhere'}}>{row.data.name}</Button></TableCell><TableCell sx={{overflowWrap:'anywhere'}}>{row.data.phone}</TableCell></TableRow>)}
-    {(loading||readError||!visible.length)&&<TableStatusRow colSpan={2} languageCode={languageCode} loading={loading} error={readError} onRetry={blocked?undefined:()=>setReload(v=>v+1)}/>}
-   </TableBody></Table></TableContainer>} detail={<EntityDetailSection title={t.requesterDetails}><Stack spacing={2}>
+ return <><ListDetailDialog open onClose={async()=>{if(!history&&await leave())onClose();}} aria-label={t.requesterBook} data-testid="shipping-requester-book" title={t.requesterBook}
+  titleActions={<Button variant="outlined" disabled={blocked} onClick={()=>setHistory(true)}>{t.requesterHistory}</Button>} onNew={()=>open()} newLabel={t.newRequester} newDisabled={blocked}
+  search={<SearchInput sx={{width:'100%'}} placeholder={t.requesterSearch} inputProps={{'aria-label':t.requesterSearch}} value={query} disabled={blocked} onChange={event=>setQuery(event.target.value)}/>}
+  list={<DialogRecordList rows={visible} columns={[{key:'name',label:t.requesterName,value:row=>row.data.name},{key:'phone',label:t.requesterPhone,value:row=>row.data.phone}]} selectedKey={edit.id} onSelect={open} disabled={blocked} loading={loading} error={readError} onRetry={blocked?undefined:()=>setReload(v=>v+1)} languageCode={languageCode}/>}
+  frameDetail detailTitle={t.requesterDetails} detail={<Stack spacing={2}>
    {saveError&&<Alert severity="error">{t.failed}</Alert>}
    <TextField fullWidth required label={t.requesterName} value={edit.name} disabled={blocked} slotProps={{htmlInput:{maxLength:200}}} onChange={event=>setEdit(v=>({...v,name:event.target.value}))}/>
    <TextField fullWidth required label={t.requesterPhone} value={edit.phone} disabled={blocked} slotProps={{htmlInput:{maxLength:80,inputMode:'numeric',pattern:'[0-9]*'}}} onChange={event=>setEdit(v=>({...v,phone:event.target.value.replace(/\D/g,'')}))}/>
    <TextField fullWidth label={t.savedAddress} value={edit.address} disabled={blocked} slotProps={{htmlInput:{maxLength:1000}}} onChange={event=>setEdit(v=>({...v,address:event.target.value}))}/>
-   <PageActions secondary={edit.version!=null?<Button color="error" disabled={blocked} onClick={()=>mutate(true)}>{t.deletePreset}</Button>:null} primary={<SaveButton disabled={disabled||busy||!uncertain&&(!valid||loading||readError||!!edit.version&&!dirty)} onClick={()=>mutate()}>{uncertain?t.retry:edit.version?t.savePreset:t.addRequester}</SaveButton>}/>
-  </Stack></EntityDetailSection>}/></Stack></DialogContent>
-  <DialogActions><PageActions secondary={<Button disabled={blocked} onClick={async()=>{if(await leave())onClose();}}>{t.close}</Button>} primary={<Button variant="contained" disabled={blocked||!valid||!edit.version||dirty||loading||readError} onClick={()=>{onSelect({name:edit.name,phone:edit.phone,address:edit.address});onClose();}}>{t.loadPreset}</Button>}/></DialogActions>
+  </Stack>}
+  detailFooter={<DialogRecordActions onDelete={edit.version!=null?()=>mutate(true):undefined} deleteLabel={t.deletePreset} deleteDisabled={blocked} busy={busy} onSave={()=>mutate()} saveLabel={uncertain?t.retry:edit.version?t.savePreset:t.addRequester} saveDisabled={disabled||!uncertain&&(!valid||loading||readError||!!edit.version&&!dirty)}/>}
+  actions={<PageActions secondary={<Button disabled={blocked} onClick={async()=>{if(await leave())onClose();}}>{t.close}</Button>} primary={<Button variant="contained" disabled={blocked||!valid||!edit.version||dirty||loading||readError} onClick={()=>{onSelect({name:edit.name,phone:edit.phone,address:edit.address});onClose();}}>{t.loadPreset}</Button>}/>}/>
   {history&&<ShippingRequesterHistory orgId={orgId} languageCode={languageCode} onClose={()=>setHistory(false)} onSelect={row=>open({...row,phone:row.phone.replace(/\D/g,'')})}/>}
- </Dialog>;
+ </>;
 }

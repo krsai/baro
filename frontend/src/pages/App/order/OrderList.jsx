@@ -1,3 +1,4 @@
+import Dialog from '../../../components/AppDialog';
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import {keyboardAction} from '../../../utils/keyboardPolicy.mjs';
 import Autocomplete from '../../../components/SearchableSelect';
@@ -11,7 +12,7 @@ import StatusLabel from '../../../components/StatusLabel';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useLocation, useParams } from 'react-router-dom';
-import {Box,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Paper,Button,TextField,Select,MenuItem,InputLabel,FormControl,Typography,IconButton,Stack,CircularProgress,Tooltip,ToggleButton,ToggleButtonGroup,Dialog,DialogTitle,DialogContent,DialogActions,Chip,GlobalStyles} from '@mui/material';
+import {Box,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Paper,Button,TextField,Select,MenuItem,InputLabel,FormControl,Typography,IconButton,Stack,CircularProgress,Tooltip,ToggleButton,ToggleButtonGroup,DialogTitle,DialogContent,DialogActions,Chip,GlobalStyles} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';

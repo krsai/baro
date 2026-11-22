@@ -1,3 +1,4 @@
+import Dialog from '../../components/AppDialog';
 import TableStatusRow from '../../components/TableStatusRow';
 import {materialIndustryText} from '../../constants/materialIndustry';
 import {dialogTitle} from '../../constants/dialogTitles';
@@ -12,7 +13,7 @@ import SelectionSummaryRow from '../../components/SelectionSummaryRow';
 import {internalFundsText} from '../../constants/internalFunds';
 import {accountingDirectionText} from '../../constants/accountingDirection';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
-import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,IconButton,MenuItem,Slide,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography,useMediaQuery} from '@mui/material';
+import {Box,Button,Chip,DialogActions,DialogContent,DialogTitle,IconButton,MenuItem,Slide,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography,useMediaQuery} from '@mui/material';
 import Alert from "../../components/AppNotice";
 import EditIcon from '@mui/icons-material/Edit';
 import ViewSidebarOutlinedIcon from '@mui/icons-material/ViewSidebarOutlined';

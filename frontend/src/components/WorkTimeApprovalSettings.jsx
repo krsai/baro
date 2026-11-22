@@ -1,7 +1,8 @@
+import Dialog from './AppDialog';
 import {approvalDefaultsText} from '../constants/approvalDefaults';
 import ApprovalRoleGradeStages from './ApprovalRoleGradeStages';
 import React,{useState} from 'react';
-import {Box,Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,IconButton,Paper,Stack,Typography} from '@mui/material';
+import {Box,Button,Checkbox,DialogActions,DialogContent,DialogTitle,FormControlLabel,IconButton,Paper,Stack,Typography} from '@mui/material';
 
 import {Add,ArrowForward,Close,DragIndicator} from '@mui/icons-material';
 import {DragDropContext,Draggable,Droppable} from '@hello-pangea/dnd';
@@ -31,7 +32,7 @@ export default function WorkTimeApprovalSettings({form,managers=[],onChange,disa
     </Stack>
    </Box>
   </Box></Paper>
-  <Dialog open={permissionsOpen} onClose={()=>setPermissionsOpen(false)} fullWidth maxWidth="sm"><DialogTitle>{t.settings}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}>{permissionKeys.map(key=><Box key={key}><Typography variant="subtitle2">{key==='drafterRoles'?t.draftRoles:t.proxyRoles}</Typography><Stack direction="row" useFlexGap flexWrap="wrap">{(key==='drafterRoles'&&showProxy?['ADMIN','OPERATOR','ACCOUNTANT','WORKER']:['ADMIN','OPERATOR','ACCOUNTANT']).map(role=><FormControlLabel sx={{m:0,mr:1}} key={role} control={<Checkbox checked={form[key].includes(role)} onChange={()=>toggle(key,role)} disabled={disabled}/>} label={t[role]}/>)}</Stack></Box>)}</Stack></DialogContent><DialogActions><Button variant="contained" onClick={()=>setPermissionsOpen(false)}>{b.apply}</Button></DialogActions></Dialog>
+  <Dialog open={permissionsOpen} onClose={()=>setPermissionsOpen(false)} fullWidth maxWidth="sm"><DialogTitle>{t.settings}</DialogTitle><DialogContent><Stack spacing={2}>{permissionKeys.map(key=><Box key={key}><Typography variant="subtitle2">{key==='drafterRoles'?t.draftRoles:t.proxyRoles}</Typography><Stack direction="row" useFlexGap flexWrap="wrap">{(key==='drafterRoles'&&showProxy?['ADMIN','OPERATOR','ACCOUNTANT','WORKER']:['ADMIN','OPERATOR','ACCOUNTANT']).map(role=><FormControlLabel sx={{m:0,mr:1}} key={role} control={<Checkbox checked={form[key].includes(role)} onChange={()=>toggle(key,role)} disabled={disabled}/>} label={t[role]}/>)}</Stack></Box>)}</Stack></DialogContent><DialogActions><Button variant="contained" onClick={()=>setPermissionsOpen(false)}>{b.apply}</Button></DialogActions></Dialog>
 
  </Stack>;
 }

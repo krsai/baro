@@ -1,3 +1,4 @@
+import Dialog from './AppDialog';
 import ListPagination from './ListPagination';
 import {dialogTitle} from '../constants/dialogTitles';
 import {usePageDialogs} from './PageDialogProvider';
@@ -8,7 +9,7 @@ import DashboardAlertItem from './DashboardAlertItem';
 import DashboardWidgetSettings from './DashboardWidgetSettings';
 import AddActionButton from './AddActionButton';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
-import {Box,Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,Paper,Stack,TextField,Typography} from '@mui/material';
+import {Box,Button,CircularProgress,DialogActions,DialogContent,DialogTitle,Paper,Stack,TextField,Typography} from '@mui/material';
 import Alert from "./AppNotice";
 import SearchableSelect from './SearchableSelect';
 import DeleteActionButton from './DeleteActionButton';
@@ -52,7 +53,7 @@ export default function WorkRequestsCard({orgId,languageCode}){
   <Box sx={{flex:1,minHeight:0,overflow:'auto'}}>{loading&&!data?<CircularProgress size={20}/>:!error&&data?.rows.length===0?<Typography color="text.secondary">{t.empty}</Typography>:<Stack spacing={1}>{data?.rows.map(row=><DashboardAlertItem languageCode={languageCode} key={row.id} title={row.title} countLabel={t[row.status]} detail={row.senderName+' → '+row.recipientName+' · '+new Date(row.completedAt||row.createdAt).toLocaleString({ko:'ko-KR',en:'en-GB',vi:'vi-VN'}[languageCode]||'en-GB')} onClick={()=>setSelected(row)} actions={<>{row.status==='OPEN'&&row.senderId===data.actorId&&data.canCreate&&<Button disabled={busy} onClick={()=>edit(row)}>{t.edit}</Button>}{row.status==='OPEN'&&row.recipientId===data.actorId&&<Button disabled={busy} onClick={()=>act(row,'COMPLETE')}>{t.complete}</Button>}{row.status==='DONE'&&<DeleteActionButton aria-label={t.hide} title={t.hide} disabled={busy} onClick={()=>act(row,'HIDE')}/>}</>}/>)}</Stack>}</Box>
   <ListPagination languageCode={languageCode} onPrevious={()=>setPage(n=>n-1)} onNext={()=>setPage(n=>n+1)} previousDisabled={!page||loading} nextDisabled={!data?.hasMore||loading} previousLabel={t.previous} nextLabel={t.next}></ListPagination>
   <Dialog open={!!selected} onClose={()=>setSelected(null)} fullWidth maxWidth="sm"><DialogTitle>{selected?.title}</DialogTitle><DialogContent><Typography variant="caption" color="text.secondary">{selected?.senderName} → {selected?.recipientName}</Typography><Typography sx={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',mt:2}}>{selected?.message}</Typography></DialogContent></Dialog>
-  <Dialog open={open} onClose={async()=>{if(!busy&&!uncertain&&(!formDirty||await dialogs.confirm(t.discard,{purpose:'discard'})))setOpen(false);}} fullWidth maxWidth="sm"><DialogTitle>{dialogTitle(editing?'workRequestEdit':'workRequestCreate',languageCode)}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}>
+  <Dialog open={open} onClose={async()=>{if(!busy&&!uncertain&&(!formDirty||await dialogs.confirm(t.discard,{purpose:'discard'})))setOpen(false);}} fullWidth maxWidth="sm"><DialogTitle>{dialogTitle(editing?'workRequestEdit':'workRequestCreate',languageCode)}</DialogTitle><DialogContent><Stack spacing={2}>
    {formError&&<Alert severity="error">{formError}</Alert>}{!editing&&peopleFailed&&<Alert severity="error" action={<Button onClick={loadPeople}>{t.retry}</Button>}>{t.failed}</Alert>}
    {!editing&&<SearchableSelect options={people} value={recipient} onChange={(_event,value)=>setRecipient(value)} disabled={busy||uncertain||peopleLoading||peopleFailed} getOptionLabel={person=>[person.employeeNo,person.name].filter(Boolean).join(' · ')} isOptionEqualToValue={(a,b)=>a.id===b.id} renderInput={params=><TextField {...params} size="small" required label={t.recipient}/>}/> }
    <TextField size="small" required label={t.subject} value={title} disabled={busy||uncertain} onChange={e=>setTitle(e.target.value)} inputProps={{maxLength:200}}/>

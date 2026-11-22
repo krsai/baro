@@ -1,3 +1,4 @@
+import Dialog from '../../../components/AppDialog';
 import ListPagination from '../../../components/ListPagination';
 import TableStatusRow from '../../../components/TableStatusRow';
 import {dialogTitle} from '../../../constants/dialogTitles';
@@ -5,7 +6,7 @@ import SearchPanel from '../../../components/SearchPanel';
 import SearchInput from '../../../components/SearchInput';
 import {companyDocumentContactError} from '../../../constants/companyDocumentContact';
 import React,{useEffect,useRef,useState} from 'react';
-import {Box,Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,LinearProgress,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography} from '@mui/material';
+import {Box,Button,Checkbox,DialogActions,DialogContent,DialogTitle,FormControlLabel,LinearProgress,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import AppPageContainer from '../../../components/AppPageContainer';
 import SaveButton from '../../../components/SaveButton';

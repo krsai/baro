@@ -1,3 +1,4 @@
+import Dialog from '../../components/AppDialog';
 import ListPagination from '../../components/ListPagination';
 import TableStatusRow from '../../components/TableStatusRow';
 import SearchPanel from '../../components/SearchPanel';
@@ -6,7 +7,7 @@ import useWorkspaceRefreshOnEvent from '../../hooks/useWorkspaceRefreshOnEvent';
 import {useRequestScopeContext} from '../../context/RequestScopeContext';
 import React,{useEffect,useRef,useState} from 'react';
 import {useParams} from 'react-router-dom';
-import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,MenuItem,Typography,LinearProgress} from '@mui/material';
+import {Box,Button,Chip,DialogActions,DialogContent,DialogTitle,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,MenuItem,Typography,LinearProgress} from '@mui/material';
 import Alert from "../../components/AppNotice";
 import AppPageContainer from '../../components/AppPageContainer';
 import ManagementTargetSettingsButton from '../../components/ManagementTargetSettingsButton';

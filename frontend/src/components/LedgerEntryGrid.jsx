@@ -1,3 +1,4 @@
+import Dialog from './AppDialog';
 import MaterialItemPicker from './MaterialItemPicker';
 import {materialItemName,materialItemSpec} from '../constants/materialItems';
 import {accountingAlertText} from '../constants/accountingAlerts';
@@ -22,7 +23,7 @@ import DeleteActionButton from './DeleteActionButton';
 import DecimalAmountField from './DecimalAmountField';
 import {accountingCodeDescription} from '../utils/accountingCode.mjs';
 import React,{useEffect,useState} from 'react';
-import {Button,Dialog,DialogTitle,DialogContent,DialogActions,Box,IconButton,Tooltip,MenuItem,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import {Button,DialogTitle,DialogContent,DialogActions,Box,IconButton,Tooltip,MenuItem,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import {Add} from '@mui/icons-material';
 import CustomDatePicker from './CustomDatePicker';
 import LedgerDocumentPicker from './LedgerDocumentPicker';

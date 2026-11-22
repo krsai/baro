@@ -1,3 +1,4 @@
+import Dialog from './AppDialog';
 import MaterialSelectionDialog from './MaterialSelectionDialog';
 import {useAppActions} from '../context/AppContext';
 import {changeApprovalText} from '../constants/changeApprovals';
@@ -7,7 +8,7 @@ import {evidenceReference} from '../utils/evidenceReference.mjs';
 import CodeItemAttributeFields from './CodeItemAttributeFields';
 import {accountingCompactText} from '../constants/accountingCompact';
 import {expensePaymentText} from '../constants/expensePaymentSchedule';
-import {Dialog,DialogTitle,DialogContent,DialogActions} from '@mui/material';
+import {DialogTitle,DialogContent,DialogActions} from '@mui/material';
 import ExpensePaymentSchedule,{ExpensePaymentMode} from './ExpensePaymentSchedule';
 import AddActionButton from './AddActionButton';
 import ReadOnlyField from './ReadOnlyField';

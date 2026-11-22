@@ -1,5 +1,6 @@
+import Dialog from './AppDialog';
 import React, { useEffect, useState } from 'react';
-import {Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,MenuItem,Stack,Table,TableBody,TableCell,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import {Button,Checkbox,DialogActions,DialogContent,DialogTitle,FormControlLabel,MenuItem,Stack,Table,TableBody,TableCell,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import Alert from "./AppNotice";
 import { buildQueryString, requestJSON } from '../utils/apiClient';
 

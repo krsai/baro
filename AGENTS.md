@@ -39,7 +39,7 @@
 
 - 선택 항목의 상세/연결/수정이 있는 화면은 [목록·상세 좌우 배치 기준](frontend/src/theme/README.md)에 따라 `ListDetailLayout`을 우선 사용한다. PC는 좌측 목록·우측 실제 상세/편집, 모바일은 세로 배치하며 미리보기와 선택/저장을 구분한다. 단순 선택·대량 입력·단일 폼에 빈 상세 영역을 강제하지 않는다. 기존 초안·권한·업무 관계는 보존한다.
 
-- 페이지·모달의 작업 버튼은 [공통 UI 기준의 작업 버튼 계약](frontend/src/theme/README.md)을 따른다. 일반 페이지는 제목·상태·전체 작업만 상단 고정하고 검색/필터는 스크롤한다. 모달은 하단 오른쪽 취소→대표 작업을 사용한다. `AppPageContainer`·`PageActions`·공통 Dialog 테마를 우선 사용한다. 저장 범위가 다른 기존 예외는 유지하고, 변경 요청에는 구조적 영향과 대안을 조언한 뒤 최신 사용자 선택을 반영한다.
+- 페이지·모달의 작업 버튼은 [공통 UI 기준의 작업 버튼 계약](frontend/src/theme/README.md)을 따른다. 일반 페이지는 제목·상태·전체 작업만 상단 고정하고 검색/필터는 스크롤한다. 모달은 `AppDialog`, 목록 선택·상세/등록/수정 모달은 `ListDetailDialog`를 사용하고 MUI Dialog를 직접 가져오지 않는다. 목록/상세/작업에는 `DialogRecordList`·`DialogDetailPanel`·`DialogRecordActions`를 재사용한다. 하단 오른쪽 취소→대표 작업과 `PageActions`·공통 Dialog 테마를 사용하며 원본 저장과 문서 적용처럼 저장 범위가 다른 기존 예외는 유지한다. 변경 요청에는 구조적 영향과 대안을 조언한 뒤 최신 사용자 선택을 반영한다.
 
 - [공통 UI 기준](frontend/src/theme/README.md)을 따른다. 표는 글자보다 너비·여백을 먼저 조정하고 금액을 생략하지 않는다. 작업 열 우측 고정과 특수 표의 wide/document/fixed 계약을 유지한다.
 - 일반 검색 선택은 SearchableSelect/LookupInput/LookupSearchDialog를 사용한다. 포커스·타이핑만으로 확정하지 않는다. Enter/Tab은 코드·이름의 유일한 정확 일치만 확정하고 부분 입력은 후보가 하나여도 모달을 연다. 미일치/중복 모달·blur 정확 일치·IME·Shift+Tab·포커스 복귀를 유지한다.

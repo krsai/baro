@@ -1,6 +1,7 @@
+import Dialog from './AppDialog';
 import ListPagination from './ListPagination';
 import React, {useEffect,useRef,useState} from 'react';
-import {Box,Button,Chip,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,ListItemButton,Paper,Stack,Typography} from '@mui/material';
+import {Box,Button,Chip,CircularProgress,DialogActions,DialogContent,DialogTitle,ListItemButton,Paper,Stack,Typography} from '@mui/material';
 import Alert from "./AppNotice";
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -71,7 +72,7 @@ export default function ManagementTargetSettings({orgId,languageCode='en',kind,o
   {!embedded&&<PageSettingsButton label={t[kind]} disabled={disabled||!orgId} onClick={show}/>}
   <Container {...(embedded?{}:{open,onClose:close,fullWidth:true,maxWidth:'md','aria-labelledby':'target-settings-'+kind})}>
    {!embedded&&<DialogTitle id={'target-settings-'+kind}>{t[kind]}</DialogTitle>}
-   <DialogContent><Stack spacing={2} sx={{pt:1}}>
+   <DialogContent><Stack spacing={2}>
 
     {error&&<Alert severity="error">{uncertain?t.uncertain:errorMessage}</Alert>}
     {loadError&&<Alert severity="error" action={<Button disabled={locked} onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{t.failed}</Alert>}

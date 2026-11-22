@@ -1,3 +1,4 @@
+import Dialog from '../../components/AppDialog';
 import TableStatusRow from '../../components/TableStatusRow';
 import useChangeDrivenEffect from '../../hooks/useChangeDrivenEffect';
 import {useRequestScopeContext} from '../../context/RequestScopeContext';
@@ -8,7 +9,7 @@ import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import {Box,Button,CircularProgress,Drawer,IconButton,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Tooltip,Typography} from '@mui/material';
 import Alert from "../../components/AppNotice";
 import CloseIcon from '@mui/icons-material/Close';
-import { Dialog, DialogActions, DialogContent, DialogTitle } from '@mui/material';
+import {DialogActions,DialogContent,DialogTitle} from '@mui/material';
 import { emitWorkspaceDataChanged, subscribeWorkspaceDataChanged } from '../../utils/workspaceDataEvents';
 import PartnerDirectory from '../../components/PartnerDirectory';
 import {resolveCustomerDisplayName} from '../../utils/appLanguage';

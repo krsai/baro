@@ -1,3 +1,4 @@
+import Dialog from '../../components/AppDialog';
 import TableStatusRow from '../../components/TableStatusRow';
 import {getUiMessage} from '../../constants/uiMessages';
 import InformationButton from '../../components/InformationButton';
@@ -14,7 +15,7 @@ import SettingDeleteButton from '../../components/SettingDeleteButton';
 import LocalizedNameFields from '../../components/LocalizedNameFields';
 import { hasLocalizedName } from '../../utils/localizedName.mjs';
 import React, { useCallback,useEffect,useRef,useState } from 'react';
-import {Box,Button,CircularProgress,Typography,TableContainer,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,IconButton,Paper,Stack,Table,TableBody,TableCell,TableHead,TableRow,TextField,Switch} from '@mui/material';
+import {Box,Button,CircularProgress,Typography,TableContainer,Checkbox,DialogActions,DialogContent,DialogTitle,FormControlLabel,IconButton,Paper,Stack,Table,TableBody,TableCell,TableHead,TableRow,TextField,Switch} from '@mui/material';
 import Alert from "../../components/AppNotice";
 import ChevronRight from '@mui/icons-material/ChevronRight';
 import StatusLabel from '../../components/StatusLabel';

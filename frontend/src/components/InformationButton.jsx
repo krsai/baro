@@ -1,5 +1,6 @@
+import Dialog from './AppDialog';
 import React,{useId,useState} from 'react';
-import {Dialog,DialogContent,DialogTitle,IconButton,Stack,Tooltip,Typography} from '@mui/material';
+import {DialogContent,DialogTitle,IconButton,Stack,Tooltip,Typography} from '@mui/material';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import {useLanguage} from '../context/LanguageContext';
 

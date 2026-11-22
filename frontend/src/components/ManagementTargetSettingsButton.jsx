@@ -1,5 +1,6 @@
+import Dialog from './AppDialog';
 import React, { useId, useState } from 'react';
-import { Box, Dialog, DialogTitle } from '@mui/material';
+import {Box,DialogTitle} from '@mui/material';
 import { managementTargetText } from '../constants/managementTargets';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import ManagementTargetSettings from './ManagementTargetSettings';

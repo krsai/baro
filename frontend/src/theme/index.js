@@ -542,11 +542,11 @@ const theme = createTheme(baseTheme, {
     MuiYearCalendar: { styleOverrides: { button: calendarChoice } },
     MuiDialog: { defaultProps:{scroll:'paper'}, styleOverrides: {
       container:{boxSizing:'border-box',padding:'clamp(12px, 2vw, 24px)'},
-      paper:{borderRadius:ui.radius.panel,margin:'0 !important',minWidth:0,minHeight:0,flexShrink:1,maxHeight:'100% !important',overflow:'auto'},
+      paper:{borderRadius:ui.radius.panel,margin:'0 !important',minWidth:0,minHeight:0,flexShrink:1,maxHeight:'100% !important',display:'flex',flexDirection:'column',overflow:'hidden'},
     } },
-    MuiDialogTitle: { styleOverrides: { root: { flexShrink:0, position:'sticky', top:0, zIndex:1, backgroundColor:ui.color.surface, padding: ui.dialog.titlePadding, borderBottom: 0 } } },
-    MuiDialogContent: { styleOverrides: { root: { padding: ui.dialog.contentPadding,minHeight:0,overflow:'auto',borderTop:0,borderBottom:0,'.MuiDialogTitle-root + &':{paddingTop:16} }, dividers: { border:0 } } },
-    MuiDialogActions: { styleOverrides: { root: { flexShrink:0, position:'sticky', bottom:0, zIndex:1, backgroundColor:ui.color.surface, justifyContent:'flex-end', flexWrap:'wrap', padding: ui.dialog.actionsPadding,borderTop:0, gap: ui.dialog.actionsGap, '& > :not(style) ~ :not(style)': { marginLeft: 0 } } } },
+    MuiDialogTitle: { styleOverrides: { root: { flexShrink:0, minWidth:0,overflowWrap:'anywhere', position:'sticky', top:0, zIndex:1, backgroundColor:ui.color.surface, padding: ui.dialog.titlePadding, borderBottom: 0,'& > .MuiStack-root':{flexWrap:'wrap',rowGap:ui.layout.actionGap},'@media (max-width:599px)':{padding:'16px 16px 12px'} } } },
+    MuiDialogContent: { styleOverrides: { root: { padding: ui.dialog.contentPadding,minWidth:0,minHeight:0,flex:'1 1 auto',overflow:'auto',borderTop:0,borderBottom:0,'.MuiDialogTitle-root + &':{paddingTop:16},'@media (max-width:599px)':{padding:'16px 16px 16px'} }, dividers: { border:0 } } },
+    MuiDialogActions: { styleOverrides: { root: { flexShrink:0,minWidth:0, position:'sticky', bottom:0, zIndex:1, backgroundColor:ui.color.surface, justifyContent:'flex-end', flexWrap:'wrap', padding: ui.dialog.actionsPadding,borderTop:0, gap: ui.dialog.actionsGap, '& > :not(style) ~ :not(style)': { marginLeft: 0 },'& > .MuiStack-root':{flexWrap:'wrap',justifyContent:'flex-end',gap:ui.dialog.actionsGap},'@media (max-width:599px)':{padding:'12px 16px 16px'} } } },
     MuiTab: { styleOverrides: { root: { color: ui.color.muted, backgroundColor: ui.color.canvas, '&.Mui-selected': { color: ui.color.primary } } } },
   },
 });

@@ -1,5 +1,6 @@
+import Dialog from './AppDialog';
 import React,{useEffect,useState,useRef} from 'react';
-import {Button,Dialog,DialogTitle,DialogContent,DialogActions,Stack} from '@mui/material';
+import {Button,DialogTitle,DialogContent,DialogActions,Stack} from '@mui/material';
 import ExpenseLookupField from './ExpenseLookupField';
 import ReadOnlyField from './ReadOnlyField';
 import LocalizedNameFields from './LocalizedNameFields';

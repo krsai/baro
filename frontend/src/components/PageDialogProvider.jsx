@@ -1,7 +1,8 @@
+import Dialog from './AppDialog';
 import {keyboardAction} from '../utils/keyboardPolicy.mjs';
 import {notifyGlobally} from '../utils/appNotifications';
 import React, { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Button, Dialog, DialogActions, DialogContent, DialogTitle, TextField, Typography } from '@mui/material';
+import {Button,DialogActions,DialogContent,DialogTitle,TextField,Typography} from '@mui/material';
 import { useLanguage } from '../context/LanguageContext';
 
 const PageDialogs = createContext(null);

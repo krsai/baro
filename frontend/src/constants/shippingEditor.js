@@ -76,3 +76,9 @@ Object.assign(shippingEditorText.vi,{requesterName:'Tên',requesterPhone:'Số �
 Object.assign(shippingEditorText.ko,{requesterDetails:'고객 정보'});
 Object.assign(shippingEditorText.en,{requesterDetails:'Customer information'});
 Object.assign(shippingEditorText.vi,{requesterDetails:'Thông tin khách hàng'});
+Object.assign(shippingEditorText.ko,{newAddress:'새 주소'});
+Object.assign(shippingEditorText.en,{newAddress:'New address'});
+Object.assign(shippingEditorText.vi,{newAddress:'Địa chỉ mới'});
+Object.assign(shippingEditorText.ko,{newPreset:'새 저장 정보'});
+Object.assign(shippingEditorText.en,{newPreset:'New saved information'});
+Object.assign(shippingEditorText.vi,{newPreset:'Thông tin lưu mới'});

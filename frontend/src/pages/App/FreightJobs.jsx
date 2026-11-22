@@ -1,3 +1,4 @@
+import Dialog from '../../components/AppDialog';
 import ListPagination from '../../components/ListPagination';
 import FreightDocumentSetup from '../../components/FreightDocumentSetup';
 import {freightWorkflowText} from '../../constants/freightWorkflow';
@@ -12,7 +13,7 @@ import FreightJobEditor,{FreightJobDetails} from '../../components/FreightJobEdi
 import ShippingChargeDrafts from '../../components/ShippingChargeDrafts';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {useSearchParams,Navigate} from 'react-router-dom';
-import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TableSortLabel,Tab,Tabs,TextField,Typography} from '@mui/material';
+import {Box,Button,Chip,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TableSortLabel,Tab,Tabs,TextField,Typography} from '@mui/material';
 import Alert from "../../components/AppNotice";
 import AppPageContainer from '../../components/AppPageContainer';
 import {useAuth} from '../../context/AuthContext';
@@ -80,5 +81,5 @@ function Jobs({orgId}){
 function BillEditor({t,initial,bills,masters,busy,onSave,onClose}){
  const [value,setValue]=useState(initial),[failed,setFailed]=useState(false);useUnsavedChanges(JSON.stringify(value)!==JSON.stringify(initial));
  const duplicate=bills.some(row=>row.id!==value.id&&row.kind===value.kind&&row.number.trim().toLowerCase()===value.number.trim().toLowerCase()&&row.issuer.trim().toLowerCase()===value.issuer.trim().toLowerCase());
- return <Dialog open fullWidth maxWidth="sm" onClose={()=>!busy&&onClose()}><DialogTitle>{t[value.kind]}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}>{failed&&<Alert severity="error">{t.failed}</Alert>}{duplicate&&<Alert severity="warning">{t.duplicate}</Alert>}{['number','issuer'].map(key=><TextField key={key} required={key==='number'} label={key==='number'?t.billNumber:t.issuer} value={value[key]} onChange={e=>setValue(v=>({...v,[key]:e.target.value}))}/>)}{value.kind==='HOUSE'&&<TextField id="job-bill-master" select slotProps={{select:{SelectDisplayProps:{'aria-label':t.master,'aria-labelledby':undefined}}}} label={t.master} value={value.masterId||''} onChange={e=>setValue(v=>({...v,masterId:e.target.value||null}))}><MenuItem value="">{t.unlink}</MenuItem>{masters.map(row=><MenuItem key={row.id} value={row.id}>{row.number}{row.issuer?' · '+row.issuer:''}</MenuItem>)}</TextField>}</Stack></DialogContent><DialogActions><Button disabled={busy} onClick={onClose}>{t.cancel}</Button><SaveButton loading={busy} disabled={!value.number.trim()} onClick={()=>onSave(value).catch(()=>setFailed(true))}>{t.save}</SaveButton></DialogActions></Dialog>;
+ return <Dialog open fullWidth maxWidth="sm" onClose={()=>!busy&&onClose()}><DialogTitle>{t[value.kind]}</DialogTitle><DialogContent><Stack spacing={2}>{failed&&<Alert severity="error">{t.failed}</Alert>}{duplicate&&<Alert severity="warning">{t.duplicate}</Alert>}{['number','issuer'].map(key=><TextField key={key} required={key==='number'} label={key==='number'?t.billNumber:t.issuer} value={value[key]} onChange={e=>setValue(v=>({...v,[key]:e.target.value}))}/>)}{value.kind==='HOUSE'&&<TextField id="job-bill-master" select slotProps={{select:{SelectDisplayProps:{'aria-label':t.master,'aria-labelledby':undefined}}}} label={t.master} value={value.masterId||''} onChange={e=>setValue(v=>({...v,masterId:e.target.value||null}))}><MenuItem value="">{t.unlink}</MenuItem>{masters.map(row=><MenuItem key={row.id} value={row.id}>{row.number}{row.issuer?' · '+row.issuer:''}</MenuItem>)}</TextField>}</Stack></DialogContent><DialogActions><Button disabled={busy} onClick={onClose}>{t.cancel}</Button><SaveButton loading={busy} disabled={!value.number.trim()} onClick={()=>onSave(value).catch(()=>setFailed(true))}>{t.save}</SaveButton></DialogActions></Dialog>;
 }

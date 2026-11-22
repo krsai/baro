@@ -1,3 +1,4 @@
+import Dialog from '../../../../components/AppDialog';
 import {calendarPayrollText} from '../../../../constants/calendarPayroll';
 import {useAuth} from '../../../../context/AuthContext';
 import { applicableMonthVersion } from '../../../../utils/versionApplication.mjs';
@@ -6,7 +7,7 @@ import { LOCALIZED_NAME_HELP } from '../../../../components/LocalizedNameFields'
 import { normalizeLocalizedName, hasLocalizedName } from '../../../../utils/localizedName.mjs';
 import useUnsavedChanges from '../../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,Drawer,Grid,IconButton,MenuItem,Stack,TextField,Typography} from '@mui/material';
+import {Box,Button,Chip,DialogActions,DialogContent,DialogTitle,Drawer,Grid,IconButton,MenuItem,Stack,TextField,Typography} from '@mui/material';
 import Alert from "../../../../components/AppNotice";
 import CloseIcon from '@mui/icons-material/Close';
 import HistoryIcon from '@mui/icons-material/History';

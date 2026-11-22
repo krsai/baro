@@ -1,3 +1,4 @@
+import Dialog from '../../../components/AppDialog';
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import TenureRecognitionDialog from '../../../components/TenureRecognitionDialog';
 import {tenureRecognitionText} from '../../../constants/tenureRecognition';
@@ -6,7 +7,7 @@ import {workplaceText} from '../../../utils/serviceCompany.mjs';
 import SearchPanel from '../../../components/SearchPanel';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,Drawer,MenuItem,Paper,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import {Box,Button,DialogActions,DialogContent,DialogTitle,Drawer,MenuItem,Paper,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import AppPageContainer from '../../../components/AppPageContainer';
 import SaveButton from '../../../components/SaveButton';
