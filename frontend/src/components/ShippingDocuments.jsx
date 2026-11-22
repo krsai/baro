@@ -14,14 +14,14 @@ import {shippingWorkbenchText} from '../constants/shippingWorkbench';
 import {freightText} from '../constants/freight';
 import {freightWorkflowText} from '../constants/freightWorkflow';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
-import {usePageDialogs} from './PageDialogProvider';
 
 export default function ShippingDocuments({job,orgId,languageCode,busy,onSaveSetup,onEditBill,onRemoveBill,onDirtyChange,t:billText}){
- const t=shippingWorkbenchText[languageCode]||shippingWorkbenchText.en,f=freightText[languageCode]||freightText.en,w=freightWorkflowText[languageCode]||freightWorkflowText.en,dialogs=usePageDialogs();
+ const t=shippingWorkbenchText[languageCode]||shippingWorkbenchText.en,f=freightText[languageCode]||freightText.en,w=freightWorkflowText[languageCode]||freightWorkflowText.en;
  const [fields,setFields]=useState(()=>Object.fromEntries(['vessel','voyage','etd','eta','marks','freightTerms'].map(key=>[key,job.data[key]||'']))),fieldBaseline=useRef(JSON.stringify(fields)),fieldsDirty=JSON.stringify(fields)!==fieldBaseline.current;
- const [kind,setKind]=useState('AN'),[billId,setBillId]=useState(null),[copies,setCopies]=useState(job.documents||[]),[preview,setPreview]=useState(null),[error,setError]=useState(false),[working,setWorking]=useState(false),[uncertain,setUncertain]=useState(false),[configDirty,setConfigDirty]=useState(false),pending=useRef(null),lock=useRef(false),alive=useRef(true);
+ const [kind,setKind]=useState('AN'),[billId,setBillId]=useState(null),[copies,setCopies]=useState((job.documents||[]).filter(row=>!['COMMERCIAL_INVOICE','PACKING_LIST'].includes(row.kind))),[preview,setPreview]=useState(null),[error,setError]=useState(false),[working,setWorking]=useState(false),[uncertain,setUncertain]=useState(false),[configDirty,setConfigDirty]=useState(false),pending=useRef(null),lock=useRef(false),alive=useRef(true);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  useUnsavedChanges(configDirty||fieldsDirty||uncertain);useEffect(()=>{onDirtyChange?.(configDirty||fieldsDirty||working||uncertain||!!preview);return()=>onDirtyChange?.(false);},[configDirty,fieldsDirty,working,uncertain,preview,onDirtyChange]);
+ useEffect(()=>{if(!configDirty&&!fieldsDirty&&!working&&!uncertain&&!preview){const next=Object.fromEntries(['vessel','voyage','etd','eta','marks','freightTerms'].map(key=>[key,job.data[key]||'']));fieldBaseline.current=JSON.stringify(next);setFields(next);setCopies((job.documents||[]).filter(row=>!['COMMERCIAL_INVOICE','PACKING_LIST'].includes(row.kind)));}},[job.version,job.documents]);
  const blocked=busy||working||uncertain,eligible=kind==='HOUSE_DRAFT'?job.bills.filter(row=>row.kind==='HOUSE'):job.bills;
  const create=async()=>{if(lock.current)return;lock.current=true;setWorking(true);setError(false);try{
   pending.current=pending.current||{clientKey:crypto.randomUUID(),version:job.version,kind,billId,fields};
@@ -29,10 +29,9 @@ export default function ShippingDocuments({job,orgId,languageCode,busy,onSaveSet
   if(alive.current){setCopies(old=>[saved,...old.filter(row=>row.id!==saved.id)]);setPreview(saved);fieldBaseline.current=JSON.stringify(fields);setUncertain(false);}pending.current=null;
  }catch(e){if(alive.current){setError(true);setUncertain(!e.status||e.status>=500);}if(e.status&&e.status<500)pending.current=null;}finally{lock.current=false;if(alive.current)setWorking(false);}};
  const load=async id=>{if(working)return;setWorking(true);setError(false);try{const saved=await requestJSON('/freight/documents/'+encodeURIComponent(id)+buildQueryString({orgId}),{skipCache:true});if(alive.current)setPreview(saved);}catch{if(alive.current)setError(true);}finally{if(alive.current)setWorking(false);}};
- const mayReplaceDraft=async()=>!(configDirty||fieldsDirty)||await dialogs.confirm('',{purpose:'discard'});
- const editBill=async row=>{if(await mayReplaceDraft())onEditBill(row);};
- const removeBill=async row=>{if(await mayReplaceDraft())onRemoveBill(row);};
- const saveSetup=async value=>{if(!fieldsDirty||await dialogs.confirm('',{purpose:'discard'}))return onSaveSetup(value);};
+ const editBill=row=>onEditBill(row);
+ const removeBill=row=>onRemoveBill(row);
+ const saveSetup=value=>onSaveSetup(value);
  const addBill=kind=>editBill({id:crypto.randomUUID(),kind,number:'',issuer:'',masterId:null});
  return <Stack spacing={1}>
   <Accordion defaultExpanded={!job.data.documentSetup} disableGutters elevation={0} sx={{border:1,borderColor:'divider','&:before':{display:'none'}}}><AccordionSummary expandIcon={<ExpandMoreIcon/>}><Typography variant="body2">{t.configuration}{job.data.documentSetup?' · '+w[job.data.documentSetup.documentType]+' / '+w[job.data.documentSetup.composition]:''}</Typography></AccordionSummary><AccordionDetails sx={{p:0}}><FreightDocumentSetup job={job} languageCode={languageCode} busy={busy||working} onDirtyChange={setConfigDirty} onSave={saveSetup}/></AccordionDetails></Accordion>

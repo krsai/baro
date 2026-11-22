@@ -16,7 +16,7 @@ import {useAuth} from '../../context/AuthContext';
 import {useLanguage} from '../../context/LanguageContext';
 import {requestJSON,buildQueryString} from '../../utils/apiClient';
 import {freightText,freightError} from '../../constants/freight';
-import {freightDocumentHtml,printFreightDocument} from '../../utils/freightPrint';
+import {freightDocumentHtml,printFreightDocument,downloadFreightOriginal} from '../../utils/freightPrint';
 
 const types=['jobs','masters','dispatches'],statuses=['DRAFT','BOOKED','IN_TRANSIT','ARRIVED','DELIVERED','CANCELLED'];
 const grid={display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))'},gap:2};
@@ -35,7 +35,7 @@ export function Workspace({orgId}){
  const go=(nextType,nextId)=>{setError('');setDocument(null);setParams({type:nextType,...(nextType==='jobs'?{view:'operations'}:{}),...(nextId?{id:nextId}:{})});};
  const mutate=async run=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await run();if(alive.current)setReload(n=>n+1);}catch(e){if(alive.current)setError(freightError(e,t));}finally{lock.current=false;if(alive.current)setBusy(false);}};
  const createDocument=kind=>mutate(async()=>{const doc=await api(type+'/'+id+'/documents',{method:'POST',body:JSON.stringify({clientKey:crypto.randomUUID(),kind,version:detail.version,revision:detail.revision})});if(alive.current)setDocument(doc);});
- const openDocument=doc=>mutate(async()=>{const full=await api('documents/'+doc.id);if(alive.current)setDocument(full);});
+ const openDocument=doc=>mutate(async()=>{const full=await api('documents/'+doc.id);if(alive.current&&!downloadFreightOriginal(full))setDocument(full);});
  const startPackage=row=>{setPackageSearch('');setPackageEdit(row||{id:crypto.randomUUID(),label:'',quantity:'1',weightKg:'0',cbm:'0',dispatchId:null});};
  const packageOpen=Boolean(packageEdit);
  useEffect(()=>{if(!packageOpen)return;let live=true;const timer=setTimeout(()=>api('dispatches',{query:{search:packageSearch}}).then(result=>{if(live)setPackageRows(result.rows);}).catch(e=>{if(live)setError(freightError(e,t));}),200);return()=>{live=false;clearTimeout(timer);};},[api,packageOpen,packageSearch,t]);

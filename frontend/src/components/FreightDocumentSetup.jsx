@@ -1,4 +1,4 @@
-import React,{useEffect,useState} from 'react';
+import React,{useEffect,useRef,useState} from 'react';
 import {Button,MenuItem,Paper,Stack,TextField} from '@mui/material';
 import SaveButton from './SaveButton';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
@@ -7,7 +7,8 @@ import {documentTypes,freightWorkflowText} from '../constants/freightWorkflow';
 export default function FreightDocumentSetup({job,languageCode,busy,onSave,onNext,onDirtyChange}){
  const t=freightWorkflowText[languageCode]||freightWorkflowText.en,types=documentTypes(job);
  const initial=job.data.documentSetup||{composition:job.bills.some(row=>row.kind==='HOUSE')?(job.bills.some(row=>row.kind==='MASTER')?'MASTER_HOUSE':'HOUSE_ONLY'):'MASTER_ONLY',documentType:types[0]};
- const [value,setValue]=useState(initial),dirty=JSON.stringify(value)!==JSON.stringify(initial);
+ const [value,setValue]=useState(initial),baseline=useRef(JSON.stringify(initial)),dirty=JSON.stringify(value)!==baseline.current;
+ useEffect(()=>{if(!dirty||JSON.stringify(value)===JSON.stringify(initial)){baseline.current=JSON.stringify(initial);setValue({...initial});}},[job.version,JSON.stringify(initial)]);
  useUnsavedChanges(dirty);
  useEffect(()=>{onDirtyChange?.(dirty);return()=>onDirtyChange?.(false);},[dirty,onDirtyChange]);
  return <Paper variant="outlined" sx={{p:1.5}}><Stack spacing={1} direction={{xs:'column',sm:'row'}} useFlexGap flexWrap="wrap" alignItems={{xs:'stretch',sm:'center'}} sx={{'& > .MuiFormControl-root':{flex:1,minWidth:200}}}>

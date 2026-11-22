@@ -1,3 +1,4 @@
+import {shippingTradeText} from '../frontend/src/constants/shippingTrade.js';
 import {shippingWorkbenchText} from '../frontend/src/constants/shippingWorkbench.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -34,12 +35,12 @@ try{
   });
   await page.route('**/shipping-requests/job1/charges*',route=>{chargeReads++;return route.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{rows:[],currencies:[]}});});
   await page.goto(`http://127.0.0.1:${port}/freight-workflow-acceptance.html`);
-  await page.getByRole('tab',{name:(shippingWorkbenchText[lang]||shippingWorkbenchText.en).documents,exact:true}).click().catch(async e=>{console.log(errors,await page.locator('body').innerText());throw e;});assert.equal(chargeReads,0);
+  const chargesLoaded=page.waitForResponse(response=>response.url().includes('/shipping-requests/job1/charges'));await page.getByRole('tab',{name:shippingTradeText[lang].documents,exact:true}).click().catch(async e=>{console.log(errors,await page.locator('body').innerText());throw e;});await chargesLoaded;assert.ok(chargeReads>0);
   const composition=page.getByRole('combobox',{name:w.composition,exact:true});await composition.click().catch(async e=>{console.log('SETUP DEBUG',errors,await page.locator('body').innerText(),await page.locator('[role="combobox"]').evaluateAll(rows=>rows.map(row=>row.outerHTML)));throw e;});await page.getByRole('option',{name:w.MASTER_HOUSE,exact:true}).click();
   fail=true;await page.getByRole('button',{name:w.save,exact:true}).click();await page.waitForFunction(message=>(window.workflowNotices||[]).includes(message),t.conflict);assert.ok((await composition.innerText()).includes(w.MASTER_HOUSE));
-  fail=false;await page.getByRole('button',{name:w.save,exact:true}).click();await page.getByRole('button',{name:t.addHouse,exact:true}).waitFor();assert.equal(job.data.documentSetup.documentType,'AIR_WAYBILL');assert.equal(writes,2);
+  fail=false;await page.getByRole('button',{name:w.save,exact:true}).click();await page.getByRole('button',{name:t.addHouse,exact:true}).and(page.locator(':enabled')).waitFor();assert.equal(job.data.documentSetup.documentType,'AIR_WAYBILL');assert.equal(writes,2);
   assert.equal(await page.getByRole('button',{name:t.addHouse,exact:true}).isEnabled(),true);
-  await Promise.all([page.waitForResponse(response=>response.url().includes('/shipping-requests/job1/charges')),page.getByRole('tab',{name:(shippingWorkbenchText[lang]||shippingWorkbenchText.en).charges,exact:true}).click()]);await page.getByRole('button',{name:(shippingWorkbenchText[lang]||shippingWorkbenchText.en).addCharge,exact:true}).waitFor();assert.ok(chargeReads>0);
+  await page.getByRole('button',{name:(shippingWorkbenchText[lang]||shippingWorkbenchText.en).addCharge,exact:true}).waitFor();await page.getByRole('button',{name:(shippingWorkbenchText[lang]||shippingWorkbenchText.en).addCharge,exact:true}).waitFor();assert.ok(chargeReads>0);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);await page.close();
  }
  const page=await browser.newPage();let calls=0;

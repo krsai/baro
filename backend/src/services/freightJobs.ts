@@ -3,6 +3,7 @@ import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {freightActor,freightForwarder,listFreight,saveFreight} from './freightOperations';
 import {saveJobProgress,createJobDocument} from './freightJobWorkflow';
+import {saveShippingTradeDocument} from './shippingTradeDocuments';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const text=(v:any,max=120)=>typeof v==='string'&&v.trim().length<=max?v.trim():fail('FREIGHT_INVALID_INPUT');
 async function job(db:any,orgId:number,id:string,lock=false){
@@ -12,7 +13,7 @@ async function job(db:any,orgId:number,id:string,lock=false){
 export async function jobDetail(db:any,orgId:number,actorId:number,id:string){
  await freightActor(db,orgId,actorId);const row=await job(db,orgId,id);
  const bills=await db.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE "orgId"=$1 AND "jobId"=$2 AND "deletedAt" IS NULL ORDER BY "createdAt",id',orgId,id);
- const documents=await db.$queryRawUnsafe('SELECT id,kind,number,"sourceVersion","createdAt" FROM "FreightDocument" WHERE "orgId"=$1 AND "jobId"=$2 ORDER BY "createdAt" DESC,id',orgId,id);
+ const documents=await db.$queryRawUnsafe('SELECT id,kind,number,"sourceVersion","createdAt",snapshot->\'tradeDocument\'->>\'sourceMode\' AS "sourceMode" FROM "FreightDocument" WHERE "orgId"=$1 AND "jobId"=$2 ORDER BY "createdAt" DESC,id',orgId,id);
  return {...row,bills,documents};
 }
 export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:string,input:any,id?:string,remove=false){
@@ -67,7 +68,7 @@ export async function saveDocumentSetup(db:any,orgId:number,actorId:number,jobId
 export function registerJobRoutes(app:any,db:any,access:any){
  const route=(method:string,path:string,work:any)=>app[method]('/freight/transport-jobs'+path,async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await work(scope,req));});
  route('get','',({orgId,actorId}:any,req:any)=>listFreight(db,orgId,actorId,'jobs',req.query));
- route('get','/options',async({orgId}:any)=>({forwarder:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true}}),employees:await db.employee.findMany({where:{orgId,status:'ACTIVE'},select:{id:true,name:true,employeeNo:true},orderBy:{name:'asc'}})}));
+ route('get','/options',async({orgId}:any)=>({forwarder:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true}}),employees:await db.employee.findMany({where:{orgId,status:'ACTIVE'},select:{id:true,name:true,employeeNo:true},orderBy:{name:'asc'}}),currencies:await db.currency.findMany({select:{code:true,name:true},orderBy:{code:'asc'}})}));
  route('get','/:id',({orgId,actorId}:any,req:any)=>jobDetail(db,orgId,actorId,req.params.id));
  const save=async({orgId,actorId}:any,req:any)=>{
   const previous=req.params.id?await job(db,orgId,req.params.id):null;
@@ -85,6 +86,7 @@ export function registerJobRoutes(app:any,db:any,access:any){
  route('put','/:id/document-setup',({orgId,actorId}:any,req:any)=>saveDocumentSetup(db,orgId,actorId,req.params.id,req.body));
  route('put','/:id/progress',({orgId,actorId}:any,req:any)=>saveJobProgress(db,orgId,actorId,req.params.id,req.body));
  route('post','/:id/documents',({orgId,actorId}:any,req:any)=>createJobDocument(db,orgId,actorId,req.params.id,req.body));
+ route('post','/:id/trade-documents',({orgId,actorId}:any,req:any)=>saveShippingTradeDocument(db,orgId,actorId,req.params.id,req.body));
  route('post','/:id/bills',({orgId,actorId}:any,req:any)=>saveJobBill(db,orgId,actorId,req.params.id,req.body));
  route('put','/:id/bills/:billId',({orgId,actorId}:any,req:any)=>saveJobBill(db,orgId,actorId,req.params.id,req.body,req.params.billId));
  route('delete','/:id/bills/:billId',({orgId,actorId}:any,req:any)=>saveJobBill(db,orgId,actorId,req.params.id,req.body,req.params.billId,true));
