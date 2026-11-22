@@ -20,8 +20,7 @@ test('stock item CRUD shares inventory identities, keeps managed definitions, pr
   const access=async req=>({orgId:req.testOrg??org,actorId:req.testActor??actor});
   registerInventoryVariantRoutes(app,db,access);registerInventoryMovementRoutes(app,db,access);
   registerCodeItemAttributeRoutes(app,db,{requireOrgRole:async()=>({organization:s.company}),actorId:()=>actor,canAccessCodeItems:async()=>true});
-  const call=async(method,path,req={})=>{// Seed a pre-existing definition; registration endpoint approval is covered separately.
-   if(method==='post'&&path==='/material-items/variants')return db.$transaction(tx=>writeInventoryVariant(tx,{orgId:req.testOrg??org,actorId:req.testActor??actor},req.body,'post',req.body.clientKey));
+  const call=async(method,path,req={})=>{
    let value;await routes.get(method+path)({query:{},params:{},...req},{status(){return this;},json(v){value=v;}});return value;};
   const type=await call('post','/code-item-types',{query:{context:'MATERIAL'},body:{baseId:base.id,nameEn:'10x10x10',nameKo:'10x10x10',nameVi:'10x10x10'}});
   const options=await call('get','/material-items/variant-options',{query:{baseId:base.id}});

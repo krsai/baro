@@ -1,4 +1,3 @@
-import {registerMaterialRegistrationRoutes} from './materialRegistration';
 import {createHash} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {systemMaterialOptions,resolveSystemMaterialMaster} from './materialItems';
@@ -7,7 +6,6 @@ const fail=(code:string,status=400):never=>{throw createHttpError(status,code);}
 const inputMode=(value:any)=>value==='REQUIRED'?'REQUIRED':value==='OPTIONAL'?'OPTIONAL':'HIDDEN';
 const requirements=(base:any)=>{const settings=base.materialSettings??{},inputs=settings.masterInputs;return {type:inputMode(inputs===undefined?base.attributeInputs?.type:inputs.type),color:inputMode(inputs===undefined?settings.colorInput:inputs.color)};};
 export function registerInventoryVariantRoutes(app:any,db:any,access:any){
- registerMaterialRegistrationRoutes(app,db,access);
  app.get('/material-items/variant-options',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;
   const baseId=Number(req.query.baseId);if(!Number.isSafeInteger(baseId)||baseId<=0)fail('INVALID_MATERIAL_CODE');
@@ -15,7 +13,7 @@ export function registerInventoryVariantRoutes(app:any,db:any,access:any){
   const base=await db.transactionCodeBase.findUnique({where:{id:master.baseId}});
   res.json({master,fields:requirements(base),colors:await db.attrColor.findMany({orderBy:{code:'asc'}})});
  });
- for(const method of ['put','delete'])app[method]('/material-items/variants'+(method==='post'?'':'/:id'),async(req:any,res:any)=>{
+ for(const method of ['post','put','delete'])app[method]('/material-items/variants'+(method==='post'?'':'/:id'),async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;
   const {orgId,actorId}=scope,body=req.body||{},id=method==='post'?body.clientKey:String(req.params.id);
   if(typeof id!=='string'||!/^[\w-]{8,100}$/.test(id)||method!=='post'&&(!Number.isSafeInteger(body.revision)||body.revision<1)||method==='post'&&(!Number.isSafeInteger(body.baseId)||body.baseId<=0)||method!=='delete'&&(!Number.isSafeInteger(body.ownerId)||body.ownerId<=0||['typeId','colorId'].some(key=>body[key]!=null&&(!Number.isSafeInteger(body[key])||body[key]<=0))))fail('VARIANT_INVALID');

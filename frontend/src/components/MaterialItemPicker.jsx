@@ -1,5 +1,3 @@
-import {materialRegistrationText} from '../constants/materialRegistration';
-import {useAppActions} from '../context/AppContext';
 import React,{useEffect,useRef,useState} from 'react';
 import {Button,Stack,Typography} from '@mui/material';
 import ExpenseLookupField from './ExpenseLookupField';
@@ -11,7 +9,6 @@ import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {materialItemText,materialItemName,materialItemSpec} from '../constants/materialItems';
 export default function MaterialItemPicker({orgId,baseId,context='EXPENSE',value,snapshot,onChange,languageCode,disabled=false,required=true,onBusyChange,selectVariants=false,autoOpen=false,searchOnly=false,onCancel,allowRegistration=true}){
  const auth=useAuth(),canRegister=allowRegistration&&selectVariants&&canAccessPath('/inventory/materials',auth);
- const {showNotification}=useAppActions();
  const t=materialItemText[languageCode]||materialItemText.en;
  const [register,setRegister]=useState(false);
  const [state,setState]=useState({key:'',rows:[],busy:false,error:false}),[reload,setReload]=useState(0),key=String(orgId)+':'+baseId+':'+context+':'+selectVariants;
@@ -25,7 +22,6 @@ export default function MaterialItemPicker({orgId,baseId,context='EXPENSE',value
  },[key,reload,disabled,onBusyChange]);
  const rows=state.key===key?state.rows:[],selected=rows.find(row=>row.id===value&&(!selectVariants||row.variantId===snapshot?.variantId))||(value&&snapshot?{id:value,variantId:snapshot.variantId,data:snapshot}:null);
  const registered=async saved=>{
-  if(saved.pending){setRegister(false);showNotification((materialRegistrationText[languageCode]||materialRegistrationText.en).submitted,'success');onCancel?.();return;}
   saved={...saved,id:saved.variantId||saved.id};
   setRegister(false);setState({key,rows,busy:true,error:false});onBusyChange?.(true);
   try{
