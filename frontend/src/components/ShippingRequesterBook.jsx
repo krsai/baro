@@ -6,7 +6,6 @@ import {Button,Stack,TextField} from '@mui/material';
 import Alert from './AppNotice';
 import PageActions from './PageActions';
 import SearchInput from './SearchInput';
-import ShippingRequesterHistory from './ShippingRequesterHistory';
 import {usePageDialogs} from './PageDialogProvider';
 import {useAppActions} from '../context/AppContext';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
@@ -16,7 +15,7 @@ import {shippingEditorText} from '../constants/shippingEditor';
 const draft=row=>({id:row?.id||crypto.randomUUID(),version:row?.version,name:row?.data?.name||row?.name||'',phone:row?.data?.phone||row?.phone||'',address:row?.data?.address||row?.address||''});
 export default function ShippingRequesterBook({orgId,customerId,resolveCustomer,current,languageCode,onSelect,onClose,disabled=false}){
  const t=shippingEditorText[languageCode]||shippingEditorText.en,dialogs=usePageDialogs(),{showNotification}=useAppActions();
- const [scopeId,setScopeId]=useState(customerId),[rows,setRows]=useState([]),[edit,setEdit]=useState(()=>draft(current)),[query,setQuery]=useState(''),[loading,setLoading]=useState(!!customerId),[readError,setReadError]=useState(false),[saveError,setSaveError]=useState(false),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[reload,setReload]=useState(0),[history,setHistory]=useState(false);
+ const [scopeId,setScopeId]=useState(customerId),[rows,setRows]=useState([]),[edit,setEdit]=useState(()=>draft(current)),[query,setQuery]=useState(''),[loading,setLoading]=useState(!!customerId),[readError,setReadError]=useState(false),[saveError,setSaveError]=useState(false),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[reload,setReload]=useState(0);
  const baseline=useRef(JSON.stringify(edit)),pending=useRef(null),lock=useRef(false),alive=useRef(true);
  const dirty=JSON.stringify(edit)!==baseline.current,blocked=disabled||busy||uncertain;
  const valid=!!edit.name.trim()&&edit.name.length<=200&&/^\d{1,80}$/.test(edit.phone)&&edit.address.length<=1000;
@@ -43,8 +42,8 @@ export default function ShippingRequesterBook({orgId,customerId,resolveCustomer,
   }catch(error){const unknown=!error.status||error.status>=500;if(!unknown)pending.current=null;if(alive.current){setUncertain(unknown);setSaveError(true);}}
   finally{lock.current=false;if(alive.current)setBusy(false);}
  };
- return <><ListDetailDialog open onClose={async()=>{if(!history&&await leave())onClose();}} aria-label={t.requesterBook} data-testid="shipping-requester-book" title={t.requesterBook}
-  titleActions={<Button variant="outlined" disabled={blocked} onClick={()=>setHistory(true)}>{t.requesterHistory}</Button>} onNew={()=>open()} newLabel={t.newRequester} newDisabled={blocked}
+ return <ListDetailDialog open onClose={async()=>{if(await leave())onClose();}} aria-label={t.requesterBook} data-testid="shipping-requester-book" title={t.requesterBook}
+  onNew={()=>open()} newLabel={t.newRequester} newDisabled={blocked}
   search={<SearchInput sx={{width:'100%'}} placeholder={t.requesterSearch} inputProps={{'aria-label':t.requesterSearch}} value={query} disabled={blocked} onChange={event=>setQuery(event.target.value)}/>}
   list={<DialogRecordList rows={visible} columns={[{key:'name',label:t.requesterName,value:row=>row.data.name},{key:'phone',label:t.requesterPhone,value:row=>row.data.phone}]} selectedKey={edit.id} onSelect={open} disabled={blocked} loading={loading} error={readError} onRetry={blocked?undefined:()=>setReload(v=>v+1)} languageCode={languageCode}/>}
   frameDetail detailTitle={t.requesterDetails} detail={<Stack spacing={2}>
@@ -54,7 +53,5 @@ export default function ShippingRequesterBook({orgId,customerId,resolveCustomer,
    <TextField fullWidth label={t.savedAddress} value={edit.address} disabled={blocked} slotProps={{htmlInput:{maxLength:1000}}} onChange={event=>setEdit(v=>({...v,address:event.target.value}))}/>
   </Stack>}
   detailFooter={<DialogRecordActions onDelete={edit.version!=null?()=>mutate(true):undefined} deleteLabel={t.deletePreset} deleteDisabled={blocked} busy={busy} onSave={()=>mutate()} saveLabel={uncertain?t.retry:edit.version?t.savePreset:t.addRequester} saveDisabled={disabled||!uncertain&&(!valid||loading||readError||!!edit.version&&!dirty)}/>}
-  actions={<PageActions secondary={<Button disabled={blocked} onClick={async()=>{if(await leave())onClose();}}>{t.close}</Button>} primary={<Button variant="contained" disabled={blocked||!valid||!edit.version||dirty||loading||readError} onClick={()=>{onSelect({name:edit.name,phone:edit.phone,address:edit.address});onClose();}}>{t.loadPreset}</Button>}/>}/>
-  {history&&<ShippingRequesterHistory orgId={orgId} languageCode={languageCode} onClose={()=>setHistory(false)} onSelect={row=>open({...row,phone:row.phone.replace(/\D/g,'')})}/>}
- </>;
+  actions={<PageActions secondary={<Button disabled={blocked} onClick={async()=>{if(await leave())onClose();}}>{t.close}</Button>} primary={<Button variant="contained" disabled={blocked||!valid||!edit.version||dirty||loading||readError} onClick={()=>{onSelect({name:edit.name,phone:edit.phone,address:edit.address});onClose();}}>{t.loadPreset}</Button>}/>}/>;
 }
