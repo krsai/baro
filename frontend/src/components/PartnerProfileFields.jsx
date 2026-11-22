@@ -40,8 +40,9 @@ export default function PartnerProfileFields({value,onChange,disabled=false,lang
    </Box>
   </EntityDetailSection>
   <EntityDetailSection title={contact.title}><Box sx={{...grid,gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))',md:'repeat(3,minmax(0,1fr))'}}}>
-   {field('contactName',contact.contactName,{inputProps:{maxLength:200}})}{field('email',contact.email,{type:'email',inputProps:{maxLength:254}})}
+   {field('contactName',contact.contactName,{inputProps:{maxLength:200}})}
    <Box><EntityCountryPhoneFields countryField={field('country',common.country,{select:true,children:[<MenuItem key="empty" value="">—</MenuItem>,...getStaticOptionOptions('country',languageCode).map(row=><MenuItem key={row.value} value={row.value}>{row.label}</MenuItem>)]})} phoneField={<EntityPhoneField languageCode={languageCode} name="contactPhone" label={contact.phone} country={resolved('country')} value={resolved('contactPhone')} disabled={disabled} InputProps={{readOnly:fieldLocks.includes('contactPhone')}} inputProps={{maxLength:100}} onChange={event=>{if(!fieldLocks.includes('contactPhone'))onChange('contactPhone',event.target.value);}}/>}/></Box>
+   {field('email',contact.email,{type:'email',inputProps:{maxLength:254}})}
    <Box sx={{gridColumn:'1 / -1'}}>{field('address',contact.address,{inputProps:{maxLength:1000}})}</Box>
   </Box></EntityDetailSection>
  </Stack>;

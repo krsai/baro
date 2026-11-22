@@ -330,11 +330,11 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
 
 
       <EntityDetailSection title={contactText.title}>
-        <Grid container spacing={2}>
-          <Grid size={{xs:12,md:4}}>
+        <Box data-entity-contact-row sx={{display:"grid",gap:2,gridTemplateColumns:{xs:"minmax(0,1fr)",md:"repeat(3,minmax(0,1fr))"},"& > *":{minWidth:0}}}>
+          <Box>
             <TextField fullWidth size="small" label={contactText.representative} name="representative" value={formData.representative} onChange={handleInputChange} inputProps={{maxLength:200}}/>
-          </Grid>
-          <Grid size={{xs:12,md:4}}>
+          </Box>
+          <Box>
             <EntityCountryPhoneFields countryField={<TextField fullWidth select size="small" label={localText.country} name="country" value={formData.country} onChange={handleInputChange}>{countryOptions.map(option=><MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}</TextField>} phoneField={<EntityPhoneField languageCode={languageCode}
               country={formData.country}
               label={contactText.phone}
@@ -342,8 +342,8 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
               value={formData.phone}
               onChange={handleInputChange}
             />}/>
-          </Grid>
-          <Grid size={{xs:12,md:4}}>
+          </Box>
+          <Box>
             <TextField
               fullWidth
               size="small"
@@ -353,9 +353,9 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
               value={formData.email}
               onChange={handleInputChange}
             />
-          </Grid>
+          </Box>
 
-          <Grid size={{xs:12}}>
+          <Box sx={{gridColumn:"1 / -1"}}>
             <TextField
               fullWidth
               size="small"
@@ -364,7 +364,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
               value={formData.address}
               onChange={handleInputChange}
             />
-          </Grid></Grid>
+          </Box></Box>
       </EntityDetailSection>
       <EntityBankAccounts entityId={organizationId} orgId={activeOrgId} languageCode={languageCode}/>
       {activeProfile?.orgType === ORGANIZATION_TYPE_KEYS.BRAND && (
