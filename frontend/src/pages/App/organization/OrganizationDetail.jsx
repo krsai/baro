@@ -331,11 +331,11 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
 
       <EntityDetailSection title={contactText.title}>
         <Grid container spacing={2}>
-          <Grid size={{xs:12,md:3}}>
+          <Grid size={{xs:12,md:4}}>
             <TextField fullWidth size="small" label={contactText.representative} name="representative" value={formData.representative} onChange={handleInputChange} inputProps={{maxLength:200}}/>
           </Grid>
-          <Grid size={{xs:12,md:6}}>
-            <EntityCountryPhoneFields countryField={<TextField fullWidth select size="small" label={localText.country} name="country" value={formData.country} onChange={handleInputChange}>{countryOptions.map(option=><MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}</TextField>} phoneField={<EntityPhoneField
+          <Grid size={{xs:12,md:4}}>
+            <EntityCountryPhoneFields countryField={<TextField fullWidth select size="small" label={localText.country} name="country" value={formData.country} onChange={handleInputChange}>{countryOptions.map(option=><MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}</TextField>} phoneField={<EntityPhoneField languageCode={languageCode}
               country={formData.country}
               label={contactText.phone}
               name="phone"
@@ -343,7 +343,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
               onChange={handleInputChange}
             />}/>
           </Grid>
-          <Grid size={{xs:12,md:3}}>
+          <Grid size={{xs:12,md:4}}>
             <TextField
               fullWidth
               size="small"

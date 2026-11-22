@@ -1,3 +1,5 @@
+import EntityCountryPhoneFields from '../../../../components/EntityCountryPhoneFields';
+import EntityPhoneField from '../../../../components/EntityPhoneField';
 import Dialog from '../../../../components/AppDialog';
 import {calendarPayrollText} from '../../../../constants/calendarPayroll';
 import {useAuth} from '../../../../context/AuthContext';
@@ -641,8 +643,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
             description={extraText.contactDescription}
           >
             <Grid container spacing={2}>
-              <Grid item xs={3}>
-                <TextField
+              <Grid item xs={12} md={4}><EntityCountryPhoneFields countryField={<TextField
                   fullWidth
                   select
                   size="small"
@@ -656,29 +657,14 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
                       {option.label}
                     </MenuItem>
                   ))}
-                </TextField>
-              </Grid>
-              <Grid item xs={2}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label={text.countryCode}
-                  name="countryCode"
-                  value={formData.countryCode}
-                  onChange={handleInputChange}
-                  inputProps={{ maxLength: 4 }}
-                />
-              </Grid>
-              <Grid item xs={7}>
-                <TextField
+                </TextField>} phoneField={<EntityPhoneField languageCode={languageCode} localValue country={normalizeCountry(formData.country)||DEFAULT_COUNTRY}
                   fullWidth
                   size="small"
                   label={text.phoneNumber}
                   name="phoneNumber"
                   value={formData.phoneNumber}
                   onChange={handleInputChange}
-                />
-              </Grid>
+                />}/></Grid>
               <Grid item xs={12}>
                 <TextField
                   fullWidth

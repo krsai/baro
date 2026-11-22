@@ -1,3 +1,4 @@
+import EntityCountryPhoneFields from '../../../components/EntityCountryPhoneFields';
 import TableStatusRow from '../../../components/TableStatusRow';
 import EntityPhoneField from '../../../components/EntityPhoneField';
 import { phoneForCountry } from '../../../utils/entityPhone.mjs';
@@ -548,7 +549,7 @@ const OrganizationSubscriptionBoard = () => {
                     ))}
                   </TextField>
                 </Grid>
-                <Grid item xs={12} md={4}><TextField fullWidth select name="country" label={(ENTITY_TEXT[languageCode]||ENTITY_TEXT.en).country} value={orgForm.country} onChange={handleOrgChange}>{getStaticOptionOptions('country',languageCode).map(row=><MenuItem key={row.value} value={row.value}>{row.label}</MenuItem>)}</TextField></Grid>
+
                 <Grid item xs={12} md={4}>
                   <TextField
                     fullWidth
@@ -568,13 +569,13 @@ const OrganizationSubscriptionBoard = () => {
                   />
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <EntityPhoneField
+                  <EntityCountryPhoneFields countryField={<TextField fullWidth select name="country" label={(ENTITY_TEXT[languageCode]||ENTITY_TEXT.en).country} value={orgForm.country} onChange={handleOrgChange}>{getStaticOptionOptions('country',languageCode).map(row=><MenuItem key={row.value} value={row.value}>{row.label}</MenuItem>)}</TextField>} phoneField={<EntityPhoneField languageCode={languageCode}
                     country={orgForm.country}
                     label={(companyDocumentContactText[languageCode]||companyDocumentContactText.en).phone}
                     name="phone"
                     value={orgForm.phone}
                     onChange={handleOrgChange}
-                  />
+                  />}/>
                 </Grid>
                 <Grid item xs={12}>
                   <TextField

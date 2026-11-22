@@ -1,3 +1,4 @@
+import EntityCountryPhoneFields from '../../components/EntityCountryPhoneFields';
 import CompanyNameField from "../../components/CompanyNameField";
 import { phoneForCountry } from '../../utils/entityPhone.mjs';
 import EntityPhoneField from '../../components/EntityPhoneField';
@@ -877,22 +878,7 @@ const Onboarding = () => {
               onChange={handleRegisterChange}
               disabled={registerSubmitting}
             />
-            <TextField
-              fullWidth
-              required
-              select
-              label={t('countryLabel')}
-              name="country"
-              value={registerForm.country}
-              onChange={handleRegisterChange}
-              disabled={registerSubmitting}
-            >
-              {countryOptions.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </TextField>
+
             <TextField
               fullWidth
               required
@@ -920,7 +906,22 @@ const Onboarding = () => {
               onChange={handleRegisterChange}
               disabled={registerSubmitting}
             />
-            <EntityPhoneField
+            <EntityCountryPhoneFields countryField={<TextField
+              fullWidth
+              required
+              select
+              label={t('countryLabel')}
+              name="country"
+              value={registerForm.country}
+              onChange={handleRegisterChange}
+              disabled={registerSubmitting}
+            >
+              {countryOptions.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </TextField>} phoneField={<EntityPhoneField languageCode={languageCode}
               country={registerForm.country}
               required
               label={(companyDocumentContactText[languageCode]||companyDocumentContactText.en).phone}
@@ -928,7 +929,7 @@ const Onboarding = () => {
               value={registerForm.representativeContact}
               onChange={handleRegisterChange}
               disabled={registerSubmitting}
-            />
+            />}/>
             <TextField
               fullWidth
               required
