@@ -20,6 +20,10 @@ export function generalCustomerFields(data:any){
   if(typeof value!=='string'||!value.trim()||value.length>max)fail('SHIPPING_REQUESTER_REQUIRED');
   result[key]=value.trim();
  }
+ if(data.actualRequesterAddress!==undefined){
+  if(typeof data.actualRequesterAddress!=='string'||data.actualRequesterAddress.length>1000)fail('SHIPPING_INVALID');
+  result.actualRequesterAddress=data.actualRequesterAddress.trim();
+ }
  return result;
 }
 // Called only by authenticated SR/address-book writes, never by a read/options request.

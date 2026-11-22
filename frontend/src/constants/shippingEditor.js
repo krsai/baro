@@ -67,3 +67,9 @@ Object.assign(shippingEditorText.vi,{requesterSelect:'Chọn / đăng ký khách
 Object.assign(shippingEditorText.ko,{newRequester:'새 고객'});
 Object.assign(shippingEditorText.en,{newRequester:'New customer'});
 Object.assign(shippingEditorText.vi,{newRequester:'Khách mới'});
+Object.assign(shippingEditorText.ko,{generalCustomerPerson:'일반 고객'});
+Object.assign(shippingEditorText.en,{generalCustomerPerson:'General customer'});
+Object.assign(shippingEditorText.vi,{generalCustomerPerson:'Khách lẻ'});
+Object.assign(shippingEditorText.ko,{requesterName:'이름',requesterPhone:'연락처'});
+Object.assign(shippingEditorText.en,{requesterName:'Name',requesterPhone:'Phone'});
+Object.assign(shippingEditorText.vi,{requesterName:'Tên',requesterPhone:'Số điện thoại'});

@@ -17,6 +17,7 @@ export function presetFields(kind:string,value:any,partyId:number|null=null){
  if(kind==='LOCATION'&&!data.address)fail();
  if(kind==='LOCATION'&&value.country){if(!['KR','VN'].includes(value.country))fail();data.country=value.country;}
  if(kind==='REQUESTER'&&(partyId!==null||!data.name||!/^\d{1,80}$/.test(data.phone)))fail();
+ if(kind==='REQUESTER'&&value.address!==undefined)data.address=clean(value.address,1000);
  return data;
 }
 export async function listShippingPresets(db:any,scope:any,customerId:number,kind:string){
