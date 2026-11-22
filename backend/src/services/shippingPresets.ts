@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {scopedParty} from './freightOperations';
+import {shippingGeneralCustomerId} from './shippingGeneralCustomer';
 const fail=(code='SHIPPING_INVALID',status=400):never=>{throw createHttpError(status,code);};
 const clean=(value:any,max:number)=>{if(typeof value!=='string'||value.length>max)fail();return value.trim();};
 async function bucket(db:any,scope:any,customerId:number){
@@ -11,14 +12,16 @@ async function bucket(db:any,scope:any,customerId:number){
 }
 export function presetFields(kind:string,value:any,partyId:number|null=null){
  if(!value||typeof value!=='object'||Array.isArray(value))fail();
- const keys=kind==='PARTY'?{...(partyId==null?{name:200}:{}),address:1000,contactName:320,phone:320,email:320}:kind==='LOCATION'?{address:160,contactName:320,phone:320}:fail();
+ const keys=kind==='REQUESTER'?{name:200,phone:80}:kind==='PARTY'?{...(partyId==null?{name:200}:{}),address:1000,contactName:320,phone:320,email:320}:kind==='LOCATION'?{address:160,contactName:320,phone:320}:fail();
  const data:any={};for(const [key,max] of Object.entries(keys))data[key]=clean(value[key]??'',max);
  if(kind==='LOCATION'&&!data.address)fail();
  if(kind==='LOCATION'&&value.country){if(!['KR','VN'].includes(value.country))fail();data.country=value.country;}
+ if(kind==='REQUESTER'&&(partyId!==null||!data.name||!/^\d{1,80}$/.test(data.phone)))fail();
  return data;
 }
 export async function listShippingPresets(db:any,scope:any,customerId:number,kind:string){
- await bucket(db,scope,customerId);if(!['PARTY','LOCATION'].includes(kind))fail();
+ await bucket(db,scope,customerId);if(!['PARTY','LOCATION','REQUESTER'].includes(kind))fail();
+ if(kind==='REQUESTER'&&(scope.org.type!=='SERVICE'||await shippingGeneralCustomerId(db,scope.orgId)!==customerId))fail('SHIPPING_ACCESS_DENIED',403);
  return db.$queryRawUnsafe('SELECT id,label,kind,data,"partyId",version FROM "ShippingPreset" WHERE "orgId"=$1 AND "customerId"=$2 AND kind=$3 AND "deletedAt" IS NULL ORDER BY label,id',scope.orgId,customerId,kind);
 }
 export async function saveShippingPreset(db:any,scope:any,input:any,remove=false){
@@ -33,6 +36,7 @@ export async function saveShippingPreset(db:any,scope:any,input:any,remove=false
   const partyId=remove?old.partyId:input.partyId??null;
   if(partyId!=null){if(!Number.isSafeInteger(partyId))fail();if(partyId!==scope.orgId)await scopedParty(tx,scope.orgId,partyId);}
   const kind=remove?old.kind:input.kind,data=remove?old.data:presetFields(kind,input.data,partyId),label=remove?old.label:clean(input.label,200);
+  if(kind==='REQUESTER'&&(scope.org.type!=='SERVICE'||await shippingGeneralCustomerId(tx,scope.orgId)!==input.customerId))fail('SHIPPING_ACCESS_DENIED',403);
   if(!label)fail();
   if(!remove&&old&&!old.deletedAt&&old.partyId===partyId&&old.kind===kind&&old.label===label&&JSON.stringify(presetFields(kind,old.data,partyId))===JSON.stringify(data))return old;
   if(old&&(old.deletedAt||old.version!==input.version))fail('SHIPPING_CHANGED',409);

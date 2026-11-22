@@ -7,6 +7,7 @@ const require=createRequire(import.meta.url);
 const {saveFreight,listFreight,freightOptions}=require('../backend/dist/services/freightOperations');
 const {transportSnapshot}=require('../backend/dist/services/transportExchange');
 const {listShippingRequesters}=require('../backend/dist/services/shippingRequests');
+const {saveShippingPreset,listShippingPresets}=require('../backend/dist/services/shippingPresets');
 test('express general customer is created once per company with independent SR requester details and real protected FK',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),orgId=s.company.id,actorId=s.people.admin.id;
@@ -19,6 +20,22 @@ test('express general customer is created once per company with independent SR r
   assert.equal(job.orgId,orgId);assert.equal(job.requestCreatedByOrgId,orgId);assert.equal(job.requestCreatedByEmployeeId,actorId);assert.equal(job.data.customerRole,undefined);assert.equal(job.data.generalCustomer,true);assert.equal(job.data.actualRequesterName,'Kim Min Su');assert.equal(job.data.shipperParty.name,'Sender');assert.equal(job.data.consigneeParty.name,'Recipient');
   assert.equal((await saveFreight(db,orgId,actorId,'jobs',input)).id,job.id);
   const pool=await db.organization.findUnique({where:{id:job.customerId}});assert.equal(pool.ownerOrgId,orgId);assert.equal(pool.dataOwnerOrgId,null);assert.equal(pool.partyKind,'INDIVIDUAL');assert.equal(await db.employee.count({where:{orgId:pool.id}}),0);
+  const scope={orgId,actorId,org:s.company},requesterInput={id:randomUUID(),customerId:pool.id,kind:'REQUESTER',label:'Repeat Kim',data:{name:'Repeat Kim',phone:'0900123'}},orgCount=await db.organization.count();
+  const registered=await saveShippingPreset(db,scope,requesterInput);
+  assert.equal(registered.data.name,'Repeat Kim');assert.equal(registered.data.phone,'0900123');
+  assert.equal((await saveShippingPreset(db,scope,requesterInput)).id,registered.id,'same creation request safely retries');
+  assert.equal((await listShippingPresets(db,scope,pool.id,'REQUESTER')).length,1);
+  await assert.rejects(listShippingPresets(db,scope,s.vendor.id,'REQUESTER'),/SHIPPING_ACCESS_DENIED/);
+  await assert.rejects(saveShippingPreset(db,scope,{...requesterInput,id:randomUUID(),customerId:s.vendor.id}),/SHIPPING_ACCESS_DENIED/);
+  await assert.rejects(saveShippingPreset(db,scope,{...requesterInput,id:randomUUID(),partyId:s.vendor.id}),/SHIPPING_INVALID/);
+  await assert.rejects(saveShippingPreset(db,scope,{...requesterInput,id:randomUUID(),data:{name:'Bad phone',phone:'090-123'}}),/SHIPPING_INVALID/);
+  await assert.rejects(db.$executeRawUnsafe('UPDATE "ShippingPreset" SET data=$1::jsonb,version=version+1 WHERE id=$2',JSON.stringify({name:'Bad direct write',phone:'090-123'}),registered.id),/SHIPPING_INVALID/);
+  const renamed=await saveShippingPreset(db,scope,{...requesterInput,version:1,data:{name:'Updated Kim',phone:'0909999'}});
+  assert.equal(renamed.version,2);assert.equal((await db.freightJob.findUnique({where:{id:job.id}})).data.actualRequesterName,'Kim Min Su','register edits never rewrite prior shipment requester');
+  await assert.rejects(saveShippingPreset(db,scope,{...requesterInput,version:1,data:{name:'Stale',phone:'123'}}),/SHIPPING_CHANGED/);
+  const requesterMigration=require('../backend/scripts/migrate-entity-profiles').migrations().find(row=>row.version==='20261122020000_shipping_requester_presets');await f.pg.exec(requesterMigration.sql);await f.pg.exec(requesterMigration.sql);
+  await saveShippingPreset(db,scope,{id:registered.id,customerId:pool.id,version:2},true);
+  assert.deepEqual(await listShippingPresets(db,scope,pool.id,'REQUESTER'),[]);assert.equal(await db.organization.count(),orgCount,'individual requester registrations create no Organization');
   const second=await saveFreight(db,orgId,actorId,'jobs',{...input,clientKey:randomUUID(),data:{...data,actualRequesterName:'Lee',actualRequesterPhone:'0909999'}});
   assert.equal(second.customerId,job.customerId);assert.notEqual(second.id,job.id);assert.equal((await db.$queryRawUnsafe('SELECT * FROM "ShippingGeneralCustomer" WHERE "orgId"=$1',orgId)).length,1);
   const options=await freightOptions(db,orgId,actorId);assert.equal(options.find(row=>row.id===pool.id).isShippingGeneralCustomer,true);assert.equal(options.find(row=>row.id===pool.id).code,'EXGC');assert.equal(pool.code,null,'the scoped SR code does not rewrite global company codes');assert.equal(options.find(row=>row.id===s.vendor.id)?.code,s.vendor.code);

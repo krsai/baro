@@ -61,3 +61,9 @@ Object.assign(shippingEditorText.vi,{applyLocation:'Xác nhận',addressHeading:
 Object.assign(shippingEditorText.ko,{requesterHistory:'이전 의뢰인 선택'});
 Object.assign(shippingEditorText.en,{requesterHistory:'Select previous requester'});
 Object.assign(shippingEditorText.vi,{requesterHistory:'Chọn người yêu cầu trước đây'});
+Object.assign(shippingEditorText.ko,{requesterSelect:'일반 고객 선택 / 등록',requesterBook:'특송 일반 고객 관리',addRequester:'고객 등록',requesterSearch:'이름·연락처 검색'});
+Object.assign(shippingEditorText.en,{requesterSelect:'Select / register general customer',requesterBook:'Express general customers',addRequester:'Register customer',requesterSearch:'Search name or phone'});
+Object.assign(shippingEditorText.vi,{requesterSelect:'Chọn / đăng ký khách lẻ',requesterBook:'Quản lý khách lẻ chuyển phát',addRequester:'Đăng ký khách',requesterSearch:'Tìm tên hoặc số điện thoại'});
+Object.assign(shippingEditorText.ko,{newRequester:'새 고객'});
+Object.assign(shippingEditorText.en,{newRequester:'New customer'});
+Object.assign(shippingEditorText.vi,{newRequester:'Khách mới'});
