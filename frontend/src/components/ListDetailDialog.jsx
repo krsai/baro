@@ -31,7 +31,7 @@ export default function ListDetailDialog({title,titleActions,onNew,newLabel,newD
  return <AppDialog {...props} onKeyDownCapture={navigateRecords} fullWidth maxWidth={maxWidth} data-list-detail-dialog="true" slotProps={{...slotProps,paper:paperSlot}}>
   <DialogTitle component="div"><PageSectionHeader title={title} titleVariant="h6" actions={<>{titleActions}{onNew&&<AddActionButton showLabel title={newLabel} disabled={newDisabled} onClick={onNew}/>}</>}/></DialogTitle>
   <DialogContent {...contentProps} ref={contentRef} dividers><Stack spacing={2}>
-   {tools}{search&&<div data-record-search>{search}</div>}
+   {tools}{search&&<div data-record-search data-initial-focus-search>{search}</div>}
    <ListDetailLayout {...layoutProps} list={<div {...listProps}>{list}</div>} detail={split?<div {...detailProps}>{frameDetail?<DialogDetailPanel title={detailTitle} actions={detailActions} footer={detailFooter}>{detail}</DialogDetailPanel>:detail}</div>:null}/>
   </Stack></DialogContent>
   {actions&&<DialogActions data-record-actions>{actions}</DialogActions>}

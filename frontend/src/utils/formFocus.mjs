@@ -67,6 +67,10 @@ export function installKeyboardNavigation(doc=document){
   (!!node.getClientRects().length||getComputedStyle(node).display==='contents'&&[...node.children].some(layoutVisible));
  const visible=node=>!node.closest('[hidden],[inert],[aria-hidden="true"]')&&layoutVisible(node);
  const initialTarget=scope=>{
+  // Record searches may be disabled during loading. Wait for the search instead
+  // of treating the editable detail pane as the first field of a new record.
+  const search=[...scope.querySelectorAll('[data-initial-focus-search] input')].find(node=>node.closest(dialogSelector)===scope);
+  if(search)return canFocus(search)?search:null;
   const stops=navigationStops(scope),explicit=stops.find(node=>node.matches('[data-initial-focus],[autofocus]'));
   return explicit||stops.find(node=>node.matches('input,textarea,select,[role="combobox"],[contenteditable="true"]'))||stops[0];
  };
@@ -93,7 +97,7 @@ export function installKeyboardNavigation(doc=document){
    }
    const active=doc.activeElement,target=initialTarget(scope);
    if(!target)continue;
-   if(canFocus(active)&&scope.contains(active)&&active.matches('input,textarea,select,[role="combobox"],[contenteditable="true"],[data-initial-focus]')){entry.done=true;continue;}
+   if(canFocus(active)&&scope.contains(active)&&active.matches('input,textarea,select,[role="combobox"],[contenteditable="true"],[data-initial-focus]')&&!(target.closest('[data-initial-focus-search]')&&active!==target)){entry.done=true;continue;}
    if(entry.interaction!==state.interaction){entry.done=true;continue;}
    if(focus(target)){entry.done=true;if(!target.matches('input,textarea,select,[role="combobox"],[contenteditable="true"]'))entry.fallback=target;}
   }
