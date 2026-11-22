@@ -15,7 +15,7 @@ export function presetFields(kind:string,value:any,partyId:number|null=null){
  const keys=kind==='REQUESTER'?{name:200,phone:80}:kind==='PARTY'?{...(partyId==null?{name:200}:{}),address:1000,contactName:320,phone:320,email:320}:kind==='LOCATION'?{address:160,contactName:320,phone:320}:fail();
  const data:any={};for(const [key,max] of Object.entries(keys))data[key]=clean(value[key]??'',max);
  if(kind==='LOCATION'&&!data.address)fail();
- if(kind==='LOCATION'&&value.country){if(!['KR','VN'].includes(value.country))fail();data.country=value.country;}
+ if(value.country!==undefined&&value.country!==''){if(!['KR','VN'].includes(value.country))fail();data.country=value.country;}
  if(kind==='REQUESTER'&&(partyId!==null||!data.name||!/^\d{1,80}$/.test(data.phone)))fail();
  if(kind==='REQUESTER'&&value.address!==undefined)data.address=clean(value.address,1000);
  return data;

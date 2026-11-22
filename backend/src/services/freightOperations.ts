@@ -90,6 +90,10 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any,
    const document=d[role+'Party'];if(typeof document!=='object'||Array.isArray(document))fail('FREIGHT_INVALID_INPUT');
    data[role+'Party']={};for(const field of ['name','address','contactName','phone','email'])data[role+'Party'][field]=optional(document[field],field==='address'?1000:field==='name'?200:320);
   }
+  if(d[role+'Party']?.country){
+   if(!['KR','VN'].includes(d[role+'Party'].country))fail('FREIGHT_INVALID_INPUT');
+   data[role+'Party'].country=d[role+'Party'].country;
+  }
  }
  assertDistinctShippingParties(data.shipperParty,data.consigneeParty);
  if(d.customerRole!=null){

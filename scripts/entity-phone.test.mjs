@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { splitEntityPhone, phoneForCountry } from '../frontend/src/utils/entityPhone.mjs';
+import { splitEntityPhone, phoneForCountry, displayEntityPhone } from '../frontend/src/utils/entityPhone.mjs';
 
 test('international phone edits preserve subscriber digits and avoid duplicate prefixes', () => {
   assert.deepEqual(splitEntityPhone('+84 08555 00100', 'VN'), { prefix: '+84', local: '08555 00100' });
@@ -9,4 +9,8 @@ test('international phone edits preserve subscriber digits and avoid duplicate p
   assert.equal(phoneForCountry('08555 00100', 'VN', 'KR'), '+82 08555 00100');
   assert.equal(phoneForCountry('', 'VN', 'KR'), '');
   assert.deepEqual(splitEntityPhone('+82 12345', 'VN'), { prefix: '+82', local: '12345' });
+  assert.equal(displayEntityPhone('0901234567','VN'),'+84 0901234567');
+  assert.equal(displayEntityPhone('+82 0101234','VN'),'+82 0101234');
+  assert.equal(displayEntityPhone('0101234',''),'0101234');
+  assert.equal(displayEntityPhone('','KR'),'');
 });

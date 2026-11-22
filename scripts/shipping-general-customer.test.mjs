@@ -11,7 +11,7 @@ const {saveShippingPreset,listShippingPresets}=require('../backend/dist/services
 test('express general customer is created once per company with independent SR requester details and real protected FK',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),orgId=s.company.id,actorId=s.people.admin.id;
-  const data={generalCustomer:true,actualRequesterName:'Kim Min Su',actualRequesterPhone:'+84 123 456',actualRequesterAddress:'Hanoi requester home',shipmentType:'AIR',shipperParty:{name:'Sender',address:'Pickup'},consigneeParty:{name:'Recipient',address:'Delivery'},cargo:'Personal goods'};
+  const data={generalCustomer:true,actualRequesterName:'Kim Min Su',actualRequesterPhone:'+84 123 456',actualRequesterAddress:'Hanoi requester home',actualRequesterCountry:'VN',shipmentType:'AIR',shipperParty:{name:'Sender',address:'Pickup'},consigneeParty:{name:'Recipient',address:'Delivery'},cargo:'Personal goods'};
   const input={clientKey:randomUUID(),mode:'AIR',service:'EXPRESS',customerId:null,data};
   await assert.rejects(saveFreight(db,orgId,actorId,'jobs',{...input,data:{...data,actualRequesterName:' '}}),/SHIPPING_REQUESTER_REQUIRED/);
   assert.deepEqual(await db.$queryRawUnsafe('SELECT * FROM "ShippingGeneralCustomer"'),[],'failed SR does not leave a collection partner mapping');
@@ -20,9 +20,11 @@ test('express general customer is created once per company with independent SR r
   assert.equal(job.orgId,orgId);assert.equal(job.requestCreatedByOrgId,orgId);assert.equal(job.requestCreatedByEmployeeId,actorId);assert.equal(job.data.customerRole,undefined);assert.equal(job.data.generalCustomer,true);assert.equal(job.data.actualRequesterName,'Kim Min Su');assert.equal(job.data.shipperParty.name,'Sender');assert.equal(job.data.consigneeParty.name,'Recipient');
   assert.equal((await saveFreight(db,orgId,actorId,'jobs',input)).id,job.id);
   const pool=await db.organization.findUnique({where:{id:job.customerId}});assert.equal(pool.ownerOrgId,orgId);assert.equal(pool.dataOwnerOrgId,null);assert.equal(pool.partyKind,'INDIVIDUAL');assert.equal(await db.employee.count({where:{orgId:pool.id}}),0);
-  const scope={orgId,actorId,org:s.company},requesterInput={id:randomUUID(),customerId:pool.id,kind:'REQUESTER',label:'Repeat Kim',data:{name:'Repeat Kim',phone:'0900123',address:'Saved requester address'}},orgCount=await db.organization.count();
+  const scope={orgId,actorId,org:s.company},requesterInput={id:randomUUID(),customerId:pool.id,kind:'REQUESTER',label:'Repeat Kim',data:{name:'Repeat Kim',phone:'0900123',address:'Saved requester address',country:'VN'}},orgCount=await db.organization.count();
+  await assert.rejects(saveShippingPreset(db,scope,{...requesterInput,id:randomUUID(),data:{...requesterInput.data,country:'XX'}}),/SHIPPING_INVALID/);
+  await assert.rejects(saveFreight(db,orgId,actorId,'jobs',{...input,clientKey:randomUUID(),data:{...data,actualRequesterCountry:'XX'}}),/SHIPPING_INVALID/);
   const registered=await saveShippingPreset(db,scope,requesterInput);
-  assert.equal(registered.data.name,'Repeat Kim');assert.equal(registered.data.phone,'0900123');
+  assert.equal(job.data.actualRequesterCountry,'VN');assert.equal(registered.data.country,'VN');assert.equal(registered.data.name,'Repeat Kim');assert.equal(registered.data.phone,'0900123');
   assert.equal(registered.data.address,'Saved requester address');assert.equal(job.data.actualRequesterAddress,'Hanoi requester home');
   await assert.rejects(saveShippingPreset(db,scope,{...requesterInput,id:randomUUID(),data:{...requesterInput.data,address:123}}),/SHIPPING_INVALID/);
   await assert.rejects(saveFreight(db,orgId,actorId,'jobs',{...input,clientKey:randomUUID(),data:{...data,actualRequesterAddress:'x'.repeat(1001)}}),/SHIPPING_INVALID/);
@@ -64,7 +66,7 @@ test('express general customer is created once per company with independent SR r
   await assert.rejects(db.$executeRawUnsafe('UPDATE "FreightJob" SET data=data-\'actualRequesterPhone\',version=version+1 WHERE id=$1',job.id),/SHIPPING_REQUESTER_REQUIRED/);
   await assert.rejects(db.$executeRawUnsafe('DELETE FROM "ShippingGeneralCustomer" WHERE "orgId"=$1',orgId),/SHIPPING_GENERAL_CUSTOMER_IMMUTABLE/);
   await assert.rejects(db.organization.update({where:{id:pool.id},data:{ownerOrgId:null}}),/SHIPPING_GENERAL_CUSTOMER_IMMUTABLE/);
-  const publicData=transportSnapshot(job).data;assert.equal(publicData.actualRequesterName,undefined);assert.equal(publicData.actualRequesterAddress,undefined);assert.equal(publicData.actualRequesterPhone,undefined,'internal requester contact is not implicitly shared');
+  const publicData=transportSnapshot(job).data;assert.equal(publicData.actualRequesterCountry,undefined);assert.equal(publicData.actualRequesterName,undefined);assert.equal(publicData.actualRequesterAddress,undefined);assert.equal(publicData.actualRequesterPhone,undefined,'internal requester contact is not implicitly shared');
   const before=await db.$queryRawUnsafe('SELECT data,"requestSnapshot" FROM "FreightJob" WHERE id=$1',job.id);
   const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(row=>row.version==='20261114090000_shipping_general_customer');await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);assert.deepEqual(await db.$queryRawUnsafe('SELECT data,"requestSnapshot" FROM "FreightJob" WHERE id=$1',job.id),before);
   const edit=await saveFreight(db,orgId,actorId,'jobs',{...input,customerId:pool.id,version:job.version,data:{...data,actualRequesterPhone:'+84 777'}},job.id);assert.equal(edit.data.actualRequesterPhone,'+84 777');assert.equal(edit.requestCreatedByOrgId,orgId);assert.equal(edit.customerId,pool.id);

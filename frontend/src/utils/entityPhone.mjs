@@ -1,5 +1,10 @@
 export const countryCallingCode = country => ({ KR: '+82', VN: '+84' }[country] || '');
 
+export function displayEntityPhone(value,country){
+ const phone=String(value||'');
+ return !phone||phone.startsWith('+')?phone:[countryCallingCode(country),phone].filter(Boolean).join(' ');
+}
+
 export function splitEntityPhone(value, country) {
   const phone = String(value || '');
   const expected = countryCallingCode(country);
