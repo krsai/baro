@@ -17,7 +17,9 @@ export function shippingRouteFields(data:any,mode:string){
    const source=data.routeLocationDetails[node];if(!source||typeof source!=='object'||Array.isArray(source))fail();
    const contact:any={};for(const [key,max]of Object.entries({label:200,contactName:320,phone:320})){
     const value=source[key]??'';if(typeof value!=='string'||value.length>max)fail();contact[key]=value.trim();
-   }details[node]=contact;
+   }
+   if(source.country){if(!['KR','VN'].includes(source.country))fail();contact.country=source.country;}
+   details[node]=contact;
   }
  }
  return {routeLocations:locations,...(data.routeLocationDetails===undefined?{}:{routeLocationDetails:details}),origin:locations[nodes[start]!],destination:locations[nodes[end]!]};

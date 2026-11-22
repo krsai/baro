@@ -39,7 +39,7 @@ export default function ShippingAddressBook({orgId,customerId,current,registered
   lock.current=true;setBusy(true);setSaveError(false);
   try{
    const resolvedId=scopeCustomerId||await resolveCustomer?.();if(!resolvedId)throw new Error('SHIPPING_CUSTOMER_REQUIRED');if(!scopeCustomerId)setScopeCustomerId(resolvedId);
-   pending.current=pending.current||{remove,path:remove?'/'+edit.id:'',method:remove?'DELETE':'POST',body:JSON.stringify(remove?{customerId:resolvedId,version:edit.version}:{id:edit.id,version:edit.version,customerId:resolvedId,kind:'LOCATION',label:edit.label,data:{address:edit.address,contactName:edit.contactName,phone:edit.phone}})};
+   pending.current=pending.current||{remove,path:remove?'/'+edit.id:'',method:remove?'DELETE':'POST',body:JSON.stringify(remove?{customerId:resolvedId,version:edit.version}:{id:edit.id,version:edit.version,customerId:resolvedId,kind:'LOCATION',label:edit.label,data:{address:edit.address,contactName:edit.contactName,phone:edit.phone,...(edit.country?{country:edit.country}:{})}})};
    const work=pending.current;
    const saved=await requestJSON('/shipping-requests/presets'+work.path+buildQueryString({orgId}),{method:work.method,body:work.body});
    pending.current=null;
@@ -51,7 +51,7 @@ export default function ShippingAddressBook({orgId,customerId,current,registered
   finally{lock.current=false;if(alive.current)setBusy(false);}
  };
  const registered=registeredParty?.address?.trim()?{id:'registered-party',label:registeredParty.name,data:addressValue({...registeredParty,label:registeredParty.name}),registered:true}:null;
- const filtered=[...(registered?[registered]:[]),...rows].filter(row=>[row.label,row.data.address,row.data.contactName,row.data.phone].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+ const filtered=[...(registered?[registered]:[]),...rows].filter(row=>[row.label,row.data.country,row.data.address,row.data.contactName,row.data.phone].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
  const apply=()=>{onLoad(addressValue(edit));onClose();};
  return <Dialog open fullWidth maxWidth="md" onClose={async()=>{if(await leave())onClose();}} data-testid={testId} aria-label={title||t.savedAddresses}>
   <DialogTitle component="div"><Stack direction="row" justifyContent="space-between" alignItems="center" gap={2} flexWrap="wrap"><Typography variant="h6">{title||t.savedAddresses}</Typography><Button variant="contained" disabled={blocked||!addressValid} onClick={apply}>{t.applyLocation}</Button></Stack></DialogTitle>
@@ -70,7 +70,7 @@ export default function ShippingAddressBook({orgId,customerId,current,registered
     <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}><Typography variant="subtitle2">{t.addressHeading}</Typography><Stack direction="row" alignItems="center" gap={1}>{edit.version!=null&&<Button color="error" disabled={blocked} onClick={()=>mutate(true)}>{t.deleteAddress}</Button>}<SaveButton disabled={blocked||!scopeCustomerId&&!resolveCustomer||loading||readError||!edit.label.trim()||!addressValid||!!edit.version&&!dirty} onClick={()=>mutate()}>{edit.version?t.saveAddress:t.addToAddressBook}</SaveButton></Stack></Stack>
     {saveError&&<Alert severity="error" action={uncertain?<Button disabled={busy} onClick={()=>mutate()}>{t.retry}</Button>:undefined}>{t.failed}</Alert>}
 
-    <ShippingAddressFields value={edit} onChange={setEdit} t={t} disabled={blocked} autoFocus personLabel={personLabel}/>
+    <ShippingAddressFields value={edit} onChange={setEdit} t={t} languageCode={languageCode} disabled={blocked} autoFocus personLabel={personLabel}/>
    </Stack>
   </Box></DialogContent>
  </Dialog>;

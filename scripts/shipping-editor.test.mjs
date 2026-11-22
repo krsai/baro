@@ -51,6 +51,17 @@ test('real company/customer-scoped presets, FK guards, soft deletion, audit and 
   await assert.rejects(saveShippingPreset(db,scope,{...location,version:2,data:{address:'Warehouse',phone:123}}),/SHIPPING_INVALID/);
   const routeData={origin:'Hanoi warehouse',destination:'Buyer warehouse',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'},routeLocations:{ORIGIN_DOOR:'Hanoi warehouse',DESTINATION_DOOR:'Buyer warehouse'},routeLocationDetails:{ORIGIN_DOOR:{label:'Main warehouse',contactName:'Kim',phone:'+84 123',privateCost:'secret'}}};
   const routeJob=await saveFreight(db,orgId,actorId,'jobs',{clientKey:randomUUID(),mode:'ROAD',customerId:s.vendor.id,data:routeData});
+  const countryMigration=require('../backend/scripts/migrate-entity-profiles').migrations().find(row=>row.version==='20261122010000_shipping_location_country');
+  await f.pg.exec(countryMigration.sql);await f.pg.exec(countryMigration.sql);
+  const countryData={...routeData,routeLocationDetails:{ORIGIN_DOOR:{...routeData.routeLocationDetails.ORIGIN_DOOR,country:'VN'}}};
+  const countryJob=await saveFreight(db,orgId,actorId,'jobs',{clientKey:randomUUID(),mode:'ROAD',customerId:s.vendor.id,data:countryData});
+  assert.equal(countryJob.data.routeLocationDetails.ORIGIN_DOOR.country,'VN');
+  assert.equal(countryJob.requestSnapshot.data.routeLocationDetails.ORIGIN_DOOR.country,'VN');
+  assert.equal(transportSnapshot(countryJob).data.routeLocationDetails.ORIGIN_DOOR.country,'VN');
+  const countryPreset=await saveShippingPreset(db,scope,{id:randomUUID(),customerId:s.vendor.id,kind:'LOCATION',label:'Vietnam',data:{address:'Hanoi',country:'VN',phone:'0123'}});
+  assert.equal(countryPreset.data.country,'VN');
+  await assert.rejects(saveShippingPreset(db,scope,{id:randomUUID(),customerId:s.vendor.id,kind:'LOCATION',label:'Invalid',data:{address:'Hanoi',country:'INVALID'}}),/SHIPPING_INVALID/);
+  await saveShippingPreset(db,scope,{id:countryPreset.id,customerId:s.vendor.id,version:1},true);
   const contact={label:'Main warehouse',contactName:'Kim',phone:'+84 123'};
   assert.deepEqual(routeJob.data.routeLocationDetails.ORIGIN_DOOR,contact);assert.deepEqual(routeJob.requestSnapshot.data.routeLocationDetails.ORIGIN_DOOR,contact);assert.deepEqual(transportSnapshot(routeJob).data.routeLocationDetails.ORIGIN_DOOR,contact);
   const contactProjection=(await db.$queryRawUnsafe("SELECT baro_shipping_projection('ROAD','DRAFT',$1::jsonb) AS value",JSON.stringify(routeData)))[0].value;assert.deepEqual(contactProjection.data.routeLocationDetails.ORIGIN_DOOR,contact);
