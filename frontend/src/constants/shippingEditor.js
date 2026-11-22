@@ -79,3 +79,7 @@ Object.assign(shippingEditorText.vi,{newAddress:'Địa chỉ mới'});
 Object.assign(shippingEditorText.ko,{newPreset:'새 저장 정보'});
 Object.assign(shippingEditorText.en,{newPreset:'New saved information'});
 Object.assign(shippingEditorText.vi,{newPreset:'Thông tin lưu mới'});
+
+Object.assign(shippingEditorText.ko,{chargeableWeightKg:'???? C.W. (kg)'});
+Object.assign(shippingEditorText.en,{chargeableWeightKg:'Chargeable weight C.W. (kg)'});
+Object.assign(shippingEditorText.vi,{chargeableWeightKg:'Tr?ng l??ng t?nh c??c C.W. (kg)'});

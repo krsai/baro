@@ -103,3 +103,13 @@ test('real company/customer-scoped presets, FK guards, soft deletion, audit and 
   const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(row=>row.version==='20261113070000_shipping_editor_presets');await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);assert.equal((await listShippingPresets(db,own,orgId,'PARTY')).length,1);
  }finally{await f.close();}
 });
+
+test('express cargo requires quantity, unit and weights while dimensions are optional and snapshots retain C.W.',()=>{
+ const data={cargoSchemaVersion:1,expressCargoVersion:1,transportService:'EXPRESS',cargo:'Garments',shipmentType:'AIR',unit:'CTN',weightKg:'5',chargeableWeightKg:'6',packages:[{quantity:'2',lengthM:'',widthM:'',heightM:''}]};
+ const cargo=shippingCargo(data,'AIR');assert.equal(cargo.cbm,'');assert.equal(cargo.quantity,'2');assert.equal(cargo.unit,'CTN');assert.equal(cargo.chargeableWeightKg,'6');
+ for(const patch of [{unit:''},{weightKg:''},{chargeableWeightKg:''},{chargeableWeightKg:'0'},{packages:[{quantity:'0'}]},{packages:[{quantity:'2',lengthM:'-1'}]}])assert.throws(()=>shippingCargo({...data,...patch},'AIR'),/SHIPPING_CARGO_INVALID/);
+ const measured={...data,packages:[{quantity:'2',lengthM:'1',widthM:'0.5',heightM:'0.3'}]};assert.equal(shippingCargo(measured,'AIR').cbm,'0.300000');
+ assert.equal(transportSnapshot({mode:'AIR',service:'EXPRESS',data}).data.chargeableWeightKg,'6');
+ assert.deepEqual(shippingCargo({...data,expressCargoVersion:undefined,packages:measured.packages},'AIR').packages,measured.packages);
+ assert.throws(()=>shippingCargo({...data,transportService:'GENERAL'},'AIR'),/SHIPPING_CARGO_INVALID/);
+});

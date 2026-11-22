@@ -10,6 +10,9 @@ export function shippingCargo(data:any,mode:string){
  if(data.cargoSchemaVersion==null)return {};
  if(data.cargoSchemaVersion!==1)fail();
  const result:any={cargoSchemaVersion:1};
+ const express=mode==='AIR'&&data.transportService==='EXPRESS'&&data.expressCargoVersion===1;
+ if(data.expressCargoVersion!=null&&!express)fail();
+ if(express){result.expressCargoVersion=1;result.chargeableWeightKg=number(data.chargeableWeightKg);if(typeof data.unit!=='string'||!data.unit.trim()||data.unit.length>30)fail();result.unit=data.unit.trim();}
  if(data.hsCode!=null){if(typeof data.hsCode!=='string'||data.hsCode!==''&&!/^\d{4}(?:\.?\d{2}){0,4}$/.test(data.hsCode))fail();result.hsCode=data.hsCode;}
  if(data.dgClass!==undefined||data.unNumber!==undefined){
   if(typeof data.dgClass!=='string'||typeof data.unNumber!=='string')fail();
@@ -41,10 +44,10 @@ export function shippingCargo(data:any,mode:string){
   result.containerType=result.containers.map((row:any)=>`${row.size}${row.type}`).join(', ');
  }else{
   if(!Array.isArray(data.packages)||!data.packages.length||data.packages.length>50)fail();
-  result.packages=data.packages.map((row:any)=>{if(!row||typeof row!=='object')fail();return {quantity:number(row.quantity,true),lengthM:number(row.lengthM),widthM:number(row.widthM),heightM:number(row.heightM)};});
+  result.packages=data.packages.map((row:any)=>{if(!row||typeof row!=='object'||Array.isArray(row))fail();return {quantity:number(row.quantity,true),...Object.fromEntries(['lengthM','widthM','heightM'].map(key=>[key,express&&(row[key]==null||row[key]==='')?'':number(row[key])]))};});
   result.quantity=result.packages.reduce((sum:number,row:any)=>sum+Number(row.quantity),0).toString();
-  result.cbm=result.packages.reduce((sum:any,row:any)=>sum.add(new Prisma.Decimal(row.quantity).mul(row.lengthM).mul(row.widthM).mul(row.heightM)),new Prisma.Decimal(0)).toFixed(6);
-  if(new Prisma.Decimal(result.cbm).gte('1000000000000'))fail();
+  result.cbm=express&&result.packages.some((row:any)=>!row.lengthM||!row.widthM||!row.heightM)?'':result.packages.reduce((sum:any,row:any)=>sum.add(new Prisma.Decimal(row.quantity).mul(row.lengthM).mul(row.widthM).mul(row.heightM)),new Prisma.Decimal(0)).toFixed(6);
+  if(result.cbm&&new Prisma.Decimal(result.cbm).gte('1000000000000'))fail();
   result.weightKg=number(data.weightKg);
  }
  return result;
