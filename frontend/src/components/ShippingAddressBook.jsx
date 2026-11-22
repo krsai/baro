@@ -14,7 +14,7 @@ import {shippingEditorText} from '../constants/shippingEditor';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 
-const record=row=>({id:row.id,version:row.version,...addressValue({...row.data,label:row.label})});
+const record=row=>({id:row.id,selectionKey:row.id,version:row.version,...addressValue({...row.data,label:row.label})});
 export default function ShippingAddressBook({orgId,customerId,current,registeredParty,languageCode,onLoad,onClose,title,personLabel,resolveCustomer,locationLookup,disabled=false,testId='shipping-address-book'}){
  const t=shippingEditorText[languageCode]||shippingEditorText.en,dialogs=usePageDialogs(),{showNotification}=useAppActions();
  const [initial]=useState(()=>({id:crypto.randomUUID(),...addressValue(current)}));
@@ -34,7 +34,7 @@ export default function ShippingAddressBook({orgId,customerId,current,registered
  const leave=async()=>!blocked&&(!dirty||await dialogs.confirm(t.discard,{purpose:'discard'}));
  const open=async row=>{
   if(!await leave())return;
-  const next=row?.registered?{id:crypto.randomUUID(),...addressValue({...row.data,label:row.label})}:row?record(row):{id:crypto.randomUUID(),...addressValue()};
+  const next=row?.registered?{id:crypto.randomUUID(),selectionKey:row.id,...addressValue({...row.data,label:row.label})}:row?record(row):{id:crypto.randomUUID(),...addressValue()};
   baseline.current=JSON.stringify(next);setEdit(next);setSaveError(false);
  };
  const mutate=async(remove=false)=>{
@@ -62,7 +62,7 @@ export default function ShippingAddressBook({orgId,customerId,current,registered
   tools={<>{!scopeCustomerId&&!resolveCustomer&&<Alert severity="info">{t.chooseCustomer}</Alert>}{locationLookup?.(place=>setEdit({id:crypto.randomUUID(),label:place,address:place,contactName:'',phone:''}),blocked)}</>}
   search={<SearchInput sx={{width:'100%'}} label={t.addressSearch} autoComplete="off" value={query} disabled={blocked||!scopeCustomerId&&!resolveCustomer} onChange={event=>setQuery(event.target.value)}/>}
   layoutProps={{'data-address-workspace':true}} listProps={{'data-address-list':true}} detailProps={{'data-address-detail':true}}
-  list={<DialogRecordList rows={filtered} columns={[{key:'name',label:personLabel||t.addressTitle,value:row=>row.label,width:'40%'},{key:'address',label:t.savedAddress,value:row=>row.data.address}]} selectedKey={edit.version!=null?edit.id:null} onSelect={open} disabled={blocked} loading={loading} error={readError} loaded={!!scopeCustomerId||!!resolveCustomer} onRetry={blocked?undefined:()=>setReload(v=>v+1)} languageCode={languageCode}/>}
+  list={<DialogRecordList rows={filtered} columns={[{key:'name',label:personLabel||t.addressTitle,value:row=>row.label,width:'40%'},{key:'address',label:t.savedAddress,value:row=>row.data.address}]} selectedKey={edit.selectionKey||null} onSelect={open} previewDisabled={dirty} disabled={blocked} loading={loading} error={readError} loaded={!!scopeCustomerId||!!resolveCustomer} onRetry={blocked?undefined:()=>setReload(v=>v+1)} languageCode={languageCode}/>}
   frameDetail detailTitle={t.addressHeading} detail={<Stack spacing={2}>
    {edit.address.length>160&&<Alert severity="error">{t.routeAddressTooLong}</Alert>}
    {!englishValid&&<Alert severity="error">{shippingEnglishText[languageCode]||shippingEnglishText.en}</Alert>}

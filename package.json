@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:record-preview": "node scripts/record-preview-keyboard-browser.test.mjs && node scripts/lookup-pointer-keyboard-browser.test.mjs && node scripts/list-detail-browser.test.mjs",
     "test:shipping-directory": "npm --prefix backend run build && node --test scripts/shipping-directory.test.mjs scripts/shipping-parties.test.mjs scripts/shipping-editor.test.mjs && node scripts/shipping-registered-parties-browser.test.mjs",
     "check:jsx-bindings": "node --test scripts/jsx-component-bindings.test.mjs",
     "test:account-overview-layout": "npm --prefix backend run build && node --test scripts/account-overview.test.mjs scripts/account-yesterday.test.mjs scripts/account-balance-conversion.test.mjs && node scripts/ledger-workspace-browser.test.mjs --overview-only && node scripts/account-overview-layout-browser.test.mjs && node scripts/account-balance-chart-browser.test.mjs",

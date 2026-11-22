@@ -6,6 +6,6 @@ import { ui } from '../theme/ui';
 // Callers own labels, permissions, confirmation and save scope.
 export default function PageActions({ secondary, primary, children, sx = {} }) {
   return <Box sx={{ display:'flex', alignItems:'center', justifyContent:'flex-end', flexWrap:'wrap', gap:ui.layout.actionGap, minWidth:0, ...sx }}>
-    {secondary}{children}{primary}
+    {secondary}{children}{React.isValidElement(primary)?React.cloneElement(primary,{'data-page-primary':true}):primary}
   </Box>;
 }

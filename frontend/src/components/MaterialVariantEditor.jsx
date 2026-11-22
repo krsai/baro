@@ -72,7 +72,7 @@ function VariantForm({orgId,baseId,row,languageCode,onClose,onSaved,selector,dir
  return <ListDetailDialog open title={title} slotProps={{paper:{'aria-labelledby':undefined,'aria-label':title}}} onClose={close} maxWidth={row?'sm':false}
   tools={selector&&React.cloneElement(selector,{disabled:isLocked})}
   onNew={!row?()=>setPreview(null):undefined} newLabel={c.new} newDisabled={isLocked}
-  list={!row?<DialogRecordList rows={rankMaterialCandidates(registered||[],typeText,owner?.id)} columns={columns} selectedKey={preview?.id} onSelect={value=>setPreview(current=>current?.id===value.id?null:value)} disabled={isLocked} loading={registered===null&&!error} error={registered===null&&Boolean(error)} onRetry={()=>setReload(n=>n+1)} languageCode={languageCode}/>:<DialogDetailPanel footer={actions}>{form}</DialogDetailPanel>}
+  list={!row?<DialogRecordList rows={rankMaterialCandidates(registered||[],typeText,owner?.id)} columns={columns} selectedKey={preview?.id} onPreview={setPreview} onSelect={value=>setPreview(current=>current?.id===value.id?null:value)} disabled={isLocked} loading={registered===null&&!error} error={registered===null&&Boolean(error)} onRetry={()=>setReload(n=>n+1)} languageCode={languageCode}/>:<DialogDetailPanel footer={actions}>{form}</DialogDetailPanel>}
   detail={row?null:preview?<DialogDetailPanel title={a.similar} footer={<Button disabled={isLocked} onClick={()=>setPreview(null)}>{c.clear}</Button>}><RecordDetails framed={false} fields={columns.map(column=>({...column,value:column.value(preview)}))}/></DialogDetailPanel>:<DialogDetailPanel title={m.add} footer={actions}>{form}</DialogDetailPanel>}
   actions={<Button disabled={isLocked} onClick={close}>{t.close}</Button>}/>;
 }
