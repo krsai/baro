@@ -18,7 +18,7 @@ test('paid code/evidence edit replaces payment atomically, preserves money/histo
   const editor=await db.employee.create({data:{orgId:org,name:'Editor',email:'editor@test',orgRole:'ADMIN',gradeId:s.people.lead.gradeId,status:'ACTIVE'}});
   const approver=await db.employee.create({data:{orgId:org,name:'Approver',email:'approver@test',orgRole:'ADMIN',gradeId:s.people.admin.gradeId,status:'ACTIVE'}});
   const installment=randomUUID();
-  const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org,author,{partnerOrgId:s.vendor.id,requestDate:'2026-11-16',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'100',vatRate:'0',details:{reference:'REF',evidenceFile:'old.pdf'},paymentSchedule:[{id:installment,label:'Advance',scheduledDate:'2026-11-16',currency:'USD',amount:'40'},{id:randomUUID(),label:'Balance',scheduledDate:'2026-11-20',currency:'USD',amount:'60'}]}]}));
+  const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org,author,{remark:'Expense purpose',partnerOrgId:s.vendor.id,requestDate:'2026-11-16',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'100',vatRate:'0',details:{reference:'REF',evidenceFile:'old.pdf'},paymentSchedule:[{id:installment,label:'Advance',scheduledDate:'2026-11-16',currency:'USD',amount:'40'},{id:randomUUID(),label:'Balance',scheduledDate:'2026-11-20',currency:'USD',amount:'60'}]}]}));
   const source=await loadExpenseEditorSource(db,org,'request',String(doc.id));
   const names={nameKo:'Correction',nameEn:'Correction',nameVi:'Correction'};
   const base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}});
@@ -69,7 +69,7 @@ test('highest admin code correction follows allocated expense FKs for every part
    const variant=await db.settingTransactionCodeDefault.create({data:{code:prefix+'E',...names,serviceTypeId:base.serviceTypeId,baseId:next.id,taxTreatmentId:s.code.taxTreatmentId}});
    codes.push(await db.transactionCode.create({data:{code:prefix+'E',...names,ownerOrgId:org,serviceTypeId:s.code.serviceTypeId,baseId:next.id,taxTreatmentId:s.code.taxTreatmentId,systemDefaultId:variant.id}}));
   }
-  const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor.id,{partnerOrgId:s.vendor.id,automaticRequestDate:true,clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'100',vatRate:'0',details:{reference:'REF',evidenceFile:'receipt.pdf'}}]}));
+  const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor.id,{remark:'Expense purpose',partnerOrgId:s.vendor.id,automaticRequestDate:true,clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'100',vatRate:'0',details:{reference:'REF',evidenceFile:'receipt.pdf'}}]}));
   const originals=[];
   for(const amount of ['40','60']){
    const bank={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{entryKind:'BANK',clientKey:randomUUID(),accountId:s.account.id,transactionDate:'2026-11-16',direction:'OUT',amount,remark:'Partial payment: balance due later',purpose:'Partial payment',accountingCodeId:codes[0].id,evidenceType:'EXPENSE',expenseRequestId:doc.id,expenseVersion:doc.version,expenseItems:[{itemId:doc.items[0].id,amount}],counterparty:{kind:'PARTNER',id:s.vendor.id}}]};
@@ -107,7 +107,7 @@ test('highest admin code correction follows allocated expense FKs for every part
   assert.equal((await db.$queryRawUnsafe('SELECT * FROM "PaidExpenseCorrection"')).length,2);
   // A payment spanning two newly different codes has no unique representative.
   // Reject it atomically rather than silently copying the first item's code.
-  const mixed=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor.id,{partnerOrgId:s.vendor.id,automaticRequestDate:true,clientKey:randomUUID(),items:[1,2].map(()=>({transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'50',vatRate:'0',details:{reference:'MIX',evidenceFile:'receipt.pdf'}}))}));
+  const mixed=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor.id,{remark:'Expense purpose',partnerOrgId:s.vendor.id,automaticRequestDate:true,clientKey:randomUUID(),items:[1,2].map(()=>({transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'50',vatRate:'0',details:{reference:'MIX',evidenceFile:'receipt.pdf'}}))}));
   const mixedBank={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{entryKind:'BANK',clientKey:randomUUID(),accountId:s.account.id,transactionDate:'2026-11-16',direction:'OUT',amount:'100',accountingCodeId:s.code.id,evidenceType:'EXPENSE',expenseItems:mixed.items.map(i=>({itemId:i.id,amount:'50'})),counterparty:{kind:'PARTNER',id:s.vendor.id}}]};
   await requestChangeApproval(db,org,actor.id,{menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:mixedBank.clientKey,payload:mixedBank,clientKey:randomUUID()});
   const mixedSource=await loadExpenseEditorSource(db,org,'request',String(mixed.id)),mixedForm=expenseEditorForm(mixedSource);
@@ -126,7 +126,7 @@ test('dashboard correction explicitly links a registered material to a paid lega
   const {systemMaterialOptions}=require('../backend/dist/services/materialItems');
   const {ledgerEntryRevision}=require('../backend/dist/services/bankLedgerEdit');
   await saveApprovalActionBatch(db,org,actor.id,[{menu:'BANK_LEDGER',operation:'CREATE',settings:{revision:0,drafterScope:{role:'ALL',gradeId:null},registrationStages:[{role:'ADMIN',gradeMatch:'ANY',gradeId:null}]}}]);
-  const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor.id,{partnerOrgId:s.vendor.id,requestDate:'2026-11-20',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'10',unitPrice:'10',vatRate:'0',details:{evidenceFile:'carton.pdf'}}]}));
+  const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor.id,{remark:'Expense purpose',partnerOrgId:s.vendor.id,requestDate:'2026-11-20',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'10',unitPrice:'10',vatRate:'0',details:{evidenceFile:'carton.pdf'}}]}));
   const bank={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{entryKind:'BANK',clientKey:randomUUID(),accountId:s.account.id,transactionDate:'2026-11-20',direction:'OUT',amount:'100',accountingCodeId:s.code.id,evidenceType:'EXPENSE',expenseRequestId:doc.id,expenseVersion:doc.version,expenseItems:[{itemId:doc.items[0].id,amount:'100'}],counterparty:{kind:'PARTNER',id:s.vendor.id}}]};
   const payment=await requestChangeApproval(db,org,actor.id,{menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:bank.clientKey,payload:bank,clientKey:randomUUID()});assert.equal(payment.status,'APPROVED');
   const original=await db.bankLedgerEntry.findFirst({where:{orgId:org,voidedAt:null}});

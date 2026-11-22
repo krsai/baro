@@ -44,7 +44,7 @@ function harness({sourceEnabled=true}={}) {
         taxTreatment:{code:where.id===8?'EXEMPT':'VAT',suffix:where.id===8?'E':'V'},
         serviceType: { id: 4 }, base: {nameEn:'Transport',isActive:true,code:'TRK',expenseType:{isActive:true},variants:[{id:2,taxTreatmentId:where.id===8?3:1,isActive:true,isEnabled:sourceEnabled}], entryMode: where.id === 8 ? 'PROCESS' : 'LOGISTICS', orderInput: 'OPTIONAL', styleInput: 'HIDDEN', processInput: 'HIDDEN', requiredFields: [] } }) },
       expenseRequestAudit:{create:async({data:row})=>{data.audits.push(row);return row;}},
-      systemSetting: { findUnique: async ({where}) => ({ value: where.key.startsWith('EXPENSE_APPROVAL_POLICY:') ? {limits:{VND:{senior:'20000000',lead:'100000000'},USD:{senior:'1000',lead:'5000'},KRW:{senior:'1000000',lead:'5000000'}},seniorGradeId:1,leadGradeId:2} : { defaultVatRate: '10' } }) },
+      systemSetting: { findUnique: async ({where}) => where.key.startsWith('APPROVAL_MODE:')||where.key.startsWith('APPROVAL_DEFAULT:')?null:({ value: where.key.startsWith('EXPENSE_APPROVAL_POLICY:') ? {limits:{VND:{senior:'20000000',lead:'100000000'},USD:{senior:'1000',lead:'5000'},KRW:{senior:'1000000',lead:'5000000'}},seniorGradeId:1,leadGradeId:2} : { defaultVatRate: '10' } }) },
       organization: { findFirst: async () => ({ id: 11 }), findUnique: async () => ({ name: 'Vendor' }) },
       workOrder: { findFirst: async () => ({ id: 30 }) }, workOrderItem: { findFirst: async () => ({ id: 1 }) }, styleProcess: { findFirst: async () => ({ id: 50 }) },
       assignmentPlan: { findMany: async () => [{ id: 60, factoryId: 1, isCompleted: false, assignmentCtSnapshot: { processes: [{ styleProcessId: 50 }] }, assignmentStSnapshot: { processes: [{ styleProcessId: 50 }] } }] },
@@ -192,7 +192,7 @@ test('server application date applies to all new costs and conflicting item date
 });
 test('documents reject conflicting payees, invalid currencies, empty or excessive lines and unauthorized access', async () => {
   const { route,db } = routeHarness();
-  for (const patch of [{ remark: 'x'.repeat(501) },{ currency: 'EUR' },{ items: [] },{ items: Array(51).fill(input().items[0]) },{ items: [{ ...input().items[0], currency: 'EUR' }] },{ items: [{ ...input().items[0], partnerOrgId: 99 }] }]) await assert.rejects(route({ body: { ...input(), ...patch } },response()));
+  for (const patch of [{remark:undefined},{remark:null},{remark:''},{remark:' \n\t '},{ remark: 'x'.repeat(501) },{ currency: 'EUR' },{ items: [] },{ items: Array(51).fill(input().items[0]) },{ items: [{ ...input().items[0], currency: 'EUR' }] },{ items: [{ ...input().items[0], partnerOrgId: 99 }] }]) await assert.rejects(route({ body: { ...input(), ...patch } },response()));
   assert.equal(db.state().documents.length,0);
   const forbidden = postRoute({ requireOrgRole: async () => null, ORG_MANAGEMENT_ROLES: ['ADMIN'] });
   await forbidden({ body: input() },response());
@@ -279,3 +279,5 @@ test('issuer and author come from authorized server context rather than request 
   assert.equal(db.state().documents[0].orgId,1);assert.equal(db.state().documents[0].createdByEmployeeId,20);
   assert.ok(db.state().costs.every(row=>row.orgId===1&&row.createdByEmployeeId===20));
 });
+
+test('registration rejects missing or whitespace-only remarks before creating any expense',async()=>{for(const remark of [undefined,null,'',' \n\t ','\u00a0\u3000']){const {route,db}=routeHarness();await assert.rejects(route({body:{...input(),remark}},response()),/INVALID_EXPENSE_REMARK/);assert.deepEqual(db.state(),{documents:[],costs:[],logs:[],production:[],audits:[]});}});

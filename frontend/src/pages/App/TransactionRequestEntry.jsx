@@ -142,7 +142,8 @@ export default function TransactionRequestEntry() {
   const bankAccounts = payeeBanks.entityId === partner?.id ? payeeBanks.accounts : [];
   const hasPayeeBank = bankAccounts.length>0;
   const disabled = loading || loadError || saving || Boolean(submission) || Boolean(form.readOnly);
-  const valid = hasPayeeBank && !period.loading && !period.error && (form.remark || '').length <= 500 && partner?.isActive &&
+  const remarkValid=Boolean(form.remark?.trim())&&(form.remark||'').length<=500;
+  const valid = hasPayeeBank && !period.loading && !period.error && (form.paidCorrectionOnly||remarkValid) && partner?.isActive &&
     form.requestDate && (!period.startDate || form.requestDate >= period.startDate) && form.items.every(line => statuses[line.key]);
   const money = (value, currency) => formatCurrency(value, { currencyCode: currency, languageCode });
   const close = () => navigateToPath('/outsourcing-record', { label: labels.document, closeTabId: formPath });
@@ -167,6 +168,7 @@ export default function TransactionRequestEntry() {
     if(!submission&&!valid){
       setValidationAttempt(value=>value+1);
       const missing=[];
+      if(!form.paidCorrectionOnly&&!remarkValid)missing.push(header.remark);
       if(!form.requestDate||period.startDate&&form.requestDate<period.startDate)missing.push(labels.date);
       if(!partner?.isActive)missing.push(labels.payee);
       if(!hasPayeeBank)missing.push(bankText.required);
@@ -214,6 +216,7 @@ export default function TransactionRequestEntry() {
         if((line?.[2]||code)==='INVALID_MATERIAL_ITEM'){setError((materialItemText[languageCode]||materialItemText.en).changed);return;}
         if((changeApprovalText[languageCode]||changeApprovalText.en)[code]){setError((changeApprovalText[languageCode]||changeApprovalText.en)[code]);return;}
         if(['INVALID_EXPENSE_PAYMENT_SCHEDULE','EXPENSE_PAYMENT_SCHEDULE_TOTAL_MISMATCH','EXPENSE_PAYMENT_SCHEDULE_REFERENCED'].includes(code)){const t=expensePaymentText[languageCode]||expensePaymentText.en;setError(code==='EXPENSE_PAYMENT_SCHEDULE_TOTAL_MISMATCH'?t.mismatch:code==='EXPENSE_PAYMENT_SCHEDULE_REFERENCED'?t.referenced:t.invalid);return;}
+        if(code==='INVALID_EXPENSE_REMARK'){setError(labels.required+' (REMARK)');return;}
         if(code==='INVALID_CASH_SCHEDULE_DATE'){setError((cashScheduleText[languageCode]||cashScheduleText.en).invalid);return;}
         const field=line&&({REQUIRED_REQUEST_ORDER:'order',REQUIRED_REQUEST_STYLE:'style',REQUIRED_REQUEST_PROCESS:'process',SELECT_ASSIGNMENT_PLAN:'assignment',ELIGIBLE_ASSIGNMENT_REQUIRED:'assignment'})[line[2]];
         const requiredDetail=line?.[2]?.match(/^REQUIRED_TRANSACTION_FIELD:(.+)$/);
@@ -276,7 +279,7 @@ export default function TransactionRequestEntry() {
           )}</Droppable>
         </DragDropContext>
         <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'minmax(0,1fr) 360px'},gap:3,p:3,bgcolor:'grey.50'}} data-testid="expense-summary">
-          <TextField fullWidth multiline minRows={4} label={header.remark} value={form.remark || ''} disabled={disabled||form.paidCorrectionOnly} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} sx={{height:'100%','& .MuiInputBase-root':{height:'100%',alignItems:'flex-start'},'& textarea':{height:'100% !important',overflow:'auto !important'}}}/>
+          <TextField fullWidth multiline minRows={4} required={!form.paidCorrectionOnly} error={validationAttempt>0&&!form.paidCorrectionOnly&&!remarkValid} label={header.remark} value={form.remark || ''} disabled={disabled||form.paidCorrectionOnly} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} sx={{height:'100%','& .MuiInputBase-root':{height:'100%',alignItems:'flex-start'},'& textarea':{height:'100% !important',overflow:'auto !important'}}}/>
         <Stack alignItems="flex-end" spacing={1} data-testid="expense-totals" sx={{minWidth:0}}>
           {totals.map(total => <Stack key={total.currency} spacing={1} sx={{ width: '100%' }}>
             <Typography variant="subtitle2">{total.currency}</Typography>

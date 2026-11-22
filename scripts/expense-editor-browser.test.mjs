@@ -1,5 +1,6 @@
 import {accountingCompactText} from '../frontend/src/constants/accountingCompact.js';
 import {expensePaymentText} from '../frontend/src/constants/expensePaymentSchedule.js';
+const remarkOnly=process.argv.includes('--remark-only');
 const layoutOnly=process.argv.includes('--layout-only');
 import {cashScheduleText} from '../frontend/src/constants/cashSchedule.js';
 const scheduleOnly=process.argv.includes('--schedule-only');
@@ -104,6 +105,14 @@ try {
       const date=page.getByLabel(cashScheduleText[lang].payment,{exact:true});await date.waitFor();assert.equal(await date.inputValue(),'2026-12-10');await date.fill('2026-12-20');assert.equal(await date.inputValue(),'2026-12-20');
       for(const width of [1440,390]){await page.setViewportSize({width,height:1000});assert.equal(await date.isVisible(),true);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
       assert.deepEqual(errors,[]);await page.close();continue;
+    }
+    if(remarkOnly){
+      const remark=page.getByRole('textbox',{name:/REMARK/});await remark.waitFor();
+      if(locked){assert.equal(await remark.isDisabled(),true);await page.close();continue;}
+      await page.waitForFunction(()=>!document.querySelector('textarea')?.disabled);
+      const save=page.locator('button.MuiButton-contained').first();
+      for(const width of [1440,390]){await page.setViewportSize({width,height:1000});for(const blank of ['', '   ']){await remark.fill(blank);await save.click();await page.waitForFunction(()=>document.querySelector('textarea[required]')?.getAttribute('aria-invalid')==='true');assert.equal(submitted,undefined);assert.equal(await remark.getAttribute('aria-invalid'),'true');}await remark.fill('Specific expense explanation');assert.equal(await remark.getAttribute('aria-invalid'),'false');assert.equal(await remark.getAttribute('required'),'');}
+      assert.deepEqual(errors,[]);console.log('PASS required expense remark '+mode+' '+lang+' desktop/mobile');await page.close();continue;
     }
     const l=EXPENSE_REQUEST_TEXT[lang],lookup=EXPENSE_LOOKUP_TEXT[lang];
     if(lookupOnly){
@@ -215,7 +224,7 @@ try {
       assert.equal(await page.locator('.MuiAlert-standardWarning').count(),0,'Shared source FK must not produce an industry warning');
       const save=page.locator('button.MuiButton-contained').first();
       if(mode==='PROCESS'){
-        assert.equal(await page.getByLabel('REMARK',{exact:false}).inputValue(),'');
+        assert.equal(await page.getByLabel('REMARK',{exact:false}).inputValue(),'');await page.getByLabel('REMARK',{exact:false}).fill('Process work explanation');
         assert.equal(await page.getByTestId('expense-line').first().getByLabel(l.price,{exact:false}).isDisabled(),true);
         await page.waitForFunction(()=>!document.querySelector('button.MuiButton-contained')?.disabled);
         if(lang==='ko'){
@@ -248,7 +257,7 @@ try {
       await page.evaluate(()=>window.changeWorkspace('/outsourcing-record/edit/legacy/78'));await page.waitForTimeout(100);
       assert.equal(await page.evaluate(()=>window.expenseNavigations.length),1,'Closing or returning to a saved form must not trigger another navigation');
       assert.equal(submitted.approvalSelection.seniorEmployeeId,21);assert.equal(submitted.managementNumber,undefined);assert.equal(submitted.automaticRequestDate,true);assert.equal(submitted.requestDate,undefined);
-      assert.equal(submitted.remark,mode==='PROCESS'?'':'Updated request');assert.equal(submitted.revision,'server-revision');
+      assert.equal(submitted.remark,mode==='PROCESS'?'Process work explanation':'Updated request');assert.equal(submitted.revision,'server-revision');
       assert.equal(submitted.items[0].sourceRecordId,78);assert.equal(submitted.items[0].assignmentPlanId,60);assert.equal(submitted.items[0].unitPrice,mode==='PROCESS'?'3000':'5000');
       assert.equal(submitted.items[0].description,undefined);
       if(mode==='PROCESS'&&lang==='ko'){assert.equal(submitted.items.length,2);assert.equal(submitted.items[1].sourceRecordId,undefined);assert.equal(submitted.items[1].assignmentPlanId,61);assert.equal(submitted.items[1].quantity,'200');}

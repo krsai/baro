@@ -216,3 +216,5 @@ test('a completed legacy process can acquire its first code and share one reques
   assert.deepEqual(db.state().costs.map(row=>row.expenseRequestId),[1,1]);assert.deepEqual(db.state().costs.map(row=>row.outsourcedWorkRecordId),[78,80]);
   await db.save(body);assert.equal(db.state().records.length,3);assert.equal(db.state().extraLogs.length,1);
 });
+
+test('new and ordinary edited requests require an explanatory remark and preserve all state on rejection',async()=>{for(const remark of [undefined,null,'',' \n\t ','x'.repeat(501)]){const db=harness(),body=await input(db),before=structuredClone(db.state());await assert.rejects(db.save({...body,remark}),/INVALID_EXPENSE_REMARK/);assert.deepEqual(db.state(),before);}});

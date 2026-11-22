@@ -53,7 +53,7 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   const paymentSchedule:any[]=[];
   const scheduledPaymentDate=cashScheduleDate(body?.scheduledPaymentDate);
   const remark = typeof body?.remark === 'string' ? body.remark.trim() : '';
-  if (remark.length > 500) fail('INVALID_EXPENSE_REMARK');
+  if ((!remark && !previous) || remark.length > 500) fail('INVALID_EXPENSE_REMARK');
   const payeeIds=expensePayeeIds(body);
   if (typeof body?.clientKey !== 'string' || !/^[\w-]{8,64}$/.test(body.clientKey)) fail('INVALID_TRANSACTION_KEY');
   if (!Array.isArray(body?.items) || !body.items.length || body.items.length > 50) fail('EXPENSE_REQUEST_ITEMS_REQUIRED');

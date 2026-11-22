@@ -128,7 +128,8 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   const before = snapshot(source);
   if(source.document&&body.requestDate!==undefined&&body.requestDate!==source.document.requestDate)return fail(409,'EXPENSE_REQUEST_DATE_LOCKED');
   const requestDate = validateCostDate(source.document?.requestDate||source.costs[0]?.transactionDate||(body.automaticRequestDate?expenseApplicationDate():body.requestDate??expenseApplicationDate())), remark = typeof body.remark==='string' ? body.remark.trim() : '';
-  if(remark.length>500)return fail(400,'INVALID_EXPENSE_REMARK');
+  // Paid code-only corrections cannot edit the original header.
+  if((!remark&&!approvedChange?.paidCorrection)||remark.length>500)return fail(400,'INVALID_EXPENSE_REMARK');
   assertManagedDate(requestDate,(await loadManagementPeriod(tx,orgId)).startDate);
   const payeeIds=expensePayeeIds(body);
   if (!Array.isArray(body.items) || !body.items.length || body.items.length>50 || body.items.some((item: any)=>!item || typeof item!=='object' || Array.isArray(item))) return fail(400,'INVALID_EXPENSE_REQUEST_HEADER');
