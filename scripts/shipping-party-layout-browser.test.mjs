@@ -21,6 +21,7 @@ try{
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],writes=[],x=shippingEditorText[lang],e=freightJobEditorText[lang];page.on('pageerror',err=>{errors.push(err.message);console.error(err.message);});page.on('dialog',d=>d.accept());
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={setUnsavedChangesGuard(){},clearUnsavedChangesGuard(){},showNotification(message){window.notices=[...(window.notices||[]),message];}};export const useAppActions=()=>a;'}));
+  await page.route('**/shipping-requests/parties*',r=>r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:[]}));
   await page.route('**/shipping-requests/presets*',r=>{const req=r.request(),headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};if(req.method()==='OPTIONS')return r.fulfill({headers,status:204});if(req.method()==='POST'){const body=req.postDataJSON();writes.push(body);return r.fulfill({headers,json:{...body,version:1}});}return r.fulfill({headers,json:[]});});
   for(const mode of ['EXPRESS','ROAD']){
    await page.goto(`http://127.0.0.1:${port}/shipping-party-layout-test.html?lang=${lang}&mode=${mode}`);const editor=page.getByTestId('shipping-editor');await editor.waitFor();

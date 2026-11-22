@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:shipping-directory": "npm --prefix backend run build && node --test scripts/shipping-directory.test.mjs scripts/shipping-parties.test.mjs scripts/shipping-editor.test.mjs && node scripts/shipping-registered-parties-browser.test.mjs",
     "check:jsx-bindings": "node --test scripts/jsx-component-bindings.test.mjs",
     "test:account-overview-layout": "npm --prefix backend run build && node --test scripts/account-overview.test.mjs scripts/account-yesterday.test.mjs scripts/account-balance-conversion.test.mjs && node scripts/ledger-workspace-browser.test.mjs --overview-only && node scripts/account-overview-layout-browser.test.mjs && node scripts/account-balance-chart-browser.test.mjs",
     "test:work-time-requests": "npm --prefix backend run build && node --test scripts/work-time-requests.test.mjs scripts/employee-leave.test.mjs scripts/calendar-payroll.test.mjs scripts/employee-salary-preview.test.mjs scripts/payroll-partial-readiness.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/work-time-requests-browser.test.mjs && node scripts/work-time-approval-settings-browser.test.mjs",

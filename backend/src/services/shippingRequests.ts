@@ -1,3 +1,4 @@
+import {searchShippingCompanies,recentShippingParties} from './shippingPartyDirectory';
 import {assertShippingEnglishData} from './shippingEnglish';
 import {assertDistinctShippingParties} from './shippingParties';
 import {listShippingPresets,saveShippingPreset} from './shippingPresets';
@@ -35,6 +36,11 @@ export async function listShippingRequests(db:any,orgId:number,actorId:number){
  if(org.type==='SERVICE')return db.$queryRawUnsafe('SELECT j.* FROM "FreightJob" j WHERE j."orgId"=$1 ORDER BY j."createdAt" DESC,j.id LIMIT 500',orgId);
  const rows=await db.$queryRawUnsafe('SELECT j.id,j.number,j."orgId",j."receiptStatus",j.version,j."updatedAt",j."createdAt",j."requestSnapshot",j."sharedSnapshot",o.name AS company FROM "FreightJob" j JOIN "Organization" o ON o.id=j."orgId" WHERE j."requesterOrgId"=$1 ORDER BY j."createdAt" DESC,j.id LIMIT 500',orgId);
  return rows.map(projection);
+}
+export async function lookupShippingParties(db:any,orgId:number,actorId:number,input:any){
+ const org=await actor(db,orgId,actorId),customerId=Number(input.customerId);
+ if((customerId!==orgId&&!(await freightOptions(db,orgId,actorId)).some((row:any)=>row.id===customerId))||(customerId===orgId&&org.type==='SERVICE'))fail('FREIGHT_PARTY_SCOPE',403);
+ return input.query?searchShippingCompanies(db,orgId,String(input.query)):recentShippingParties(db,orgId,customerId);
 }
 export async function listShippingRequesters(db:any,orgId:number,actorId:number){
  const org=await actor(db,orgId,actorId);
@@ -152,6 +158,7 @@ export function registerShippingRequestRoutes(app:any,db:any,gates:any){
  const route=(method:string,path:string,work:any)=>app[method]('/shipping-requests'+path,async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await work(scope,req));});
  route('get','',({orgId,actorId}:any)=>listShippingRequests(db,orgId,actorId));
  route('get','/options',async({orgId,actorId,org}:any)=>({self:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true,country:true,address:true,phone:true,email:true,representative:true}}).then((row:any)=>row?{...row,contactName:row.representative}:row),customers:await freightOptions(db,orgId,actorId),forwarders:org.type==='SERVICE'?[]:(await transportPartners(db,orgId)).filter((p:any)=>p.type==='SERVICE')}));
+ route('get','/parties',({orgId,actorId}:any,req:any)=>lookupShippingParties(db,orgId,actorId,req.query));
  route('get','/presets',(scope:any,req:any)=>listShippingPresets(db,scope,Number(req.query.customerId),String(req.query.kind)));
  route('get','/requesters',({orgId,actorId}:any)=>listShippingRequesters(db,orgId,actorId));
  route('post','/general-customer',({orgId,actorId,org}:any)=>{

@@ -1,3 +1,4 @@
+import {directoryShippingParty,recentShippingParties} from './shippingPartyDirectory';
 import {assertDistinctShippingParties} from './shippingParties';
 import {assertShippingEnglishData} from './shippingEnglish';
 import {shippingCargo,validateOogTransition} from './shippingCargo';
@@ -82,7 +83,7 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any,
  }
  for(const role of ['shipper','consignee','notify']){
   const id=d[role+'Id'];
-  if(id!=null&&id!==''){if(!Number.isSafeInteger(id)||id<=0)fail('FREIGHT_PARTY_SCOPE',403);data[role+'Id']=id;data[role+'Party']=await scopedParty(tx,orgId,id);
+  if(id!=null&&id!==''){if(!Number.isSafeInteger(id)||id<=0)fail('FREIGHT_PARTY_SCOPE',403);data[role+'Id']=id;data[role+'Party']=await scopedParty(tx,orgId,id).catch(async(error:any)=>{if(error.message!=='FREIGHT_PARTY_SCOPE')throw error;const recent=(await recentShippingParties(tx,orgId,customerId)).find((row:any)=>row.id===id);return recent||directoryShippingParty(tx,orgId,id);});
    if(data[role+'Party'].isShippingGeneralCustomer)fail('FREIGHT_PARTY_SCOPE',403);
    const document=d[role+'Party'];
    if(document!=null){if(typeof document!=='object'||Array.isArray(document))fail('FREIGHT_INVALID_INPUT');
