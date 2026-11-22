@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:shipping-workbench": "npm --prefix backend run build && node --test scripts/shipping-workbench.test.mjs scripts/freight-workflow.test.mjs scripts/issued-invoice-print.test.mjs && node scripts/shipping-workbench-browser.test.mjs && node scripts/shipping-print-browser.test.mjs",
     "test:record-preview": "node scripts/record-preview-keyboard-browser.test.mjs && node scripts/lookup-pointer-keyboard-browser.test.mjs && node scripts/list-detail-browser.test.mjs",
     "test:shipping-directory": "npm --prefix backend run build && node --test scripts/shipping-directory.test.mjs scripts/shipping-parties.test.mjs scripts/shipping-editor.test.mjs && node scripts/shipping-registered-parties-browser.test.mjs",
     "check:jsx-bindings": "node --test scripts/jsx-component-bindings.test.mjs",

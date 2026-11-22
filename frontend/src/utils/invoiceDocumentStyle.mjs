@@ -1,6 +1,6 @@
 // Shared compact app and PDF tone; print uses stored values only.
 export const invoiceDocumentCss = `
-.invoice-sheet{box-sizing:border-box;background:#fff;color:#182b3d;font:13px Arial,sans-serif}
+.invoice-sheet{box-sizing:border-box;width:100%;max-width:100%;min-width:0;background:#fff;color:#182b3d;font:13px Arial,sans-serif}
 .invoice-sheet *{box-sizing:border-box}
 .invoice-sheet .invoice-heading{font-size:21px;font-weight:700;letter-spacing:1px;margin:0;padding:0 0 16px;line-height:1.4}
 .invoice-sheet .invoice-metadata{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 20px}
@@ -10,7 +10,7 @@ export const invoiceDocumentCss = `
 .invoice-sheet .invoice-party-identity{grid-column:1/-1;display:flex;gap:16px;align-items:end}
 .invoice-sheet .invoice-party-identity .invoice-cell:first-child:not(:last-child){width:110px;flex-shrink:0}
 .invoice-sheet .invoice-party-identity .invoice-cell:last-child{flex:1}
-.invoice-sheet .invoice-parties{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px}
+.invoice-sheet .invoice-parties{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;margin-top:12px}
 .invoice-sheet .invoice-party{min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
 .invoice-sheet .invoice-party-row{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr);gap:12px;min-width:0}
 .invoice-sheet .invoice-party-main{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}
@@ -31,6 +31,7 @@ export const invoiceDocumentCss = `
 .invoice-sheet .invoice-cell:focus-within .invoice-cell-value{border-color:#2878f0}
 .invoice-sheet .invoice-section-title{font-size:12px;font-weight:600;margin:0;padding:10px 16px;color:#57616c;border-bottom:1px solid #e7ecf2}
 .invoice-sheet .invoice-summary{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:24px;padding:20px;background:#f8fafc}
+.invoice-sheet .invoice-summary>*,.invoice-sheet .invoice-total>*{min-width:0;max-width:100%}
 .invoice-sheet .invoice-remark{align-self:stretch;min-height:190px}
 .invoice-sheet .invoice-remark .MuiInputBase-root{height:100%;align-items:flex-start}
 .invoice-sheet .invoice-remark textarea:not([aria-hidden]){height:100%!important;overflow:auto!important}
@@ -43,6 +44,6 @@ export const invoiceDocumentCss = `
 .invoice-sheet .invoice-signature{display:flex;justify-content:flex-end;margin-top:20px}
 .invoice-sheet .invoice-stamp{width:160px;min-height:78px;border:1px solid #cbd5e1;border-radius:6px;padding:10px;text-align:center;color:#667085;font-size:11px}
 .invoice-sheet .invoice-status{text-align:right;font-weight:700;color:#a33939;padding-bottom:12px}
-@media print{.invoice-sheet .invoice-bank-lines{overflow:visible}.invoice-sheet .invoice-bank-line{white-space:pre-wrap;overflow-wrap:anywhere}}
+@media print{html,body{width:auto!important;min-width:0!important;max-width:100%!important;margin:0!important;padding:0!important}.invoice-sheet{width:100%;max-width:100%;min-width:0}.invoice-sheet .invoice-bank-lines{overflow:visible}.invoice-sheet .invoice-bank-line{white-space:pre-wrap;overflow-wrap:anywhere}.invoice-sheet .invoice-total{flex-wrap:wrap}.invoice-sheet th,.invoice-sheet td{padding-left:6px;padding-right:6px}}
 @media(max-width:600px){.invoice-sheet .invoice-document-top{display:block}.invoice-sheet .invoice-document-identifiers{width:100%;margin-top:12px;grid-template-columns:1fr}.invoice-sheet .invoice-metadata,.invoice-sheet .invoice-parties,.invoice-sheet .invoice-summary,.invoice-sheet .invoice-party-main,.invoice-sheet .invoice-party-contacts{grid-template-columns:1fr}.invoice-sheet .invoice-summary{padding:16px;gap:16px}.invoice-sheet th,.invoice-sheet td{padding:6px 8px}}
 `;

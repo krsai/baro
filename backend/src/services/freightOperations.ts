@@ -145,6 +145,8 @@ export async function saveFreight(db:any,orgId:number,actorId:number,type:keyof 
    fail('FREIGHT_CHANGED',409);
   }
   const value=await normalize(tx,orgId,type,input,before?.data,actorId);
+  // Operational task history is written only by the dedicated revisioned flow.
+  if(type==='jobs'&&before?.data?.operations)value.data.operations=before.data.operations;
   if(type==='jobs'&&before?.data?.documentSetup){
    const allowed=value.service==='EXPRESS'?['WAYBILL']:value.mode==='SEA'?['BILL_OF_LADING','SEA_WAYBILL']:value.mode==='AIR'?['AIR_WAYBILL']:['WAYBILL'];
    if(!allowed.includes(before.data.documentSetup.documentType))fail('FREIGHT_COMPOSITION_HAS_BILLS',409);

@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {freightActor,freightForwarder,listFreight,saveFreight} from './freightOperations';
+import {saveJobProgress,createJobDocument} from './freightJobWorkflow';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const text=(v:any,max=120)=>typeof v==='string'&&v.trim().length<=max?v.trim():fail('FREIGHT_INVALID_INPUT');
 async function job(db:any,orgId:number,id:string,lock=false){
@@ -11,7 +12,8 @@ async function job(db:any,orgId:number,id:string,lock=false){
 export async function jobDetail(db:any,orgId:number,actorId:number,id:string){
  await freightActor(db,orgId,actorId);const row=await job(db,orgId,id);
  const bills=await db.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE "orgId"=$1 AND "jobId"=$2 AND "deletedAt" IS NULL ORDER BY "createdAt",id',orgId,id);
- return {...row,bills};
+ const documents=await db.$queryRawUnsafe('SELECT id,kind,number,"sourceVersion","createdAt" FROM "FreightDocument" WHERE "orgId"=$1 AND "jobId"=$2 ORDER BY "createdAt" DESC,id',orgId,id);
+ return {...row,bills,documents};
 }
 export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:string,input:any,id?:string,remove=false){
  await freightForwarder(db,orgId,actorId);
@@ -81,6 +83,8 @@ export function registerJobRoutes(app:any,db:any,access:any){
  };
  route('post','',save);route('put','/:id',save);
  route('put','/:id/document-setup',({orgId,actorId}:any,req:any)=>saveDocumentSetup(db,orgId,actorId,req.params.id,req.body));
+ route('put','/:id/progress',({orgId,actorId}:any,req:any)=>saveJobProgress(db,orgId,actorId,req.params.id,req.body));
+ route('post','/:id/documents',({orgId,actorId}:any,req:any)=>createJobDocument(db,orgId,actorId,req.params.id,req.body));
  route('post','/:id/bills',({orgId,actorId}:any,req:any)=>saveJobBill(db,orgId,actorId,req.params.id,req.body));
  route('put','/:id/bills/:billId',({orgId,actorId}:any,req:any)=>saveJobBill(db,orgId,actorId,req.params.id,req.body,req.params.billId));
  route('delete','/:id/bills/:billId',({orgId,actorId}:any,req:any)=>saveJobBill(db,orgId,actorId,req.params.id,req.body,req.params.billId,true));

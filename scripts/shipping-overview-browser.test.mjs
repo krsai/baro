@@ -1,3 +1,4 @@
+import {shippingWorkbenchText} from '../frontend/src/constants/shippingWorkbench.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -42,9 +43,9 @@ try{
    await page.locator('.app-page-header').getByRole('button').first().click();await row.waitFor();await page.locator('[data-table-status=loading]').waitFor({state:'hidden'});await row.focus();await row.press(' ');await page.waitForFunction(()=>document.querySelector('.app-page-header')?.textContent.includes('JOB-001'));assert.deepEqual(errors,[]);await page.close();console.log('PASS customer shipping title, row click/Space and receipt edit restriction',lang,width);continue;
   }
   assert.equal(await row.locator('td').count(),7);
-  await row.locator('td').nth(4).click();await page.getByRole('tab',{name:w.basic,exact:true}).waitFor();assert.equal(await heading.textContent(),await expected('/shipping?id=job1'));assert.equal(await page.locator('.app-page-header').getByText('JOB-001',{exact:true}).count(),1);assert.equal(await page.locator('.app-page-content').getByText('JOB-001',{exact:true}).count(),0);
-  await page.getByRole('button',{name:t.back,exact:true}).click();await row.waitFor();await page.locator('[data-table-status=loading]').waitFor({state:'hidden'});await row.focus();await row.press('Enter');await page.getByRole('tab',{name:w.basic,exact:true}).waitFor();
-  await page.getByRole('tab',{name:w.setup,exact:true}).click();await page.getByRole('combobox',{name:w.composition,exact:true}).waitFor();assert.equal(chargeReads,0);assert.equal(writes,0);assert.equal(await page.locator('.app-page-content').getByText('BARO',{exact:true}).count(),0);
+  await row.locator('td').nth(4).click();await page.getByRole('tab',{name:(shippingWorkbenchText[lang]||shippingWorkbenchText.en).summary,exact:true}).waitFor();assert.equal(await heading.textContent(),await expected('/shipping?id=job1'));assert.equal(await page.locator('.app-page-header').getByText('JOB-001',{exact:true}).count(),1);assert.equal(await page.locator('.app-page-content').getByText('JOB-001',{exact:true}).count(),0);
+  await page.getByRole('button',{name:t.back,exact:true}).click();await row.waitFor();await page.locator('[data-table-status=loading]').waitFor({state:'hidden'});await row.focus();await row.press('Enter');await page.getByRole('tab',{name:(shippingWorkbenchText[lang]||shippingWorkbenchText.en).summary,exact:true}).waitFor();
+  await page.getByRole('tab',{name:(shippingWorkbenchText[lang]||shippingWorkbenchText.en).documents,exact:true}).click();await page.getByRole('combobox',{name:w.composition,exact:true}).waitFor();assert.equal(chargeReads,0);assert.equal(writes,0);assert.equal(await page.locator('.app-page-content').getByText('BARO',{exact:true}).count(),0);
   assert.equal(await page.locator('main').evaluate(node=>node.scrollWidth>node.clientWidth+1),false);assert.deepEqual(errors,[]);await page.close();console.log('PASS shipping overview title, row click/Enter, compact list, stage isolation',lang,width);
  }
 }finally{await browser?.close();vite.kill();unlinkSync(file);}

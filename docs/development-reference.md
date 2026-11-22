@@ -2,6 +2,18 @@
 
 # 개발 세부 기준·과거 변경 기록
 
+## 운송 업무 화면·진행·출력 최신 계약
+
+- 사용자 요청에 따라 `/shipping?id=`는 운송장 요약·진행·서류·매입매출의 네 탭으로 구성한다. 운송장 요약은 당사자명/주소·실제 경로·화물/수량/중량/부피·저장된 Master/House 번호만 컴팩트하게 표시한다. 연락처와 상세 구간 카드 등 전체 자료는 명시적으로 펼쳐 본다. 고객 공유는 상단 전체 작업이며 공유 범위를 확대하지 않는다. 이전 `stage=setup` 링크는 통합 서류 탭으로 호환한다.
+- 진행은 실제 FreightJob의 포워더 업무 회사 아래 `data.operations.tasks`에 저장한다. 단계명·실제 ACTIVE 회사 직원 ID·기한·상태(TODO/DOING/BLOCKED/DONE/SKIPPED)·실제 완료 시각·지연/재개 사유를 관리하고 완료 기록자와 기록 시각은 서버가 정한다. 해당 없음/보류 및 완료 재개에는 사유를 요구한다. 저장된 단계 제거 대신 사유 있는 해당 없음으로 남기며 전후 내용은 불변 FreightAudit에 보존한다. 기본 단계는 명시적 버튼으로 초안에만 추가한다. 완료 시각을 예정 시각이나 다음 단계에서 추정하지 않고 운송 상태도 담당자가 명시적으로 저장한다. DELIVERED는 실제 인도일/수령자가 필요하지만 서명 수령 확인을 의미하지 않는다.
+- 진행 저장은 회사/ACTIVE 직원/역할·기존 FREIGHT feature 게이트, 접수 완료/취소 상태·revision·행 잠금·동일 요청 ID/hash를 검사한다. 기본정보 저장은 operations를 서버 원본에서 보존하고 임의 progress 주입/삭제로 교체하지 않는다. 실패/결과 불명 시 초안을 유지하고 같은 요청을 재시도한다. 기한이 지난 미완료만 목록/진행 탭에 표시하고 DONE/SKIPPED 및 취소 운송건은 미처리 집계에서 제외한다. 자동 알림 스케줄·발송·수신자 정책은 아직 구현하지 않았으며 후속 연결은 이 실제 기록을 근거로 한다. 내부 단계·담당자·사유는 고객 공유 whitelist에 추가하지 않는다.
+- 서류 탭은 기존 Master/House 구성·실제 FreightBill 연결을 보존하면서 등록/수정/보호된 삭제와 출력본을 한곳에서 제공한다. 새 출력본은 같은 회사 FreightJob/FreightBill을 서버에서 확인하고 종류별 양의 목록으로 자료를 복사해 불변 FreightDocument에 저장한다. 저장 시점 원본 버전·당사자·경로·화물·발행 회사의 독립 서류 연락처를 사용하며 진행/내부 메모/금액 초안은 포함하지 않는다. 회사별 clientKey·revision·접수/취소·실제 bill ID 범위를 검사하고 과거 출력본은 이후 원본 수정으로 바꾸지 않는다.
+- `transport-v1`은 B/L·Sea Waybill·AWB·일반 운송장·Arrival Notice·Delivery Order·POD·Manifest별 A4 검토용 양식이다. FIATA/특정 운송사 승인 로고·약관·서명·원본 발행 권한을 임의로 추가하지 않으며 DRAFT/FOR REVIEW와 원본 발행·반출 승인·서명 수령 확인의 구분을 유지한다. 사용자가 양식을 먼저 확인한 뒤 발행사별 요구를 정한다. 기존 legacy snapshot은 기존 renderer를 유지한다. 참고: [GoFreight 단계 관리](https://gofreight.com/knowledge/how-to-customize-shipment-journey-milestones-in-gofreight-gofreight-help-center), [업무 기록](https://gofreight.com/knowledge/how-to-create-and-complete-manual-to-do-tasks), [FIATA 문서](https://www.efbl.fiata.org/faq).
+- 서류의 출력 정보(선박·편명·ETD/ETA·화인·운임조건)는 명시적으로 펼친 폼에서 입력하며 해당 출력본에만 적용한다. 서버 whitelist/길이/실제 날짜 검증 후 snapshot에 넣고 운송 원본·기존 출력본은 수정하지 않는다. 미저장 출력 정보가 있을 때 구성 저장·운송장 수정/삭제로 화면을 갱신하려면 기존 초안 폐기 확인을 거친다.
+- 매입매출은 기존 ShippingChargeDraft의 내부 초안 범위다. 표의 한 행에서 입력·수정·취소·저장하며 연속 입력은 저장 후 구분/통화만 승계한다. 통화별 매입/매출/차액은 정확한 십진수로 별도 합산하고 통화 환산·실제 비용/청구/원장 반영을 하지 않는다. 결과 불명 시 ID와 본문을 고정해 재시도하고 회사별 revision/감사를 유지한다.
+- 신규 migration이나 운영 원본 보정은 없다. 롤백 시 진행 필드 보존 코드가 없는 구버전의 운송 기본정보 쓰기를 중지하거나 operations 보존 패치를 유지한다. FreightAudit/FreightDocument/금액 원본은 삭제하지 않는다. `shipping-workbench.test.mjs`, `shipping-workbench-browser.test.mjs`, `shipping-print-browser.test.mjs`로 검수한다.
+- 청구서 출력은 A4 페이지 여백 안에서 문서 폭을 제한하고 화면용 body padding을 인쇄 때 제거한다. 긴 회사/은행정보가 grid의 최소 폭을 키우지 않도록 minmax(0,1fr)/min-width:0을 적용한다. 출력만 조정하며 발행 snapshot·문구·금액·원본 주소는 변경하지 않는다. 주문/일반 청구서 한영베와 다페이지/긴 문자열을 실제 PDF로 검증한다.
+
 - 최신 사용자 정정: 모달 Esc 닫기는 공통 AppDialog/WorkspaceDialogRoot의 useModalDismiss에서 일관되게 처리한다. 업무 영역 밖 상단 메뉴/탭에 포커스가 있어도 미처리 Esc를 현재 최상위 표시 모달/임시 Drawer의 기존 onClose로 전달하며 숨긴 탭이나 부모 모달까지 함께 닫지 않는다. MUI 드롭다운·메뉴·달력과 자체 Esc를 처리한 하위 패널을 우선하고 IME·수정 키·누른 채 반복되는 Esc는 제외한다. 서버 자료·선택/저장·문서 취소 의미는 변경하지 않고 기존 미저장 폐기 확인·busy/불확실 결과 닫기 보호·명시적 Esc 잠금을 유지한다. 비동기 확인 중 중복 닫기를 막고 초안·탭 보존·기존 포커스 복귀는 공통 계층을 사용한다. 단일 업무 화면에 Esc 예외나 강제 DOM 제거를 추가하지 않는다.
 
 - 최신 사용자 확정: 국가+전화 묶음 전체를 일반 입력 한 칸으로 취급한다. 사업체 연락처의 이름·국가/전화·이메일은 1:1:1이며 내부는 국가 약 30%·전화 약 70%의 컴팩트한 한 줄이다. 거래처·운송·가입·시스템 사업체 등록·사업장도 같은 묶음/공통 전화 입력을 사용한다. 개별 국가번호 수동 입력을 추가하지 않고 기존 국가별 값을 유지한다. 아래의 이전 ‘묶음 내부 모바일 세로 배치’ 설명은 이 정정으로 대체된다.
