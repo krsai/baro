@@ -35,6 +35,17 @@ export async function listShippingRequests(db:any,orgId:number,actorId:number){
  const rows=await db.$queryRawUnsafe('SELECT j.id,j.number,j."orgId",j."receiptStatus",j.version,j."updatedAt",j."createdAt",j."requestSnapshot",j."sharedSnapshot",o.name AS company FROM "FreightJob" j JOIN "Organization" o ON o.id=j."orgId" WHERE j."requesterOrgId"=$1 ORDER BY j."createdAt" DESC,j.id LIMIT 500',orgId);
  return rows.map(projection);
 }
+export async function listShippingRequesters(db:any,orgId:number,actorId:number){
+ const org=await actor(db,orgId,actorId);
+ if(org.type!=='SERVICE')fail('SHIPPING_ACCESS_DENIED',403);
+ // Read only the company's verified collection-customer FK; never infer it from a name/code.
+ return db.$queryRawUnsafe(`SELECT j.data->>'actualRequesterName' AS name,j.data->>'actualRequesterPhone' AS phone
+ FROM "FreightJob" j JOIN "ShippingGeneralCustomer" g ON g."orgId"=j."orgId" AND g."customerId"=j."customerId"
+ WHERE j."orgId"=$1 AND j.service='EXPRESS' AND j.data->>'generalCustomer'='true'
+ AND btrim(j.data->>'actualRequesterName')<>'' AND btrim(j.data->>'actualRequesterPhone')<>''
+ GROUP BY j.data->>'actualRequesterName',j.data->>'actualRequesterPhone'
+ ORDER BY max(j."createdAt") DESC,j.data->>'actualRequesterName',j.data->>'actualRequesterPhone'`,orgId);
+}
 export async function readShippingRequest(db:any,orgId:number,actorId:number,id:string){
  await actor(db,orgId,actorId);const row=await memberJob(db,orgId,id);
  if(row.orgId===orgId)return {...row,events:await db.$queryRawUnsafe('SELECT version,action,"actorOrgId","actorId","createdAt" FROM "ShippingRequestEvent" WHERE "jobId"=$1 AND "orgId"=$2 ORDER BY version',id,orgId)};
@@ -139,6 +150,7 @@ export function registerShippingRequestRoutes(app:any,db:any,gates:any){
  route('get','',({orgId,actorId}:any)=>listShippingRequests(db,orgId,actorId));
  route('get','/options',async({orgId,actorId,org}:any)=>({self:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true,address:true,phone:true,email:true,representative:true}}).then((row:any)=>row?{...row,contactName:row.representative}:row),customers:await freightOptions(db,orgId,actorId),forwarders:org.type==='SERVICE'?[]:(await transportPartners(db,orgId)).filter((p:any)=>p.type==='SERVICE')}));
  route('get','/presets',(scope:any,req:any)=>listShippingPresets(db,scope,Number(req.query.customerId),String(req.query.kind)));
+ route('get','/requesters',({orgId,actorId}:any)=>listShippingRequesters(db,orgId,actorId));
  route('post','/general-customer',({orgId,actorId,org}:any)=>{
   if(org.type!=='SERVICE')fail('SHIPPING_ACCESS_DENIED',403);
   return retryEditTransaction(db,async(tx:any)=>({id:await shippingGeneralCustomer(tx,orgId,actorId,null,true)}));

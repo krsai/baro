@@ -57,3 +57,7 @@ Object.assign(shippingEditorText.vi,{terminalName:'Bến cảng (tùy chọn)',r
 Object.assign(shippingEditorText.ko,{applyLocation:'확인',addressHeading:'주소',addToAddressBook:'주소록 추가',saveAddress:'주소록에 저장',deleteAddress:'주소록 삭제'});
 Object.assign(shippingEditorText.en,{applyLocation:'Confirm',addressHeading:'Address',addToAddressBook:'Add to address book',saveAddress:'Save to address book',deleteAddress:'Delete address'});
 Object.assign(shippingEditorText.vi,{applyLocation:'Xác nhận',addressHeading:'Địa chỉ',addToAddressBook:'Thêm vào sổ địa chỉ',saveAddress:'Lưu vào sổ địa chỉ',deleteAddress:'Xóa địa chỉ'});
+
+Object.assign(shippingEditorText.ko,{requesterHistory:'이전 의뢰인 선택'});
+Object.assign(shippingEditorText.en,{requesterHistory:'Select previous requester'});
+Object.assign(shippingEditorText.vi,{requesterHistory:'Chọn người yêu cầu trước đây'});

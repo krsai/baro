@@ -6,6 +6,7 @@ import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approva
 const require=createRequire(import.meta.url);
 const {saveFreight,listFreight,freightOptions}=require('../backend/dist/services/freightOperations');
 const {transportSnapshot}=require('../backend/dist/services/transportExchange');
+const {listShippingRequesters}=require('../backend/dist/services/shippingRequests');
 test('express general customer is created once per company with independent SR requester details and real protected FK',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),orgId=s.company.id,actorId=s.people.admin.id;
@@ -25,6 +26,11 @@ test('express general customer is created once per company with independent SR r
   assert.equal((await listFreight(db,orgId,actorId,'jobs',{search:'Lee'})).rows[0].id,second.id);
   const doors={...data,transportService:'EXPRESS',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'},routeLocations:{ORIGIN_DOOR:'Sender door',DESTINATION_DOOR:'Recipient door'},routeLocationDetails:{ORIGIN_DOOR:{label:'Sender',phone:'123'},DESTINATION_DOOR:{label:'Recipient',phone:'456'}}};
   const doorJob=await saveFreight(db,orgId,actorId,'jobs',{...input,clientKey:randomUUID(),data:doors});assert.equal(doorJob.data.origin,'Sender door');assert.equal(transportSnapshot(doorJob).data.destination,'Recipient door');assert.equal(doorJob.data.transportService,'EXPRESS');
+  const requesters=await listShippingRequesters(db,orgId,actorId);
+  assert.equal(requesters.length,2,'identical name/phone pairs appear once without merging shipments');
+  assert.deepEqual(requesters.find(row=>row.name==='Kim Min Su'),{name:'Kim Min Su',phone:'+84 123 456'});
+  assert.deepEqual(Object.keys(requesters[0]).sort(),['name','phone'],'only requester selection fields are returned');
+  await assert.rejects(listShippingRequesters(db,s.other.id,actorId),/ACTIVE_EMPLOYEE_REQUIRED/);
   await assert.rejects(saveFreight(db,orgId,actorId,'jobs',{...input,clientKey:randomUUID(),customerId:s.vendor.id,service:'GENERAL',data:{...doors,generalCustomer:false}}),/SHIPPING_ROUTE_REQUIRED/);
   const airJob=await saveFreight(db,orgId,actorId,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,mode:'AIR',service:'GENERAL',data:{cargo:'Regular air'}});
   const sorted=await listFreight(db,orgId,actorId,'jobs',{sort:'mode',sortDirection:'asc'});assert.equal(sorted.rows[0].id,airJob.id);assert.equal((await listFreight(db,orgId,actorId,'jobs',{sort:'mode',sortDirection:'desc'})).rows.at(-1).id,airJob.id);assert.ok(sorted.rows.every(row=>row.createdAt));
@@ -42,6 +48,7 @@ test('express general customer is created once per company with independent SR r
   const before=await db.$queryRawUnsafe('SELECT data,"requestSnapshot" FROM "FreightJob" WHERE id=$1',job.id);
   const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(row=>row.version==='20261114090000_shipping_general_customer');await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);assert.deepEqual(await db.$queryRawUnsafe('SELECT data,"requestSnapshot" FROM "FreightJob" WHERE id=$1',job.id),before);
   const edit=await saveFreight(db,orgId,actorId,'jobs',{...input,customerId:pool.id,version:job.version,data:{...data,actualRequesterPhone:'+84 777'}},job.id);assert.equal(edit.data.actualRequesterPhone,'+84 777');assert.equal(edit.requestCreatedByOrgId,orgId);assert.equal(edit.customerId,pool.id);
+  assert.equal((await listShippingRequesters(db,orgId,actorId)).filter(row=>row.name==='Kim Min Su').length,2,'same name with different phones remains separate');
   assert.equal((await db.freightJob.findUnique({where:{id:second.id}})).data.actualRequesterPhone,'0909999');assert.equal(await db.freightAudit.count({where:{orgId,entity:'jobs',sourceId:job.id}}),2);
  }finally{await f.close();}
 });

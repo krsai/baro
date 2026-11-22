@@ -20,10 +20,12 @@ try{
  for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
   const page=await browser.newPage({viewport:{width,height:1000}});page.setDefaultTimeout(18000);page.on('dialog',d=>d.accept());const errors=[];page.on('pageerror',error=>errors.push(error.message));
   const x=shippingEditorText[lang],e=freightJobEditorText[lang],r=routeScopeText[lang],t={...jobText[lang],...shippingText[lang]};
-  await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:7});'}));
+  await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:7,activeOrgType:"SERVICE"});'}));
   await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'const a={markTabChanged:()=>{},clearTabChanged:()=>{},showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>a;'}));
   let job=null,posted=[],searches=[],addressEntries=[];
+  let requesterReads=0;
+  await page.route('**/shipping-requests/requesters*',route=>{const headers={'Access-Control-Allow-Origin':'*'};requesterReads++;return requesterReads===1?route.fulfill({headers,status:503,json:{error:'temporary'}}):route.fulfill({headers,json:[{name:'Repeat requester',phone:'090111'},{name:'Repeat requester',phone:'090222'}]});});
   await page.route('**/freight/**',async route=>{
    const req=route.request(),url=new URL(req.url()),p=url.pathname.split('/freight/')[1],headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
    if(req.method()==='OPTIONS')return route.fulfill({headers,status:204});let json;
@@ -49,6 +51,17 @@ try{
   for(const [node,label,person,address,phone]of [['ORIGIN_DOOR',x.senderName,'Actual sender','SGN pickup','0901111'],['DESTINATION_DOOR',x.receiverName,'Actual recipient','ICN delivery','0102222']]){await page.locator('[data-route-node="'+node+'"]').click();const book=page.getByTestId('route-address-dialog');await book.getByRole('textbox',{name:label,exact:true}).fill(person);await book.getByRole('textbox',{name:x.savedAddress,exact:true}).fill(address);await book.getByRole('textbox',{name:x.addressPhone,exact:true}).fill(phone);if(node==='ORIGIN_DOOR'){await book.getByRole('button',{name:x.addToAddressBook,exact:true}).click();await book.locator('[data-address-list]').getByRole('button',{name:/Actual sender/}).waitFor();assert.equal(addressEntries.length,1);assert.equal(addressEntries[0].customerId,20);await book.locator('[data-address-list]').getByRole('button',{name:/Actual sender/}).click();assert.equal(await book.getByRole('textbox',{name:label,exact:true}).inputValue(),person);}await book.getByRole('button',{name:x.applyLocation,exact:true}).click();await book.waitFor({state:'hidden'});}
   await dialog.getByRole('textbox',{name:e.cargo,exact:true}).fill('Personal goods');for(const [key,val]of [['quantity','1'],['lengthM','0.3'],['widthM','0.2'],['heightM','0.1']])await dialog.getByRole('textbox',{name:key==='quantity'?e.quantity:x[key],exact:true}).fill(val);await dialog.getByRole('spinbutton',{name:e.weightKg,exact:true}).fill('2');
   const packageRow=dialog.locator('[data-package-row]').first();
+  await dialog.getByRole('textbox',{name:x.actualRequesterName,exact:true}).fill('Draft requester');
+  await dialog.getByRole('button',{name:x.requesterHistory,exact:true}).click();
+  const history=page.locator('[data-lookup-dialog=true]');
+  await history.getByRole('button',{name:x.retry,exact:true}).click();
+  await history.getByRole('row').filter({hasText:'090222'}).waitFor();
+  assert.ok(await dialog.locator('input').evaluateAll(nodes=>nodes.some(node=>node.value==='Draft requester')));
+  await history.getByRole('row').filter({hasText:'090222'}).getByRole('button').click();
+  assert.equal(await dialog.getByRole('textbox',{name:x.actualRequesterName,exact:true}).inputValue(),'Repeat requester');
+  assert.equal(await dialog.getByRole('textbox',{name:x.actualRequesterPhone,exact:true}).inputValue(),'090222');
+  await dialog.getByRole('textbox',{name:x.actualRequesterName,exact:true}).fill('');
+  await dialog.getByRole('textbox',{name:x.actualRequesterPhone,exact:true}).fill('');
   assert.deepEqual(await packageRow.locator('[data-cargo-field]').evaluateAll(nodes=>nodes.map(node=>node.dataset.cargoField)),['quantity','weightKg','lengthM','widthM','heightM','cbm']);
   const boxes=await packageRow.locator('input').evaluateAll(nodes=>nodes.map(node=>{const r=node.getBoundingClientRect();return {x:r.x,y:r.y};}));
   assert.equal(boxes.length,6);assert.ok(Math.max(...boxes.map(r=>r.y))-Math.min(...boxes.map(r=>r.y))<2);assert.ok(boxes.every((r,i)=>!i||r.x>boxes[i-1].x));

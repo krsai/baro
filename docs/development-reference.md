@@ -2,6 +2,11 @@
 
 # 개발 세부 기준·과거 변경 기록
 
+## 특송 반복 의뢰인 선택·기본 정보 너비
+
+- ‘이전 의뢰인 선택’은 현재 회사의 실제 ShippingGeneralCustomer FK로 연결된 특송 이력에서 이름·연락처만 조회한다. 동일한 이름·연락처 조합만 후보 중복을 제거하며 다른 연락처는 별도 후보로 유지한다. 선택은 두 항목을 현재 초안에 함께 복사하고 조회 실패 시 입력 보존·재시도를 제공한다. 조회로 공용 거래처를 생성하거나 기존 운송건·공유 snapshot을 변경하지 않는다. 개인별 거래처를 새로 만들지 않는다.
+- 업무 기본 정보의 고객·SHPR/CNEE/NOTIFY 역할 선택·포워더는 동일 폭 3열, 특송은 동일 폭 2열을 사용한다. 기존 모달 내용 너비 기준 반응형 줄바꿈과 역할 선택·저장 정책을 유지한다.
+
 ## Railway 서비스별 빌드 설정
 
 - 일반 배포의 `database:prepare`는 Prisma Client 생성 → 기존 `migrate-expenses.js`·`migrate-entity-profiles.js`의 버전/체크섬 기반 미적용 SQL → `application-database-maintenance.js verify`의 읽기 전용 런타임 검사를 실행한다. `migration_fix.sql`·공장 과거 자료 보정·`db push`·과거 localization 정리는 빈 DB 초기화 또는 명시적 legacy 업그레이드에서만 실행한다. DB target guard·회사 FK·이관 영수증·필수 열/enum/제약·활성 트리거 검사와 Railway prestart 검사는 유지한다. 운영 DB의 SQL 관리 테이블/부분 인덱스/FK를 Prisma 전체 동기화로 재작성하지 않는다. 정상 배포에는 임의 추가 SQL 필터도 사용하지 않는다.
