@@ -73,3 +73,6 @@ Object.assign(shippingEditorText.vi,{generalCustomerPerson:'Khách lẻ'});
 Object.assign(shippingEditorText.ko,{requesterName:'이름',requesterPhone:'연락처'});
 Object.assign(shippingEditorText.en,{requesterName:'Name',requesterPhone:'Phone'});
 Object.assign(shippingEditorText.vi,{requesterName:'Tên',requesterPhone:'Số điện thoại'});
+Object.assign(shippingEditorText.ko,{requesterDetails:'고객 정보'});
+Object.assign(shippingEditorText.en,{requesterDetails:'Customer information'});
+Object.assign(shippingEditorText.vi,{requesterDetails:'Thông tin khách hàng'});
