@@ -10,7 +10,6 @@ import React,{useEffect,useRef,useState} from 'react';
 import {Button,LinearProgress,Stack,TextField} from '@mui/material';
 import Autocomplete from './SearchableSelect';
 import ExpenseLookupField from './ExpenseLookupField';
-import SaveButton from './SaveButton';
 import AppNotice from './AppNotice';
 import {usePageDialogs} from './PageDialogProvider';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
@@ -25,8 +24,7 @@ export default function MaterialVariantEditor({orgId,baseId,row,languageCode,onC
  const changeCode=async value=>{if(locked.current)return;if(value?.baseId===code?.baseId)return;if(dirty.current&&!await dialogs.confirm('',{purpose:'discard'}))return;dirty.current=false;setCode(value);};
  const selector=codes?<ExpenseLookupField label={t.code} getOptionKey={value=>value.baseId} options={codes} value={code} onChange={changeCode} languageCode={languageCode} getCode={value=>value.base.code} getOptionLabel={value=>[value.base.code,materialItemName(value.base,languageCode)].filter(Boolean).join(' / ')} columns={[{key:'code',label:t.code,value:value=>value.base.code},{key:'name',label:t.name,value:value=>materialItemName(value.base,languageCode)}]}/>:null;
  const title=codes?t.registerMaster:row?m.edit:m.add;
- const close=()=>closeForm.current?closeForm.current():onClose();
- return selectedBaseId?<VariantForm key={selectedBaseId} {...{orgId,baseId:selectedBaseId,row,languageCode,onClose,onSaved,selector,dirty,locked,closeForm,title}}/>:<ListDetailDialog open title={title} onClose={close} tools={selector} list={null} actions={<><Button onClick={onClose}>{t.cancel}</Button><SaveButton disabled>{t.save}</SaveButton></>}/>;
+ return selectedBaseId?<VariantForm key={selectedBaseId} {...{orgId,baseId:selectedBaseId,row,languageCode,onClose,onSaved,selector,dirty,locked,closeForm,title}}/>:React.cloneElement(selector,{autoOpen:true,searchOnly:true,onSearchClose:onClose});
 }
 function VariantForm({orgId,baseId,row,languageCode,onClose,onSaved,selector,dirty,locked,closeForm,title}){
  const t=materialItemText[languageCode]||materialItemText.en,m=materialVariantManagementText[languageCode]||materialVariantManagementText.en,dialogs=usePageDialogs();
