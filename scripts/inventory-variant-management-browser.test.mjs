@@ -69,6 +69,13 @@ try{
   let editor=page.getByRole('dialog').last();
   await editor.getByRole('textbox',{name:a.owner,exact:true}).fill('TSAN');await editor.getByRole('textbox',{name:a.owner,exact:true}).press('Enter');
   await editor.getByRole('combobox',{name:t.variant,exact:true}).fill('10x10x10');
+  assert.equal(await page.locator('[data-list-detail-dialog]').count(),1);
+  const existing=editor.getByRole('button',{name:'BARO',exact:true});
+  await existing.click();
+  assert.equal(await editor.locator('[data-record-details]').count(),1,'existing item opens shared details');
+  assert.equal(writes.length,0,'preview must not register or select a material');
+  await editor.getByRole('button',{name:m.add,exact:true}).click();
+  assert.equal(await editor.getByRole('combobox',{name:t.variant,exact:true}).inputValue(),'10x10x10','returning from preview preserves the new draft');
   assert.equal(await editor.getByRole('button',{name:t.addVariant,exact:true}).count(),0);
   editor=page.getByRole('dialog').last();assert.equal(await editor.getByRole('textbox',{name:t.unit,exact:true}).inputValue(),'Each');
   assert.equal(await editor.getByRole('textbox',{name:t.unit,exact:true}).getAttribute('readonly'),'');
