@@ -11,11 +11,14 @@ test('all business dialogs and drawers use the shared workspace scope without na
     if(/\/(PageDialogProvider|WorkspaceDialogScope)\.jsx$/.test(file))continue;
     const source=readFileSync(file,'utf8');
     assert.doesNotMatch(source,/window\.(confirm|prompt|alert)\(/,file);
-    // Existing header actions, inline side panels and the pointer-only drag
-    // preview are portals, but do not replace the shared modal root.
-    const nonModalPortals={'CompanyConnections.jsx':2,'PartnerClassificationFields.jsx':1,'VersionAssignmentBoard.jsx':1,'OrganizationDetail.jsx':1};
+    // Header actions, inline panels, drag previews and a shared picker owner
+    // may portal, while modal shells must retain the shared root.
+    const nonModalPortals={'CompanyConnections.jsx':2,'PartnerClassificationFields.jsx':1,'VersionAssignmentBoard.jsx':1,'OrganizationDetail.jsx':1,'MaterialMasterList.jsx':1,'PartnerHandledItemsFields.jsx':1,'MaterialSelectionDialog.jsx':1};
     const basename=file.split('/').pop(),portals=(source.match(/createPortal\(/g)||[]).length;
     assert.equal(portals,nonModalPortals[basename]||0,file);
+    if(basename==='MaterialMasterList.jsx')assert.match(source,/createPortal\(registrationAction,actionContainer\)/);
+    if(basename==='MaterialSelectionDialog.jsx')assert.match(source,/createPortal\(<MaterialItemPicker/);
+    if(basename==='PartnerHandledItemsFields.jsx')assert.match(source,/createPortal\(<Box component="aside"/);
     assert.doesNotMatch(source,/<Modal\b|<dialog\b/,file);
     if(basename==='CompanyConnections.jsx')assert.match(source,/createPortal\(<CompanyPublicSearchPanel[\s\S]*sidePanelTarget/);
     if(basename==='PartnerClassificationFields.jsx')assert.match(source,/createPortal\(<Box component="aside"/);

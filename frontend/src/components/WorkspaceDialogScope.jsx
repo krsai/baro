@@ -2,6 +2,7 @@ import React, { createContext, forwardRef, useCallback, useContext, useEffect, u
 import { Box, Modal, ThemeProvider, useTheme } from '@mui/material';
 import PageDialogProvider from './PageDialogProvider';
 import useKeyboardNavigation from '../hooks/useKeyboardNavigation';
+import useModalDismiss from '../hooks/useModalDismiss';
 
 const DialogScope = createContext(null);
 
@@ -13,6 +14,8 @@ const WorkspaceDialogRoot = forwardRef(function WorkspaceDialogRoot(props, ref) 
   const active = scope?.active;
   const origin = useRef(null);
   const modalRoot = useRef(null);
+  const dismiss=useModalDismiss({open:Boolean(open&&active!==false),rootRef:modalRoot,onClose:rest.onClose,disableEscapeKeyDown:rest.disableEscapeKeyDown,enabled:!rest['data-app-dialog']});
+  const setRoot=useCallback(node=>{modalRoot.current=node;if(typeof ref==='function')ref(node);else if(ref)ref.current=node;},[ref]);
   const mounted = useRef(true);
   const wasOpen = useRef(false);
   const current = useRef({ open, active });
@@ -48,8 +51,8 @@ const WorkspaceDialogRoot = forwardRef(function WorkspaceDialogRoot(props, ref) 
     register?.(id.current, Boolean(open && active));
     return () => register?.(id.current, false);
   }, [register, open, active]);
-  if (!scope) return <Modal {...rest} ref={ref} open={open} keepMounted={keepMounted} closeAfterTransition={closeAfterTransition} sx={sx} slotProps={slotProps} />;
-  return <Modal {...rest} ref={ref}
+  if (!scope) return <Modal {...rest} ref={setRoot} onClose={dismiss} open={open} keepMounted={keepMounted} closeAfterTransition={closeAfterTransition} sx={sx} slotProps={slotProps} />;
+  return <Modal {...rest} ref={setRoot} onClose={dismiss}
     open={Boolean(open && scope.active)}
     keepMounted={keepMounted || Boolean(open && !scope.active)}
     closeAfterTransition={scope.active ? closeAfterTransition : false}

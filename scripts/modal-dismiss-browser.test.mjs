@@ -29,10 +29,10 @@ try{
   await outside();await page.keyboard.press('Escape');assert.equal(await dialog.count(),1);assert.equal(await page.evaluate(()=>window.closes),1);
   await page.evaluate(()=>window.setBusy(false));await page.waitForFunction(()=>!document.querySelector('[role="dialog"] .MuiDialogActions-root button')?.disabled);await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
   await page.getByRole('button',{name:'Open bank',exact:true}).click();await dialog.getByRole('button',{name:ENTITY_TEXT[lang].save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>window.saves.length),1);
-  await page.getByRole('button',{name:'Ask confirm',exact:true}).click();await dialog.waitFor();assert.equal(await dialog.locator('.MuiDialogActions-root button').count(),1);await outside();await dialog.waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>window.result),false);
+  await page.getByRole('button',{name:'Ask confirm',exact:true}).click();await dialog.waitFor();assert.equal(await dialog.locator('.MuiDialogActions-root button').count(),2);await outside();await dialog.waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>window.result),false);
   await page.getByRole('button',{name:'Ask prompt',exact:true}).click();await dialog.getByRole('textbox',{name:'Prompt value'}).fill('Abandoned');await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>window.result),null);
-  await page.getByRole('button',{name:'Ask confirm',exact:true}).click();await dialog.locator('.MuiDialogActions-root button').click();await dialog.waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>window.result),true);
+  await page.getByRole('button',{name:'Ask confirm',exact:true}).click();await dialog.locator('.MuiDialogActions-root button').last().click();await dialog.waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>window.result),true);
   assert.deepEqual(errors,[]);await page.close();
  }
- console.log('PASS modal dismiss: ko/en/vi desktop/mobile, no cancel actions, outside/Escape cancellation, unchanged confirm/save and busy protection.');
+ console.log('PASS modal dismiss: ko/en/vi desktop/mobile, bank save footer and standard confirmation choices, outside/Escape cancellation, unchanged confirm/save and busy protection.');
 }finally{await browser?.close();server.kill();for(const file of [html,jsx])if(existsSync(file))unlinkSync(file);}
