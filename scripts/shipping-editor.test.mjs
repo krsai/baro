@@ -79,8 +79,10 @@ test('real company/customer-scoped presets, FK guards, soft deletion, audit and 
   const directId=randomUUID();await db.$executeRawUnsafe('INSERT INTO "ShippingPreset"(id,"orgId","customerId",kind,label,data,"partyId","createdByEmployeeId","updatedByEmployeeId") VALUES($1,$2,$3,\'PARTY\',\'Contact only\',$4::jsonb,$3,$5,$5)',directId,orgId,s.vendor.id,JSON.stringify({name:'UNWANTED DOCUMENT NAME',address:'Direct address'}),actorId);assert.deepEqual((await db.$queryRawUnsafe('SELECT data FROM "ShippingPreset" WHERE id=$1',directId))[0].data,{address:'Direct address'});
   const addressBookMigration=require('../backend/scripts/migrate-entity-profiles').migrations().find(row=>row.version==='20261114080000_shipping_party_addressbook');
   await f.pg.exec(addressBookMigration.sql);await f.pg.exec(addressBookMigration.sql);
+  const organizationsBeforeParty=await db.organization.count();
   const thirdParty={id:randomUUID(),customerId:s.vendor.id,kind:'PARTY',label:'Repeat recipient',data:{name:'Third party recipient',address:'Delivery address',contactName:'Kim',phone:'123',email:'recipient@example.test',privateCost:'secret'}};
   const thirdSaved=await saveShippingPreset(db,scope,thirdParty);assert.equal(thirdSaved.partyId,null);assert.equal(thirdSaved.data.name,'Third party recipient');assert.equal(thirdSaved.data.privateCost,undefined);assert.equal((await saveShippingPreset(db,scope,thirdParty)).version,1);
+  assert.equal(await db.organization.count(),organizationsBeforeParty,'customer-owned parties do not create general counterparties or SaaS organizations');
   assert.equal((await listShippingPresets(db,scope,other.id,'PARTY')).length,0,'third party is private to the selected customer');
   await assert.rejects(saveShippingPreset(db,scope,{...thirdParty,id:randomUUID(),partyId:s.other.id}),/FREIGHT_PARTY_SCOPE/);
   const thirdJob=await saveFreight(db,orgId,actorId,'jobs',{clientKey:randomUUID(),mode:'SEA',customerId:s.vendor.id,data:{...cargo,shipperId:s.vendor.id,customerRole:'shipper',consigneeParty:thirdSaved.data}});
