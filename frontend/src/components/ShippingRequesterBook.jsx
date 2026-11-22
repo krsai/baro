@@ -26,7 +26,7 @@ export default function ShippingRequesterBook({orgId,customerId,resolveCustomer,
  const dirty=JSON.stringify(edit)!==baseline.current,blocked=disabled||busy||uncertain;
  const englishValid=shippingEnglishValid(edit,JSON.parse(baseline.current));
  const valid=englishValid&&!!edit.name.trim()&&edit.name.length<=200&&/^\d{1,80}$/.test(edit.phone)&&edit.address.length<=1000;
- const visible=rows.filter(row=>[row.data.name,row.data.phone,row.data.address].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+ const visible=rows.filter(row=>[row.data.name,row.data.country,displayEntityPhone(row.data.phone,row.data.country),row.data.phone,row.data.address].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
  useUnsavedChanges(dirty||uncertain);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  useEffect(()=>{
@@ -52,7 +52,7 @@ export default function ShippingRequesterBook({orgId,customerId,resolveCustomer,
  return <ListDetailDialog open onClose={async()=>{if(await leave())onClose();}} aria-label={t.requesterBook} data-testid="shipping-requester-book" title={t.requesterBook}
   onNew={()=>open()} newLabel={t.newRequester} newDisabled={blocked}
   search={<SearchInput sx={{width:'100%'}} placeholder={t.requesterSearch} inputProps={{'aria-label':t.requesterSearch}} value={query} disabled={blocked} onChange={event=>setQuery(event.target.value)}/>}
-  list={<DialogRecordList rows={visible} columns={[{key:'name',label:t.requesterName,value:row=>row.data.name},{key:'phone',label:t.requesterPhone,value:row=>displayEntityPhone(row.data.phone,row.data.country)}]} selectedKey={edit.id} onSelect={open} disabled={blocked} loading={loading} error={readError} onRetry={blocked?undefined:()=>setReload(v=>v+1)} languageCode={languageCode}/>}
+  list={<DialogRecordList rows={visible} columns={[{key:'name',label:t.requesterName,value:row=>row.data.name},{key:'country',label:t.country,width:64,value:row=>row.data.country},{key:'phone',label:t.requesterPhone,value:row=>displayEntityPhone(row.data.phone,row.data.country)}]} selectedKey={edit.id} onSelect={open} disabled={blocked} loading={loading} error={readError} onRetry={blocked?undefined:()=>setReload(v=>v+1)} languageCode={languageCode}/>}
   frameDetail detailTitle={t.requesterDetails} detail={<Stack spacing={2}>
    {!englishValid&&<Alert severity="error">{shippingEnglishText[languageCode]||shippingEnglishText.en}</Alert>}
    {saveError&&<Alert severity="error">{t.failed}</Alert>}
