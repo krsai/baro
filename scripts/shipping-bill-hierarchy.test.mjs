@@ -11,6 +11,32 @@ const {saveJobBill,jobDetail,saveDocumentSetup}=require('../backend/dist/service
 const {shippingCharges,saveShippingCharge}=require('../backend/dist/services/shippingRequests');
 const {createJobDocument}=require('../backend/dist/services/freightJobWorkflow');
 const {transportSnapshot}=require('../backend/dist/services/transportExchange');
+const {freightDocumentHtml}=await import('../frontend/src/utils/freightPrint.js');
+
+test('One Master takes DC on Master; Master+House takes DC on House and preserves old Master entries',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
+  const job=await saveFreight(db,org,actor,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,mode:'SEA',data:{origin:'HANOI',destination:'BUSAN',shipper:'SENDER',consignee:'BUYER'}});
+  const one=await saveDocumentSetup(db,org,actor,job.id,{version:job.version,composition:'MASTER_ONLY',documentType:'BILL_OF_LADING'});
+  const master=await saveJobBill(db,org,actor,job.id,{id:randomUUID(),kind:'MASTER',number:'M-ONE',data:{shipper:'MASTER SENDER',consignee:'MASTER BUYER',cargo:'MASTER CARGO'}});
+  const dc={id:randomUUID(),billId:master.id,direction:'SALES',description:'Freight',currencyCode:'USD',amount:'100'};
+  const saved=await saveShippingCharge(db,org,actor,job.id,dc);
+  await assert.rejects(saveShippingCharge(db,org,actor,job.id,{...dc,id:randomUUID(),billId:null}),/SHIPPING_DC_SCOPE/);
+  const printed=await createJobDocument(db,org,actor,job.id,{clientKey:randomUUID(),version:one.version,kind:'MASTER_DRAFT',billId:master.id});
+  assert.equal(printed.snapshot.source.bill.kind,'MASTER');assert.equal(printed.snapshot.source.data.cargo,'MASTER CARGO');
+  assert.match(freightDocumentHtml(printed,{}),/MASTER BILL OF LADING/);
+  await assert.rejects(createJobDocument(db,org,actor,job.id,{clientKey:randomUUID(),version:one.version,kind:'HOUSE_DRAFT',billId:master.id}),/FREIGHT_DOCUMENT_REQUIRED/);
+  const combined=await saveDocumentSetup(db,org,actor,job.id,{version:one.version,composition:'MASTER_HOUSE',documentType:'BILL_OF_LADING'});
+  const house=await saveJobBill(db,org,actor,job.id,{id:randomUUID(),kind:'HOUSE',number:'H-ONE',masterId:master.id});
+  await assert.rejects(saveShippingCharge(db,org,actor,job.id,{...dc,id:randomUUID()}),/SHIPPING_DC_SCOPE/);
+  await assert.rejects(saveShippingCharge(db,org,actor,job.id,{...dc,version:saved.version,amount:'101'}),/SHIPPING_DC_SCOPE/);
+  assert.equal((await saveShippingCharge(db,org,actor,job.id,{...dc,version:saved.version})).version,saved.version);
+  await saveShippingCharge(db,org,actor,job.id,{...dc,id:randomUUID(),billId:house.id});
+  await assert.rejects(createJobDocument(db,org,actor,job.id,{clientKey:randomUUID(),version:combined.version,kind:'MASTER_DRAFT',billId:house.id}),/FREIGHT_DOCUMENT_REQUIRED/);
+  assert.equal((await shippingCharges(db,org,actor,job.id)).rows.find(row=>row.id===dc.id).amount,'100.0000');
+  assert.deepEqual((await db.$queryRawUnsafe('SELECT snapshot FROM "FreightDocument" WHERE id=$1',printed.id))[0].snapshot,printed.snapshot);
+ }finally{await f.close();}
+});
 
 test('SR, bill hierarchy, separate bill snapshots and scoped AR/AP preserve original records',async()=>{
  const f=await changeApprovalFixture();try{

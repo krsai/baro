@@ -4,7 +4,7 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&
 export function transportFormHtml(document){
  const {issuer,source}=document.snapshot,d=source.data,kind=document.kind;
  const names={BILL_OF_LADING:'BILL OF LADING',SEA_WAYBILL:'SEA WAYBILL',AIR_WAYBILL:'AIR WAYBILL',WAYBILL:'CONSIGNMENT NOTE'};
- const title=kind==='HOUSE_DRAFT'?names[source.documentType]||'WAYBILL':{AN:'ARRIVAL NOTICE',DO:'DELIVERY ORDER',POD:'PROOF OF DELIVERY',MANIFEST:'CARGO MANIFEST'}[kind];
+ const title=kind==='MASTER_DRAFT'?'MASTER '+(names[source.documentType]||'WAYBILL'):kind==='HOUSE_DRAFT'?names[source.documentType]||'WAYBILL':{AN:'ARRIVAL NOTICE',DO:'DELIVERY ORDER',POD:'PROOF OF DELIVERY',MANIFEST:'CARGO MANIFEST'}[kind];
  const box=(label,value,extra='')=>`<section class="field ${extra}"><label>${esc(label)}</label><div>${esc(value)}</div></section>`;
  const pair=(a,b)=>`<div class="pair">${a}${b}</div>`;
  const reference=pair(box('DOCUMENT REFERENCE',document.number),box('SHIPMENT / BILL REFERENCE',[source.number,source.bill?.number].filter(Boolean).join(' / ')));
@@ -14,7 +14,7 @@ export function transportFormHtml(document){
  const cargo=`<table class="cargo"><thead><tr>${['MARKS / NUMBERS','PACKAGES','DESCRIPTION OF GOODS','GROSS WEIGHT (KG)','MEASUREMENT (CBM)'].map(text=>`<th>${text}</th>`).join('')}</tr></thead><tbody><tr><td>${esc(d.marks)}</td><td>${esc([d.quantity,d.unit].filter(Boolean).join(' '))}</td><td>${esc(d.cargo)}${d.hsCode?'<br>HS: '+esc(d.hsCode):''}</td><td>${esc(d.weightKg)}</td><td>${esc(d.cbm)}</td></tr></tbody></table>`;
  const signatures=(left,right)=>pair(box(left,'','signature'),box(right,'','signature'));
  let content='';
- if(kind==='HOUSE_DRAFT'){
+ if(['MASTER_DRAFT','HOUSE_DRAFT'].includes(kind)){
   content=reference+parties+pair(box('NOTIFY PARTY',d.notify),box('ISSUED BY',[issuer.name,source.bill?.issuer].filter(Boolean).join('\n')))+route+voyage+cargo;
   if(source.documentType==='AIR_WAYBILL')content+=pair(box('ACCOUNTING INFORMATION / CHARGES',''),box('SPECIAL HANDLING / DECLARED VALUE',''));
   else content+=pair(box('FREIGHT / INCOTERMS',[d.freightTerms,d.incoterms].filter(Boolean).join(' / ')),box('MASTER REFERENCE',source.master?.number));

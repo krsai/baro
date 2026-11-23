@@ -42,7 +42,7 @@ export async function saveJobProgress(db:any,orgId:number,actorId:number,id:stri
 
 export async function createJobDocument(db:any,orgId:number,actorId:number,id:string,input:any){
  await freightForwarder(db,orgId,actorId);
- if(!input||Object.keys(input).some(key=>!['clientKey','version','kind','billId','fields'].includes(key))||typeof input.clientKey!=='string'||!/^[a-zA-Z0-9_-]{8,80}$/.test(input.clientKey)||!Number.isSafeInteger(input.version)||!['AN','DO','POD','MANIFEST','HOUSE_DRAFT'].includes(input.kind)||input.billId!=null&&typeof input.billId!=='string')fail('FREIGHT_INVALID_INPUT');
+ if(!input||Object.keys(input).some(key=>!['clientKey','version','kind','billId','fields'].includes(key))||typeof input.clientKey!=='string'||!/^[a-zA-Z0-9_-]{8,80}$/.test(input.clientKey)||!Number.isSafeInteger(input.version)||!['AN','DO','POD','MANIFEST','HOUSE_DRAFT','MASTER_DRAFT'].includes(input.kind)||input.billId!=null&&typeof input.billId!=='string')fail('FREIGHT_INVALID_INPUT');
  const fields:any={};
  if(input.fields!==undefined){if(!input.fields||typeof input.fields!=='object'||Array.isArray(input.fields)||Object.keys(input.fields).some(key=>!['vessel','voyage','etd','eta','marks','freightTerms'].includes(key)))fail('FREIGHT_INVALID_INPUT');
   for(const key of ['vessel','voyage','etd','eta','marks','freightTerms'])if(input.fields[key]!==undefined){const value=text(input.fields[key],['etd','eta'].includes(key)?10:500);if(['etd','eta'].includes(key)&&value&&(!/^\d{4}-\d\d-\d\d$/.test(value)||!Number.isFinite(Date.parse(value))||new Date(value).toISOString().slice(0,10)!==value))fail('FREIGHT_INVALID_INPUT');fields[key]=value;}
@@ -57,7 +57,7 @@ export async function createJobDocument(db:any,orgId:number,actorId:number,id:st
   if(row.version!==input.version)fail('FREIGHT_CHANGED',409);
   const bills=await tx.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE "orgId"=$1 AND "jobId"=$2 AND "deletedAt" IS NULL ORDER BY "createdAt",id',orgId,id),bill=input.billId?bills.find((b:any)=>b.id===input.billId):null;
   if(input.billId&&!bill)fail('FREIGHT_MASTER_SCOPE');
-  if(input.kind==='HOUSE_DRAFT'&&(!bill||bill.kind!=='HOUSE'))fail('FREIGHT_DOCUMENT_REQUIRED');
+  if((input.kind==='HOUSE_DRAFT'&&(!bill||bill.kind!=='HOUSE'))||(input.kind==='MASTER_DRAFT'&&(!bill||bill.kind!=='MASTER')))fail('FREIGHT_DOCUMENT_REQUIRED');
   if(!row.data.origin||!row.data.destination)fail('FREIGHT_DOCUMENT_REQUIRED');
   const allowed=['origin','destination','etd','eta','vessel','voyage','cargo','marks','quantity','unit','weightKg','cbm','freightTerms','incoterms','plannedDate','containers','packages','deliveryDate','recipient','hsCode'];
   const data:any=Object.fromEntries(allowed.filter(key=>row.data[key]!=null).map(key=>[key,row.data[key]]));

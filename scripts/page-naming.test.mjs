@@ -55,6 +55,8 @@ test('localized grammar is shared by all labels without stale record IDs',()=>{
 });
 
 test('every existing editable record resolves to detail in all languages, including legacy edit URLs',()=>{
+ assert.equal(name('/shipping?id=17').key,'shippingRequest');
+ assert.equal(name('/shipping?id=17&stage=bills').key,'transportList');
  for(const lang of ['ko','en','vi'])for(const path of [
   '/order/17','/style/17','/customer/17','/attendance/17','/work-history/17',
   '/outsourcing-record/edit/request/17','/bank-ledger/edit/17','/shipping?id=17',

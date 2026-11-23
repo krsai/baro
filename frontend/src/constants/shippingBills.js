@@ -12,3 +12,9 @@ Object.assign(shippingBillText.vi,{addOptionalBills:'Thêm B/L (Tùy Chọn)',sh
 Object.assign(shippingBillText.ko,{shipmentTotals:'운송건 전체 합계 (모든 B/L 포함)'});
 Object.assign(shippingBillText.en,{shipmentTotals:'Shipment Total (All B/L Included)'});
 Object.assign(shippingBillText.vi,{shipmentTotals:'Tổng Lô Hàng (Gồm Tất Cả B/L)'});
+Object.assign(shippingBillText.ko,{requestTitle:'운송 신청',transportDetails:'운송 상세',selectBills:'B/L 종류 선택',NONE:'B/L 없이 진행',dc:'DC · Debit / Credit Note',ar:'Debit Note (매출)',ap:'Credit Note (매입)',dcScope:'선택한 B/L 구성의 DC 입력 대상을 확인하세요.'});
+Object.assign(shippingBillText.en,{requestTitle:'Shipping Request',transportDetails:'Transport Details',selectBills:'Select B/L Type',NONE:'Continue Without B/L',dc:'DC · Debit / Credit Note',ar:'Debit Note (Sales)',ap:'Credit Note (Purchases)',dcScope:'Check the DC target for the selected B/L composition.'});
+Object.assign(shippingBillText.vi,{requestTitle:'Yêu Cầu Vận Chuyển',transportDetails:'Chi Tiết Vận Chuyển',selectBills:'Chọn Loại B/L',NONE:'Tiếp Tục Không Có B/L',dc:'DC · Debit / Credit Note',ar:'Debit Note (Doanh Thu)',ap:'Credit Note (Chi Phí)',dcScope:'Kiểm Tra Đối Tượng DC Theo Cấu Trúc B/L.'});
+Object.assign(shippingBillText.ko,{masterDocument:'Master B/L · AWB',houseDocument:'House B/L · AWB'});
+Object.assign(shippingBillText.en,{masterDocument:'Master B/L · AWB',houseDocument:'House B/L · AWB'});
+Object.assign(shippingBillText.vi,{masterDocument:'Master B/L · AWB',houseDocument:'House B/L · AWB'});

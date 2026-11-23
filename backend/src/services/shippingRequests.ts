@@ -146,13 +146,16 @@ export async function saveShippingCharge(db:any,orgId:number,actorId:number,id:s
   const sourceKind=input.sourceKind??old?.sourceKind??'MANUAL';
   const quantity=Object.hasOwn(input,'quantity')?input.quantity:old?.quantity??null,unitPrice=Object.hasOwn(input,'unitPrice')?input.unitPrice:old?.unitPrice??null;
   if(billId!==null&&(typeof billId!=='string'||billId.length>100)||!['MANUAL','ADDITIONAL'].includes(sourceKind))fail('SHIPPING_INVALID');
-  if(billId&&!(await tx.$queryRawUnsafe('SELECT id FROM "FreightBill" WHERE id=$1 AND "jobId"=$2 AND "orgId"=$3 AND "deletedAt" IS NULL',billId,id,orgId)).length)fail('SHIPPING_BILL_SCOPE');
+  const bill=billId?(await tx.$queryRawUnsafe('SELECT id,kind FROM "FreightBill" WHERE id=$1 AND "jobId"=$2 AND "orgId"=$3 AND "deletedAt" IS NULL',billId,id,orgId))[0]:null;
+  if(billId&&!bill)fail('SHIPPING_BILL_SCOPE');
   const units=(v:string)=>{const [n='0',f='']=v.split('.');return BigInt(n)*10000n+BigInt(f.padEnd(4,'0'));};
   if(quantity!==null||unitPrice!==null){
    if(typeof quantity!=='string'||!/^\d{1,16}(?:\.\d{1,4})?$/.test(quantity)||units(quantity)<=0n||typeof unitPrice!=='string'||!/^\d{1,20}(?:\.\d{1,4})?$/.test(unitPrice)||(units(quantity)*units(unitPrice)+5000n)/10000n!==units(input.amount))fail('SHIPPING_INVALID');
   }
   const sameNumber=(a:any,b:any)=>a===null&&b===null||a!==null&&b!==null&&units(a)===units(b);
   if(old&&old.matches&&old.direction===input.direction&&old.description===input.description.trim()&&old.currencyCode===input.currencyCode&&old.billId===billId&&old.partyId===partyId&&old.sourceKind===sourceKind&&sameNumber(old.quantity,quantity)&&sameNumber(old.unitPrice,unitPrice))return {id:old.id,version:old.version};
+  const composition=job.data.documentSetup?.composition;
+  if((composition==='MASTER_ONLY'&&bill&&bill.kind!=='MASTER')||(composition==='MASTER_HOUSE'&&bill&&bill.kind!=='HOUSE')||(!bill&&job.service!=='EXPRESS'&&['SEA','AIR'].includes(job.mode)&&['MASTER_ONLY','MASTER_HOUSE'].includes(composition)))fail('SHIPPING_DC_SCOPE',409);
   if(old&&old.version!==input.version)fail('SHIPPING_CHANGED',409);
   const updated=old?await tx.$queryRawUnsafe('UPDATE "ShippingChargeDraft" SET direction=$1,description=$2,"currencyCode"=$3,amount=$4::numeric,version=version+1,"updatedByEmployeeId"=$5,"updatedAt"=CURRENT_TIMESTAMP,"billId"=$7,quantity=$8::numeric,"unitPrice"=$9::numeric,"sourceKind"=$10,"partyId"=$11 WHERE id=$6 RETURNING *',input.direction,input.description.trim(),input.currencyCode,input.amount,actorId,input.id,billId,quantity,unitPrice,sourceKind,partyId):await tx.$queryRawUnsafe('INSERT INTO "ShippingChargeDraft"(id,"orgId","jobId",direction,description,"currencyCode",amount,"createdByEmployeeId","updatedByEmployeeId","billId",quantity,"unitPrice","sourceKind","partyId") VALUES($1,$2,$3,$4,$5,$6,$7::numeric,$8,$8,$9,$10::numeric,$11::numeric,$12,$13) RETURNING *',input.id,orgId,id,input.direction,input.description.trim(),input.currencyCode,input.amount,actorId,billId,quantity,unitPrice,sourceKind,partyId);
   await tx.$executeRawUnsafe('INSERT INTO "FreightAudit"(id,"orgId",entity,"sourceId",version,"actorId","before","after") VALUES($1,$2,\'charge-drafts\',$3,$4,$5,$6::jsonb,$7::jsonb)',randomUUID(),orgId,input.id,updated[0].version,actorId,old?JSON.stringify(old):null,JSON.stringify(updated[0]));
