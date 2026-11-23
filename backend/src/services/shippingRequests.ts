@@ -9,7 +9,7 @@ import {searchShippingAirports} from './shippingAirports';
 import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
-import {freightActor,freightForwarder,freightOptions} from './freightOperations';
+import {freightActor,freightForwarder,freightOptions,scopedParty} from './freightOperations';
 import {transportSnapshot,transportPartners} from './transportExchange';
 import {companyIndustryMenuFeatures} from './industryMenuPolicy';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
@@ -129,20 +129,32 @@ export async function actOnShippingRequest(db:any,orgId:number,actorId:number,id
 export async function shippingCharges(db:any,orgId:number,actorId:number,id:string){
  if((await actor(db,orgId,actorId)).type!=='SERVICE')fail('SHIPPING_ACCESS_DENIED',403);const row=await memberJob(db,orgId,id);
  if(row.orgId!==orgId)fail('SHIPPING_ACCESS_DENIED',403);
- return {rows:await db.$queryRawUnsafe('SELECT id,direction,description,"currencyCode",amount::text,version FROM "ShippingChargeDraft" WHERE "jobId"=$1 AND "orgId"=$2 ORDER BY "createdAt",id',id,orgId),currencies:await db.currency.findMany({select:{code:true,name:true},orderBy:{code:'asc'}})};
+ return {rows:await db.$queryRawUnsafe('SELECT id,direction,description,"currencyCode",amount::text,version,"billId","partyId",quantity::text,"unitPrice"::text,"sourceKind" FROM "ShippingChargeDraft" WHERE "jobId"=$1 AND "orgId"=$2 ORDER BY "createdAt",id',id,orgId),currencies:await db.currency.findMany({select:{code:true,name:true},orderBy:{code:'asc'}}),parties:await freightOptions(db,orgId,actorId)};
 }
 export async function saveShippingCharge(db:any,orgId:number,actorId:number,id:string,input:any){
- if(typeof input.id!=='string'||!/^[a-zA-Z0-9_-]{8,80}$/.test(input.id)||!['PURCHASE','SALES'].includes(input.direction)||typeof input.description!=='string'||!input.description.trim()||input.description.length>500||typeof input.amount!=='string'||!/^\d{1,20}(?:\.\d{1,4})?$/.test(input.amount)||typeof input.currencyCode!=='string'||Object.keys(input).some(key=>!['id','direction','description','currencyCode','amount','version'].includes(key)))fail('SHIPPING_INVALID');
+ if(typeof input.id!=='string'||!/^[a-zA-Z0-9_-]{8,80}$/.test(input.id)||!['PURCHASE','SALES'].includes(input.direction)||typeof input.description!=='string'||!input.description.trim()||input.description.length>500||typeof input.amount!=='string'||!/^\d{1,20}(?:\.\d{1,4})?$/.test(input.amount)||typeof input.currencyCode!=='string'||Object.keys(input).some(key=>!['id','direction','description','currencyCode','amount','version','billId','partyId','quantity','unitPrice','sourceKind'].includes(key)))fail('SHIPPING_INVALID');
  return retryEditTransaction(db,async(tx:any)=>{
   if((await actor(tx,orgId,actorId)).type!=='SERVICE')fail('SHIPPING_ACCESS_DENIED',403);const job=await memberJob(tx,orgId,id,true);
   if(job.orgId!==orgId)fail('SHIPPING_ACCESS_DENIED',403);
   if(job.receiptStatus!=='ACCEPTED'||job.status==='CANCELLED')fail('SHIPPING_NOT_ACCEPTED',409);
   if(!await tx.currency.findUnique({where:{code:input.currencyCode},select:{id:true}}))fail('SHIPPING_INVALID');
-  const old=(await tx.$queryRawUnsafe('SELECT *,amount=$2::numeric AS matches FROM "ShippingChargeDraft" WHERE id=$1 FOR UPDATE',input.id,input.amount))[0];
+  const old=(await tx.$queryRawUnsafe('SELECT *,quantity::text AS quantity,"unitPrice"::text AS "unitPrice",amount=$2::numeric AS matches FROM "ShippingChargeDraft" WHERE id=$1 FOR UPDATE',input.id,input.amount))[0];
   if(old&&(old.orgId!==orgId||old.jobId!==id))fail('SHIPPING_NOT_FOUND',404);
-  if(old&&old.matches&&old.direction===input.direction&&old.description===input.description.trim()&&old.currencyCode===input.currencyCode)return {id:old.id,version:old.version};
+  const billId=Object.hasOwn(input,'billId')?input.billId:old?.billId||null;
+  const partyId=Object.hasOwn(input,'partyId')?input.partyId:old?.partyId||null;
+  if(partyId!==null){if(!Number.isSafeInteger(partyId))fail('SHIPPING_INVALID');await scopedParty(tx,orgId,partyId);}
+  const sourceKind=input.sourceKind??old?.sourceKind??'MANUAL';
+  const quantity=Object.hasOwn(input,'quantity')?input.quantity:old?.quantity??null,unitPrice=Object.hasOwn(input,'unitPrice')?input.unitPrice:old?.unitPrice??null;
+  if(billId!==null&&(typeof billId!=='string'||billId.length>100)||!['MANUAL','ADDITIONAL'].includes(sourceKind))fail('SHIPPING_INVALID');
+  if(billId&&!(await tx.$queryRawUnsafe('SELECT id FROM "FreightBill" WHERE id=$1 AND "jobId"=$2 AND "orgId"=$3 AND "deletedAt" IS NULL',billId,id,orgId)).length)fail('SHIPPING_BILL_SCOPE');
+  const units=(v:string)=>{const [n='0',f='']=v.split('.');return BigInt(n)*10000n+BigInt(f.padEnd(4,'0'));};
+  if(quantity!==null||unitPrice!==null){
+   if(typeof quantity!=='string'||!/^\d{1,16}(?:\.\d{1,4})?$/.test(quantity)||units(quantity)<=0n||typeof unitPrice!=='string'||!/^\d{1,20}(?:\.\d{1,4})?$/.test(unitPrice)||(units(quantity)*units(unitPrice)+5000n)/10000n!==units(input.amount))fail('SHIPPING_INVALID');
+  }
+  const sameNumber=(a:any,b:any)=>a===null&&b===null||a!==null&&b!==null&&units(a)===units(b);
+  if(old&&old.matches&&old.direction===input.direction&&old.description===input.description.trim()&&old.currencyCode===input.currencyCode&&old.billId===billId&&old.partyId===partyId&&old.sourceKind===sourceKind&&sameNumber(old.quantity,quantity)&&sameNumber(old.unitPrice,unitPrice))return {id:old.id,version:old.version};
   if(old&&old.version!==input.version)fail('SHIPPING_CHANGED',409);
-  const updated=old?await tx.$queryRawUnsafe('UPDATE "ShippingChargeDraft" SET direction=$1,description=$2,"currencyCode"=$3,amount=$4::numeric,version=version+1,"updatedByEmployeeId"=$5,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$6 RETURNING *',input.direction,input.description.trim(),input.currencyCode,input.amount,actorId,input.id):await tx.$queryRawUnsafe('INSERT INTO "ShippingChargeDraft"(id,"orgId","jobId",direction,description,"currencyCode",amount,"createdByEmployeeId","updatedByEmployeeId") VALUES($1,$2,$3,$4,$5,$6,$7::numeric,$8,$8) RETURNING *',input.id,orgId,id,input.direction,input.description.trim(),input.currencyCode,input.amount,actorId);
+  const updated=old?await tx.$queryRawUnsafe('UPDATE "ShippingChargeDraft" SET direction=$1,description=$2,"currencyCode"=$3,amount=$4::numeric,version=version+1,"updatedByEmployeeId"=$5,"updatedAt"=CURRENT_TIMESTAMP,"billId"=$7,quantity=$8::numeric,"unitPrice"=$9::numeric,"sourceKind"=$10,"partyId"=$11 WHERE id=$6 RETURNING *',input.direction,input.description.trim(),input.currencyCode,input.amount,actorId,input.id,billId,quantity,unitPrice,sourceKind,partyId):await tx.$queryRawUnsafe('INSERT INTO "ShippingChargeDraft"(id,"orgId","jobId",direction,description,"currencyCode",amount,"createdByEmployeeId","updatedByEmployeeId","billId",quantity,"unitPrice","sourceKind","partyId") VALUES($1,$2,$3,$4,$5,$6,$7::numeric,$8,$8,$9,$10::numeric,$11::numeric,$12,$13) RETURNING *',input.id,orgId,id,input.direction,input.description.trim(),input.currencyCode,input.amount,actorId,billId,quantity,unitPrice,sourceKind,partyId);
   await tx.$executeRawUnsafe('INSERT INTO "FreightAudit"(id,"orgId",entity,"sourceId",version,"actorId","before","after") VALUES($1,$2,\'charge-drafts\',$3,$4,$5,$6::jsonb,$7::jsonb)',randomUUID(),orgId,input.id,updated[0].version,actorId,old?JSON.stringify(old):null,JSON.stringify(updated[0]));
   return {id:input.id,version:updated[0].version};
  });

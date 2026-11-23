@@ -57,15 +57,17 @@ export async function createJobDocument(db:any,orgId:number,actorId:number,id:st
   if(row.version!==input.version)fail('FREIGHT_CHANGED',409);
   const bills=await tx.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE "orgId"=$1 AND "jobId"=$2 AND "deletedAt" IS NULL ORDER BY "createdAt",id',orgId,id),bill=input.billId?bills.find((b:any)=>b.id===input.billId):null;
   if(input.billId&&!bill)fail('FREIGHT_MASTER_SCOPE');
-  if(input.kind==='HOUSE_DRAFT'&&(!bill||bill.kind!=='HOUSE'||!row.data.documentSetup))fail('FREIGHT_DOCUMENT_REQUIRED');
+  if(input.kind==='HOUSE_DRAFT'&&(!bill||bill.kind!=='HOUSE'))fail('FREIGHT_DOCUMENT_REQUIRED');
   if(!row.data.origin||!row.data.destination)fail('FREIGHT_DOCUMENT_REQUIRED');
   const allowed=['origin','destination','etd','eta','vessel','voyage','cargo','marks','quantity','unit','weightKg','cbm','freightTerms','incoterms','plannedDate','containers','packages','deliveryDate','recipient','hsCode'];
   const data:any=Object.fromEntries(allowed.filter(key=>row.data[key]!=null).map(key=>[key,row.data[key]]));
+  // A saved bill is a separate document source; never overwrite the job.
+  if(bill?.data)for(const key of [...allowed,'shipper','consignee','notify','deliveryAgent','placeOfReceipt','placeOfDelivery','issueDate','issuePlace'])if(bill.data[key]!=null)data[key]=bill.data[key];
   Object.assign(data,fields);
-  for(const role of ['shipper','consignee','notify']){const party=row.data[role+'Party'];data[role]=row.data[role]||[party?.name,party?.address,party?.contactName,party?.phone,party?.email].filter(Boolean).join('\n');}
+  for(const role of ['shipper','consignee','notify']){const party=row.data[role+'Party'];if(data[role]===undefined)data[role]=row.data[role]||[party?.name,party?.address,party?.contactName,party?.phone,party?.email].filter(Boolean).join('\n');}
   if(!data.shipper||!data.consignee)fail('FREIGHT_DOCUMENT_REQUIRED');
   const issuer=await tx.organization.findUnique({where:{id:orgId},select:{name:true,address:true,representative:true,phone:true,email:true}}),documentId=randomUUID();
-  const source={id:row.id,number:row.number,mode:row.mode,service:row.service,version:row.version,data,bill:bill?{id:bill.id,number:bill.number,kind:bill.kind,issuer:bill.issuer,version:bill.version}:null,master:bill?.masterId?bills.filter((b:any)=>b.id===bill.masterId).map((b:any)=>({id:b.id,number:b.number,version:b.version}))[0]||null:null,documentType:row.data.documentSetup?.documentType||'WAYBILL'};
+  const source={id:row.id,number:row.number,mode:row.mode,service:row.service,version:row.version,data,bill:bill?{id:bill.id,number:bill.number,kind:bill.kind,issuer:bill.issuer,version:bill.version}:null,master:bill?.masterId?bills.filter((b:any)=>b.id===bill.masterId).map((b:any)=>({id:b.id,number:b.number,version:b.version}))[0]||null:null,documentType:row.data.documentSetup?.documentType||(row.mode==='SEA'?'BILL_OF_LADING':row.mode==='AIR'?'AIR_WAYBILL':'WAYBILL')};
   const snapshot={layout:'transport-v1',requestHash,issuer,source,draft:true,deliveryConfirmed:false,createdByEmployeeId:actorId};
   return (await tx.$queryRawUnsafe('INSERT INTO "FreightDocument"(id,"orgId","jobId","clientKey",kind,number,"sourceVersion",snapshot,"createdByEmployeeId") VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9) RETURNING *',documentId,orgId,id,input.clientKey,input.kind,`${input.kind}-${documentId.slice(0,8).toUpperCase()}`,row.version,JSON.stringify(snapshot),actorId))[0];
  });

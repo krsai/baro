@@ -4,6 +4,7 @@ import {retryEditTransaction} from '../utils/editRevision';
 import {freightActor,freightForwarder,listFreight,saveFreight} from './freightOperations';
 import {saveJobProgress,createJobDocument} from './freightJobWorkflow';
 import {saveShippingTradeDocument} from './shippingTradeDocuments';
+import {billData} from './freightBillData';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const text=(v:any,max=120)=>typeof v==='string'&&v.trim().length<=max?v.trim():fail('FREIGHT_INVALID_INPUT');
 async function job(db:any,orgId:number,id:string,lock=false){
@@ -23,23 +24,32 @@ export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:strin
   if(current.receiptStatus!=='ACCEPTED'||current.status==='CANCELLED')fail('SHIPPING_NOT_ACCEPTED',409);
   const before=id?(await tx.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE id=$1 AND "orgId"=$2 AND "jobId"=$3 AND "deletedAt" IS NULL',id,orgId,jobId))[0]:null;
   if(id&&!before)fail('FREIGHT_NOT_FOUND',404);
-  if(before&&before.version!==input.version)fail('FREIGHT_CHANGED',409);
   const kind=before?.kind||input.kind;if(!['MASTER','HOUSE'].includes(kind)||before&&input.kind&&input.kind!==kind||input.masterIds!==undefined)fail('FREIGHT_INVALID_INPUT');
   const composition=current.data.documentSetup?.composition;
-  if(!remove&&!before&&(composition==='MASTER_ONLY'&&kind==='HOUSE'||composition==='HOUSE_ONLY'&&kind==='MASTER'))fail('FREIGHT_COMPOSITION_HAS_BILLS',409);
+  if(!remove&&composition==='MASTER_ONLY'){
+   if(kind==='HOUSE')fail('FREIGHT_COMPOSITION_HAS_BILLS',409);
+   if(!before&&(await tx.$queryRawUnsafe('SELECT id FROM "FreightBill" WHERE "orgId"=$1 AND "jobId"=$2 AND kind=\'MASTER\' AND "deletedAt" IS NULL AND id<>$3 LIMIT 1',orgId,jobId,input.id||'')).length)fail('FREIGHT_COMPOSITION_HAS_BILLS',409);
+  }
   const number=remove?before.number:text(input.number),issuer=remove?before.issuer:text(input.issuer??'',200);
   if(!number)fail('FREIGHT_REQUIRED');
   const masterId=remove?before.masterId:input.masterId==null||input.masterId===''?null:text(input.masterId,100);
+  if(!remove&&kind==='HOUSE'&&!masterId&&(!before||before.masterId))fail('FREIGHT_MASTER_REQUIRED');
+  const data=remove?before.data:input.data===undefined?before?.data||{}:billData(input.data);
+  if(before&&!remove&&before.number===number&&before.issuer===issuer&&before.masterId===masterId&&JSON.stringify(billData(before.data||{}))===JSON.stringify(data)){
+   if(before.version===input.version||before.version===input.version+1)return before;
+  }
+  if(before&&before.version!==input.version)fail('FREIGHT_CHANGED',409);
   if(masterId&&(kind!=='HOUSE'||!(await tx.$queryRawUnsafe('SELECT id FROM "FreightBill" WHERE id=$1 AND "orgId"=$2 AND "jobId"=$3 AND kind=\'MASTER\' AND "deletedAt" IS NULL',masterId,orgId,jobId)).length))fail('FREIGHT_MASTER_SCOPE');
   if(remove&&kind==='MASTER'&&(await tx.$queryRawUnsafe('SELECT id FROM "FreightBill" WHERE "masterId"=$1 AND "orgId"=$2 AND "deletedAt" IS NULL',id,orgId)).length)fail('FREIGHT_MASTER_HAS_HOUSES',409);
+  if(remove&&(await tx.$queryRawUnsafe('SELECT id FROM "ShippingChargeDraft" WHERE "billId"=$1 AND "jobId"=$2 AND "orgId"=$3 LIMIT 1',id,jobId,orgId)).length)fail('FREIGHT_BILL_HAS_CHARGES',409);
   // A client-generated ID makes creation safely retryable, without number merging.
   const billId=id||text(input.id,80);if(!billId)fail('FREIGHT_REQUIRED');
   let rows;
-  if(before)rows=await tx.$queryRawUnsafe('UPDATE "FreightBill" SET number=$1,issuer=$2,"masterId"=$3,"deletedAt"=$4,version=version+1,"updatedByEmployeeId"=$5,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$6 AND "orgId"=$7 RETURNING *',number,issuer,masterId,remove?new Date():null,actorId,billId,orgId);
+  if(before)rows=await tx.$queryRawUnsafe('UPDATE "FreightBill" SET number=$1,issuer=$2,"masterId"=$3,"deletedAt"=$4,version=version+1,"updatedByEmployeeId"=$5,"updatedAt"=CURRENT_TIMESTAMP,data=$8::jsonb WHERE id=$6 AND "orgId"=$7 RETURNING *',number,issuer,masterId,remove?new Date():null,actorId,billId,orgId,JSON.stringify(data));
   else{
    const previous=(await tx.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE id=$1',billId))[0];
-   if(previous){if(previous.orgId!==orgId||previous.jobId!==jobId||previous.kind!==kind||previous.number!==number||previous.issuer!==issuer||previous.masterId!==masterId||previous.deletedAt)fail('FREIGHT_CHANGED',409);return previous;}
-   rows=await tx.$queryRawUnsafe('INSERT INTO "FreightBill"(id,"orgId","jobId",kind,number,issuer,"masterId","createdByEmployeeId","updatedByEmployeeId") VALUES($1,$2,$3,$4,$5,$6,$7,$8,$8) RETURNING *',billId,orgId,jobId,kind,number,issuer,masterId,actorId);
+   if(previous){if(previous.orgId!==orgId||previous.jobId!==jobId||previous.kind!==kind||previous.number!==number||previous.issuer!==issuer||previous.masterId!==masterId||JSON.stringify(billData(previous.data||{}))!==JSON.stringify(data)||previous.deletedAt)fail('FREIGHT_CHANGED',409);return previous;}
+   rows=await tx.$queryRawUnsafe('INSERT INTO "FreightBill"(id,"orgId","jobId",kind,number,issuer,"masterId",data,"createdByEmployeeId","updatedByEmployeeId") VALUES($1,$2,$3,$4,$5,$6,$7,$9::jsonb,$8,$8) RETURNING *',billId,orgId,jobId,kind,number,issuer,masterId,actorId,JSON.stringify(data));
   }
   await tx.$executeRawUnsafe('INSERT INTO "FreightAudit"(id,"orgId",entity,"sourceId",version,"actorId","before","after") VALUES($1,$2,\'bills\',$3,$4,$5,$6::jsonb,$7::jsonb)',randomUUID(),orgId,billId,rows[0].version,actorId,before?JSON.stringify(before):null,JSON.stringify(rows[0]));
   return rows[0];
@@ -59,6 +69,7 @@ export async function saveDocumentSetup(db:any,orgId:number,actorId:number,jobId
   // Changing a display preference must never remove or reclassify saved bills.
   const bills=await tx.$queryRawUnsafe('SELECT kind FROM "FreightBill" WHERE "orgId"=$1 AND "jobId"=$2 AND "deletedAt" IS NULL',orgId,jobId);
   if(bills.some((bill:any)=>input.composition==='MASTER_ONLY'&&bill.kind==='HOUSE'||input.composition==='HOUSE_ONLY'&&bill.kind==='MASTER'))fail('FREIGHT_COMPOSITION_HAS_BILLS',409);
+  if(input.composition==='MASTER_ONLY'&&bills.filter((bill:any)=>bill.kind==='MASTER').length>1)fail('FREIGHT_COMPOSITION_HAS_BILLS',409);
   if(bills.length&&current.data.documentSetup?.documentType&&current.data.documentSetup.documentType!==input.documentType)fail('FREIGHT_COMPOSITION_HAS_BILLS',409);
   const rows=await tx.$queryRawUnsafe('UPDATE "FreightJob" SET data=$1::jsonb,version=version+1,"updatedByEmployeeId"=$2,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$3 AND "orgId"=$4 RETURNING *',JSON.stringify({...current.data,documentSetup:setup}),actorId,jobId,orgId);
   await tx.$executeRawUnsafe('INSERT INTO "FreightAudit"(id,"orgId",entity,"sourceId",version,"actorId","before","after") VALUES($1,$2,\'document-setup\',$3,$4,$5,$6::jsonb,$7::jsonb)',randomUUID(),orgId,jobId,rows[0].version,actorId,JSON.stringify(current),JSON.stringify(rows[0]));

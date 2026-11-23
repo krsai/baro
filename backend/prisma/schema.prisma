@@ -52,6 +52,7 @@ model FreightBill {
  kind String
  number String
  issuer String @default("")
+ data Json @default("{}")
  masterId String?
  masterKind String @default("MASTER")
  deletedAt DateTime?
@@ -194,6 +195,11 @@ model ShippingChargeDraft {
  id String @id
  orgId Int
  jobId String
+ billId String?
+ partyId Int?
+ quantity Decimal? @db.Decimal(20,4)
+ unitPrice Decimal? @db.Decimal(24,4)
+ sourceKind String @default("MANUAL")
  direction String
  description String
  currencyCode String

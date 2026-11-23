@@ -49,7 +49,7 @@ test('job registration validates scoped parties, preserves cargo details and sta
   const road=await create({...body,clientKey:randomUUID(),mode:'ROAD',data:{...body.data,shipmentType:'ROAD',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'}}});assert.equal(road.mode,'ROAD');
  }finally{await f.close();}
 });
-test('jobs have independent optional BLs with scoped, mutable Master-House links and protected history',async()=>{
+test('SR jobs have Master-first BLs with scoped House links and protected history',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
   const create=()=>saveFreight(db,org,actor,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,mode:'ROAD'});
@@ -58,26 +58,27 @@ test('jobs have independent optional BLs with scoped, mutable Master-House links
   const changed=await saveFreight(db,org,actor,'jobs',{...job,clientKey:randomUUID(),data:{...job.data,assigneeId:actor,plannedDate:'2026-11-06',jobType:'DOMESTIC'}},job.id);assert.equal(changed.data.assigneeId,actor);assert.equal(changed.data.plannedDate,'2026-11-06');assert.notEqual(job.number,other.number);
   assert.deepEqual((await jobDetail(db,org,actor,job.id)).bills,[]);
   const add=(kind,number,masterId=null,jobId=job.id)=>saveJobBill(db,org,actor,jobId,{id:randomUUID(),kind,number,issuer:'Issuer',masterId});
-  const house=await add('HOUSE','HOUSE-1');assert.equal(house.masterId,null);
+  await assert.rejects(add('HOUSE','ORPHAN'),/FREIGHT_MASTER_REQUIRED/);
   const master=await add('MASTER','MASTER-1'),second=await add('MASTER','MASTER-2');
+  const house=await add('HOUSE','HOUSE-1',master.id);assert.equal(house.masterId,master.id);
   const update=(bill,masterId)=>saveJobBill(db,org,actor,job.id,{...bill,masterId},bill.id);
-  let h=await update(house,master.id);const h2=await add('HOUSE','HOUSE-2',master.id),unlinked=await add('HOUSE','HOUSE-3');
+  let h=await update(house,master.id);const h2=await add('HOUSE','HOUSE-2',master.id),unlinked=await add('HOUSE','HOUSE-3',second.id);
   let detail=await jobDetail(db,org,actor,job.id);assert.equal(detail.bills.filter(row=>row.masterId===master.id).length,2);assert.equal(detail.bills.filter(row=>row.kind==='MASTER').length,2);
   await assert.rejects(saveJobBill(db,org,actor,job.id,{version:master.version},master.id,true),/FREIGHT_MASTER_HAS_HOUSES/);
-  h=await update(h,second.id);h=await update(h,null);assert.equal(h.jobId,job.id);assert.equal(h.masterId,null);
+  h=await update(h,second.id);await assert.rejects(update(h,null),/FREIGHT_MASTER_REQUIRED/);assert.equal(h.jobId,job.id);assert.equal(h.masterId,second.id);
   await assert.rejects(saveJobBill(db,org,actor,job.id,{...h,masterIds:[master.id,second.id]},h.id),/FREIGHT_INVALID_INPUT/);
   const foreign=await add('MASTER','FOREIGN',null,other.id);
   await assert.rejects(update(h,foreign.id),/FREIGHT_MASTER_SCOPE/);
   await assert.rejects(update(h,h2.id),/FREIGHT_MASTER_SCOPE/);
   await assert.rejects(saveJobBill(db,org,actor,other.id,{...h,masterId:foreign.id},h.id),/FREIGHT_NOT_FOUND/);
   await assert.rejects(jobDetail(db,s.other.id,actor,job.id),/ACTIVE_EMPLOYEE_REQUIRED/);
-  const stale=h;h=await update(h,master.id);await assert.rejects(update(stale,null),/FREIGHT_CHANGED/);
-  await update(h,null);await update(h2,null);
+  const stale=h;h=await update(h,master.id);await assert.rejects(update(stale,second.id),/FREIGHT_CHANGED/);
+  await update(h,second.id);await update(h2,second.id);
   await saveJobBill(db,org,actor,job.id,{version:master.version},master.id,true);
   detail=await jobDetail(db,org,actor,job.id);assert.ok(detail.bills.some(row=>row.id===house.id));assert.ok(detail.bills.some(row=>row.id===unlinked.id));assert.ok(!detail.bills.some(row=>row.id===master.id));
   // Same number and issuer never imply identity or global uniqueness.
   const same=await add('MASTER','MASTER-2');assert.notEqual(same.id,second.id);
-  const retry={id:randomUUID(),kind:'HOUSE',number:'RETRY',issuer:'',masterId:null};const a=await saveJobBill(db,org,actor,job.id,retry);assert.equal((await saveJobBill(db,org,actor,job.id,retry)).id,a.id);
+  const retry={id:randomUUID(),kind:'HOUSE',number:'RETRY',issuer:'',masterId:second.id};const a=await saveJobBill(db,org,actor,job.id,retry);assert.equal((await saveJobBill(db,org,actor,job.id,retry)).id,a.id);
   // Database constraints independently reject cross-job links and deletion.
   await assert.rejects(db.$executeRawUnsafe('UPDATE "FreightBill" SET "masterId"=$1,version=version+1 WHERE id=$2',foreign.id,a.id),/FREIGHT_MASTER_SCOPE|foreign key/);
   await assert.rejects(db.$executeRawUnsafe('DELETE FROM "FreightBill" WHERE id=$1',a.id),/FREIGHT_HISTORY_IMMUTABLE/);
@@ -102,7 +103,7 @@ test('legacy migration copies only real BLs per job and preserves original opera
   const b=await saveFreight(db,org,actor,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,mode:'AIR',masterId:master.id});
   const c=await saveFreight(db,org,actor,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,houseStatus:'UNKNOWN'});
   const before=await db.$queryRawUnsafe('SELECT * FROM "FreightJob" ORDER BY id');
-  await f.pg.exec('DROP TABLE "FreightTransportTask";DROP TABLE "FreightTransportTarget";DROP TABLE "FreightBill";DROP FUNCTION baro_job_bill_guard();DROP FUNCTION baro_job_task_scope();');
+  await f.pg.exec('ALTER TABLE "ShippingChargeDraft" DROP CONSTRAINT "ShippingChargeDraft_bill_scope_fkey";DROP TABLE "FreightTransportTask";DROP TABLE "FreightTransportTarget";DROP TABLE "FreightBill";DROP FUNCTION baro_job_bill_guard();DROP FUNCTION baro_job_task_scope();');
   await f.pg.exec(readFileSync('backend/prisma/migrations/20261105140000_job_bills/migration.sql','utf8'));
   assert.deepEqual(await db.$queryRawUnsafe('SELECT * FROM "FreightJob" ORDER BY id'),before);
   const first=await jobDetail(db,org,actor,a.id),second=await jobDetail(db,org,actor,b.id);
