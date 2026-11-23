@@ -2572,7 +2572,7 @@ const StyleProcess = ({
       applyEditedProcess(editingInstanceId, nextProcess);
     } else {
       onProcessesChange([...safeProcesses, nextProcess]);
-      handleCancelAddRow();
+      handleStartAddRow();
     }
   };
 
