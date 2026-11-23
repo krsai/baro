@@ -1,5 +1,6 @@
 import {referenceSettingsTopics} from './referenceSettingsEvents.mjs';
 import {normalizeHumanPayload} from './humanTextCase.mjs';
+import {loadTextAcronyms} from './textAcronymLoader.mjs';
 import { supabase } from '../lib/supabaseClient';
 import { recordLastUpdaterForCurrentPath } from './lastUpdater';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from './workspaceDataEvents';
@@ -467,6 +468,7 @@ export const requestJSON = async (path, options = {}) => {
     .trim()
     .toUpperCase();
   if (['POST', 'PUT', 'PATCH'].includes(method) && typeof requestOptions.body === 'string') {
+    await loadTextAcronyms(API_BASE);
     try {
       requestOptions.body = JSON.stringify(normalizeHumanPayload(JSON.parse(requestOptions.body), {path}));
     } catch { /* Preserve malformed/non-JSON bodies for the existing request handler. */ }

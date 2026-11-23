@@ -96,6 +96,7 @@ test('company dashboards receive only public reference invalidations from SYSTEM
   const notify=(topics,extra={})=>client.emit('notification',{payload:JSON.stringify({id:randomUUID(),orgId:0,topics,secret:'private',...extra})});
   notify(['bank-ledger']);notify(['accounting-codes'],{systemOnly:true});await settle();assert.equal(res.frames.filter(frame=>frame.startsWith('data:')).length,0);
   notify(['accounting-codes']);await settle();const data=res.frames.find(frame=>frame.startsWith('data:'));assert.ok(data);assert.deepEqual(JSON.parse(data.slice(6)).topics,['accounting-codes']);assert.ok(!data.includes('private'));
+  notify(['text-acronyms']);await settle();const dictionary=res.frames.filter(frame=>frame.startsWith('data:')).at(-1);assert.deepEqual(JSON.parse(dictionary.slice(6)).topics,['text-acronyms']);assert.ok(!dictionary.includes('private'));assert.deepEqual(workspaceTopics('/system/text-acronyms'),['text-acronyms']);
  }finally{await service.close();for(const [key,value]of Object.entries(previous))if(value===undefined)delete process.env[key];else process.env[key]=value;}
 });
 

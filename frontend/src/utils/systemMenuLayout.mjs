@@ -5,7 +5,7 @@ const LABELS={
 };
 const GROUPS=[
  ['ADMIN',['/system-setting','/system-setting/entities','/system-onboarding','/employee']],
- ['ATTRIBUTE',['/system-setting/static-options','/attribute/colors','/attribute/categories','/system-setting/expense-units','/system-setting/shipping-ports','/system-setting/shipping-airports']],
+ ['ATTRIBUTE',['/system-setting/static-options','/attribute/colors','/attribute/categories','/system-setting/expense-units','/system-setting/shipping-ports','/system-setting/shipping-airports','/system-setting/text-acronyms']],
  ['PROCESS_MASTER',['/attribute/processes/targets','/attribute/processes/actions','/attribute/processes/specs']],
  ['MISC',['/system-setting/partner-industries','/system-setting/transaction-codes']],
  ['SYSTEM',['/system-setting/access-policy','/system-setting/industry-menus','/system-setting/app-defaults','/system-setting/approval-defaults','/employee-system','/salary-system','/personal-settings','/app-settings']],

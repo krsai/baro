@@ -28,6 +28,7 @@ const Permission = lazyImportWithRetry(() => import('./pages/App/Permission'));
 const Holiday = lazyImportWithRetry(() => import('./pages/App/Holiday'));
 const SystemBoard = lazyImportWithRetry(() => import('./pages/App/system/systemBoard'));
 const StaticOptionBoard = lazyImportWithRetry(() => import('./pages/App/system/StaticOptionBoard'));
+const SystemTextAcronyms = lazyImportWithRetry(() => import('./pages/App/system/SystemTextAcronyms'));
 const SystemEntities = lazyImportWithRetry(() => import('./pages/App/system/SystemEntities'));
 const AccessPolicyBoard = lazyImportWithRetry(() => import('./pages/App/system/AccessPolicyBoard'));
 const OnboardingBoard = lazyImportWithRetry(() => import('./pages/App/system/OnboardingBoard'));
@@ -271,6 +272,7 @@ const router = createBrowserRouter([
             path: 'app-settings/transaction-codes', element: <TransactionCodeSettings />,
           },
           { path: 'system-setting/entities', element: <SystemEntities /> },
+          { path: 'system-setting/text-acronyms', element: <SystemTextAcronyms /> },
           { path: 'system-setting/shipping-ports', element: <SystemShippingLocations /> },
           { path: 'system-setting/shipping-airports', element: <Navigate to="/system-setting/shipping-ports?mode=AIR" replace /> },
           { path: 'system-setting/app-defaults', element: <ApplicationSettings systemDefaults /> },

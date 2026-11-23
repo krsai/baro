@@ -32,6 +32,7 @@ export const UI_MESSAGES = {
   menu: {
     shippingAirports:{ko:'공항 목록',en:'Airports',vi:'Danh sách sân bay'},
     shippingPorts:{ko:'항만·공항 관리',en:'Ports & airports',vi:'Quản lý cảng biển & sân bay'},
+    textAcronyms:{ko:'약어 사전',en:'Acronym Dictionary',vi:'Từ Điển Viết Tắt'},
     systemEntities:{ko:'전체 업체 관리',en:'All companies',vi:'Quản lý tất cả doanh nghiệp'},
     salesWorkflow: { ko: '영업·주문', en: 'Sales & orders', vi: 'Kinh doanh & đơn hàng' },
     productionWorkflow: { ko: '생산', en: 'Production', vi: 'Sản xuất' },

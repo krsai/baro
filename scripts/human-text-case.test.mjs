@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
-import {titleCaseWords,textFieldCase,normalizeHumanPayload,titleCasePartyBlock} from '../frontend/src/utils/humanTextCase.mjs';
+import {titleCaseWords,textFieldCase,normalizeHumanPayload,titleCasePartyBlock,setTextAcronyms} from '../frontend/src/utils/humanTextCase.mjs';
+import {defaultTextAcronyms} from '../frontend/src/utils/textAcronyms.js';
 import {humanTextDisplay} from '../frontend/src/utils/humanTextDisplay.mjs';
 const require=createRequire(import.meta.url);
 const backend=require('../backend/dist/utils/humanTextCase');
@@ -22,6 +23,24 @@ test('words preserve separators, scripts, acronyms, technical references and con
   assert.equal(titleCaseWords(expected),expected);
  }
  assert.equal(readFileSync('frontend/src/utils/humanTextCase.mjs','utf8'),readFileSync('backend/src/utils/humanTextCase.js','utf8'));
+});
+
+test('registered spelling needs two uppercase letters, including mixed-case acronyms; ordinary uppercase words still use title case',()=>{
+ for(const [input,expected]of [
+  ['BOM bom Bom','BOM Bom Bom'],['SaaS SAAS saas Saas','SaaS SaaS Saas Saas'],
+  ['iOS IOS ios Ios','iOS iOS Ios Ios'],['QC OOG ICAO PT/ST ST/AT L/W/H','QC OOG ICAO PT/ST ST/AT L/W/H'],
+  ['COTTON FABRIC XYZ','Cotton Fabric Xyz'],['BOM/QC','BOM/QC'],['at AT At','At AT At'],
+ ]){assert.equal(titleCaseWords(input),expected);assert.equal(backend.titleCaseWords(input),expected);}
+ for(const entry of defaultTextAcronyms)assert.equal(titleCaseWords(entry.acronym),entry.acronym,entry.acronym);
+ assert.equal(readFileSync('frontend/src/utils/textAcronyms.js','utf8'),readFileSync('backend/src/utils/textAcronyms.js','utf8'));
+ const entries=[{acronym:'eSIM',expansion:'',meaning:''},{acronym:'eSIM2',expansion:'',meaning:''}];
+ try{
+  setTextAcronyms(entries);backend.setTextAcronyms(entries);
+  for(const format of [titleCaseWords,backend.titleCaseWords])assert.equal(format('eSIM ESIM esim Esim BOM'),'eSIM eSIM Esim Esim Bom');
+  for(const format of [titleCaseWords,backend.titleCaseWords])assert.equal(format('ESIM2 ref123 eSIM2'),'eSIM2 ref123 eSIM2');
+  const raw={entries:[{acronym:'eSIM',expansion:'embedded SIM',meaning:'Custom Meaning'}]};
+  assert.deepEqual(normalizeHumanPayload(raw,{path:'/system/text-acronyms'}),raw);
+ }finally{setTextAcronyms(defaultTextAcronyms);backend.setTextAcronyms(defaultTextAcronyms);}
 });
 test('field policy protects company, codes, search, IME lookup, email and read-only controls',()=>{
  for(const meta of [{label:'Company name'},{label:'업체명'},{label:'Mã khách hàng'},{name:'accountHolder'},{label:'Code'},{type:'email'},{type:'password'},{label:'Name',readOnly:true},{label:'Name',select:true},{label:'Name',inputProps:{role:'combobox'}},{label:'Name','data-text-case':'preserve'}])assert.equal(textFieldCase(meta),'preserve',JSON.stringify(meta));

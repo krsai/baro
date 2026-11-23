@@ -8,6 +8,7 @@ import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import router from './router';
 import theme from './theme';
 import useKeyboardNavigation from './hooks/useKeyboardNavigation';
+import TextAcronymGate from './components/TextAcronymGate';
 
 const ROUTE_LOADING_TEXT = {
   ko: '페이지를 불러오는 중입니다...',
@@ -104,7 +105,7 @@ const App = () => {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <LanguageProvider>
-        <AuthProvider><CompanyWorkspaceProvider><Suspense fallback={<RouteLoadingFallback />}><RouterProvider router={router}/></Suspense></CompanyWorkspaceProvider></AuthProvider>
+        <TextAcronymGate><AuthProvider><CompanyWorkspaceProvider><Suspense fallback={<RouteLoadingFallback />}><RouterProvider router={router}/></Suspense></CompanyWorkspaceProvider></AuthProvider></TextAcronymGate>
       </LanguageProvider>
     </ThemeProvider>
   );

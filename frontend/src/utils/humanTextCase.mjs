@@ -1,5 +1,15 @@
 // Keep this implementation identical to backend/src/utils/humanTextCase.js.
-const acronyms=new Set(['API','AR/AP','AR','AP','FOB','CIF','CFR','EXW','FCA','DAP','DDP','DDU','NVOCC','IATA','FIATA','AWB','FCR','BOM','BL','B/L','CBM','CNEE','CT','DG','ETA','ETD','FCL','FK','HBL','H/B/L','HAWB','HS','HTML','ID','IME','ISO','JSON','KG','KRW','LCL','MAWB','MBL','M/B/L','PDF','POD','POL','PT','QR','SHPR','SKU','SQL','SR','ST','TEU','URL','USD','VAT','VND','XML']);
+import {defaultTextAcronyms} from './textAcronyms.js';
+let acronyms=new Map(defaultTextAcronyms.map(row=>[row.acronym.toUpperCase(),row.acronym]));
+const acronymListeners=new Set();
+let acronymVersion=0;
+export const subscribeTextAcronyms=listener=>{acronymListeners.add(listener);return()=>acronymListeners.delete(listener);};
+export const textAcronymVersion=()=>acronymVersion;
+export function setTextAcronyms(entries){
+ const next=new Map(entries.map(row=>[row.acronym.toUpperCase(),row.acronym]));
+ if(JSON.stringify([...next])===JSON.stringify([...acronyms]))return;
+ acronyms=next;acronymVersion++;for(const listener of acronymListeners)listener();
+}
 const humanKeys=new Set(['name','nameen','nameko','namevi','title','label','description','remark','remarks','memo','note','notes','address','addressen','companyaddress','pickupaddress','deliveryaddress','origin','destination','placeofreceipt','placeofdelivery','issueplace','contactname','manager','representative','driver','designer','season','vessel','bankname','employeename','recipient','recipientname','actualrequestername','actualrequesteraddress','purpose','rejectreason','reason','delayreason','warehousename','departmentname','positionname','stylename','processname','productname','itemname','currencyname']);
 const companyKeys=new Set(['companyname','companynameen','companynameko','companynamevi','organizationname','organizationnameen','organizationnameko','organizationnamevi']);
 const protectedTrees=new Set(['snapshot','snapshots','requestsnapshot','sharedsnapshot','original','before','after','file','files','base64','html','template','signature','hash','auth','user','metadata','approvalSelection'.toLowerCase(),'policy','sourceSnapshot'.toLowerCase()]);
@@ -10,10 +20,10 @@ export function titleCaseWords(value){
  if(typeof value!=='string'||!value)return value;
  // Match complete protected tokens first; never rewrite references embedded in prose.
  return value.replace(/https?:\/\/[^\s<>]+|[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}|\{[^{}]+\}|[\p{L}\p{M}\d]+(?:[/'’][\p{L}\p{M}\d]+)*/giu,token=>{
-  if(token.includes('@')||/^https?:\/\//i.test(token)||token.startsWith('{')||/\d/.test(token))return token;
-  if(!/^[\p{Script=Latin}\p{M}/'’]+$/u.test(token))return token;
-  if(token==='AT'||acronyms.has(token.toUpperCase()))return token.toUpperCase();
-  if(token.toLowerCase()==='saas')return 'SaaS';
+  if(token.includes('@')||/^https?:\/\//i.test(token)||token.startsWith('{'))return token;
+  if((token.match(/[A-Z]/g)||[]).length>=2&&acronyms.has(token.toUpperCase()))return acronyms.get(token.toUpperCase());
+  if(/\d/.test(token)||!/^[\p{Script=Latin}\p{M}/'’]+$/u.test(token))return token;
+  if(token.includes('/'))return token.split('/').map(part=>titleCaseWords(part)).join('/');
   const lower=token.toLocaleLowerCase('en-US');
   return lower.replace(/(^|[/'’])([\p{Script=Latin}])/gu,(match,separator,letter,offset)=>
    separator&&offset>0&&/['’](s|t|re|ve|ll|d|m)$/.test(lower.slice(offset))?match:separator+letter.toLocaleUpperCase('en-US'));
@@ -39,6 +49,8 @@ export function titleCasePartyBlock(value){
 }
 
 export function normalizeHumanPayload(value,{path='',key='',ancestors=[],depth=0}={}){
+ // Dictionary spelling/expansions are authored verbatim, including mixed case.
+ if(/^\/system\/text-acronyms(?:\/|$)/.test(path.split('?')[0]))return value;
  if(depth>40||value===null||value===undefined)return value;
  const normalizedKey=fieldKey(key);
  if(protectedTrees.has(normalizedKey))return value;

@@ -228,6 +228,7 @@ export const canAccessPath = (pathname, authState) => {
   if(path.startsWith('/system-setting/approval-defaults'))return context?.entryType==='SYSTEM'&&context?.systemRole==='SYSTEM_ADMIN';
   if(path.startsWith('/system-setting/entities'))return context?.entryType==='SYSTEM'&&context?.systemRole==='SYSTEM_ADMIN';
   if(path.startsWith('/system-setting/shipping-ports'))return context?.entryType==='SYSTEM'&&context?.systemRole==='SYSTEM_ADMIN';
+  if(path.startsWith('/system-setting/text-acronyms'))return context?.entryType==='SYSTEM'&&context?.systemRole==='SYSTEM_ADMIN';
   if(path.startsWith('/order-shipments')&&(!context||context.entryType!=='ORG'||context.orgType!=='MANUFACTURER'))return false;
   // The root route is a redirect-only shell. Allow authenticated users to enter it.
   if (path === '/') return Boolean(context);

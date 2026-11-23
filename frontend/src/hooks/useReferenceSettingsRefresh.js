@@ -8,7 +8,7 @@ export default function useReferenceSettingsRefresh({onRefresh,blocked=false,ena
  const [version,setVersion]=useState(0);
  const handled=useRef(0),latest=useRef(onRefresh);latest.current=onRefresh;
  useEffect(()=>subscribeWorkspaceDataChanged(event=>{
-  if(event?.source==='transaction-request'||event?.topics?.some(topic=>[...REFERENCE_SETTINGS_TOPICS,'customers','business-partners'].includes(topic)))setVersion(value=>value+1);
+  if(event?.source==='transaction-request'||event?.topics?.some(topic=>[...REFERENCE_SETTINGS_TOPICS.filter(topic=>topic!=='text-acronyms'),'customers','business-partners'].includes(topic)))setVersion(value=>value+1);
  }),[]);
  useEffect(()=>{
   if(!enabled||!active||blocked||version===handled.current)return;

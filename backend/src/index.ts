@@ -201,7 +201,8 @@ import {
   resolveAtAttendanceQueryDateRange,
 } from "./services/attendanceFallback";
 
-import {humanTextCaseInput} from './middleware/humanTextCase';
+import {createHumanTextCaseInput} from './middleware/humanTextCase';
+import {registerTextAcronymRoutes} from './services/textAcronyms';
 import {titleCaseWords} from './utils/humanTextCase';
 
 const app = express();
@@ -224,7 +225,7 @@ app.use(async (req, res, next) => {
   }
 });
 
-app.use(humanTextCaseInput);
+app.use(createHumanTextCaseInput(prisma));
 const workspaceEvents=createWorkspaceEvents(prisma,{requireSystemAdmin,requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:(scope:any)=>hasRoleAccessPolicyFeature(scope)});
 app.use(workspaceEvents.middleware);
 app.get('/workspace-events',workspaceEvents.stream);
@@ -27654,6 +27655,7 @@ registerEmployeeLeaveRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequest
 registerTenureRecognitionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerIndustryMenuRoutes(app,prisma,{requireSystemAdmin});
 registerNavigationOrderRoutes(app,prisma,{requireSystemAdmin,requireOrgRole});
+registerTextAcronymRoutes(app,prisma,{requireSystemAdmin});
 registerSystemEntityRoutes(app,prisma,{requireSystemAdmin});
 registerSystemShippingPortRoutes(app,prisma,{requireSystemAdmin});
 registerCategoryPackagingRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});

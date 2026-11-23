@@ -1,9 +1,10 @@
-import React,{forwardRef,useRef,useState} from 'react';
+import React,{forwardRef,useRef,useState,useSyncExternalStore} from 'react';
 import {FilledInput,Input,InputLabel,OutlinedInput} from '@mui/material';
-import {textFieldCase,titleCasePartyBlock,titleCaseWords} from '../utils/humanTextCase.mjs';
+import {textFieldCase,titleCasePartyBlock,titleCaseWords,subscribeTextAcronyms,textAcronymVersion} from '../utils/humanTextCase.mjs';
 
 // MUI TextField's input slot keeps the original input, textarea and variant contracts.
 const BusinessTextInput=forwardRef(function BusinessTextInput({ownerState={},onChange,onFocus,onBlur,onCompositionStart,onCompositionEnd,...props},ref){
+ useSyncExternalStore(subscribeTextAcronyms,textAcronymVersion,textAcronymVersion);
  const composing=useRef(false),Component=ownerState.variant==='standard'?Input:ownerState.variant==='filled'?FilledInput:OutlinedInput;
  const [editing,setEditing]=useState(false),changed=useRef(false);
  const policy=textFieldCase({...ownerState,...props});
@@ -25,5 +26,6 @@ const BusinessTextInput=forwardRef(function BusinessTextInput({ownerState={},onC
 });
 export default BusinessTextInput;
 export const BusinessInputLabel=forwardRef(function BusinessInputLabel({ownerState,children,...props},ref){
+ useSyncExternalStore(subscribeTextAcronyms,textAcronymVersion,textAcronymVersion);
  return <InputLabel {...props} ref={ref}>{typeof children==='string'?titleCaseWords(children):children}</InputLabel>;
 });

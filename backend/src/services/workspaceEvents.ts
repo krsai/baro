@@ -4,7 +4,7 @@ import {companyIndustryMenuFeatures} from './industryMenuPolicy';
 const {Client}=require('pg');
 const {assertSafeApplicationDatabaseEnv}=require('../config/databaseTargetGuard');
 const CHANNEL='baro_workspace_changes';
-const referenceTopics=['partner-classifications','accounting-codes'];
+const referenceTopics=['partner-classifications','accounting-codes','text-acronyms'];
 const filterVersions=(versions:any,topics:string[])=>Object.fromEntries(Object.entries(versions||{}).filter(([key])=>topics.includes(key.split(':').pop()||'')));
 const revisionKey=(scope:string,topic:string)=>`WORKSPACE_CHANGE:${scope}:${topic}`;
 // Durable invalidation counters allow reconnect catch-up without pretending
@@ -27,12 +27,13 @@ async function revisionSnapshot(db:any,orgId:number,topics:string[]){
  return versions;
 }
 const isReferenceUsagePath=(path:string)=>/^\/(partner-classifications|partner-editor|business-partners|customers|partners|organizations|organization-profile)(\/|$)/.test(path);
-const isReferencePath=(path:string)=>/^\/system-setting-defaults\/(services|partner-roles|code-bases|codes)(\/|\?|$)/.test(path);
+const isReferencePath=(path:string)=>/^\/system-setting-defaults\/(services|partner-roles|code-bases|codes)(\/|\?|$)/.test(path)||path==='/system/text-acronyms';
 export const workspaceTopics=(path:string):string[]=>{
+ if(path.split('?')[0]==='/system/text-acronyms')return ['text-acronyms'];
  const route=path.split('?')[0]||'';
  if(/\/(?:acknowledge|read-receipt)(?:\/|$)/.test(route))return [];
   if(route==='/dashboard/alert-recipients'||route==='/dashboard/widget-policy')return ['accounting-alerts'];
- if(isReferencePath(route))return referenceTopics;
+ if(isReferencePath(route))return ['partner-classifications','accounting-codes'];
  if(/^\/management-targets\/INVOICE\/?$/i.test(route))return ['orders','invoice-drafts'];
  if(/(?:\/|-)(preview|validate|search|recipients)(?:\/|$)/.test(route))return [];
  const groups:[RegExp,string[]][]=[
@@ -98,7 +99,7 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
      const quietResponse={status(){return this;},json(){return this;}};
      void gates.requireSystemAdmin(req,quietResponse).then(async(actor:any)=>{
       if(!actor)return;
-      await publishWorkspaceChange(db,{id:randomUUID(),orgId:0,topics:referenceTopics,origin:origin(req)});
+      await publishWorkspaceChange(db,{id:randomUUID(),orgId:0,topics:workspaceTopics(req.path),origin:origin(req)});
      }).catch(()=>{console.warn('Reference settings notification unavailable');});
     }else if(employeeId&&successful){
      // The authenticated employee is set by company access resolution, never by query orgId.
@@ -111,7 +112,7 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
       await Promise.all([...orgIds].filter(id=>Number.isSafeInteger(id)&&id>0).map(orgId=>publishWorkspaceChange(db,{
        id:randomUUID(),orgId,topics:changedTopics,origin:origin(req),...(order?.id?{orderId:order.id}:{}),
       })));
-      if(isReferenceUsagePath(req.path))await publishWorkspaceChange(db,{id:randomUUID(),orgId:0,topics:referenceTopics,origin:origin(req),systemOnly:true});
+      if(isReferenceUsagePath(req.path))await publishWorkspaceChange(db,{id:randomUUID(),orgId:0,topics:['partner-classifications','accounting-codes'],origin:origin(req),systemOnly:true});
      }).catch(()=>{console.warn('Workspace change notification unavailable');});
     }
    };
@@ -154,7 +155,7 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
   const close=()=>{if(closed)return;closed=true;clearInterval(heartbeat);subscribers.delete(subscriber);res.end();};
   const subscriber={orgId:scope.organization.id,origin:origin(req),close,send:async(event:any)=>{
    if(closed)return;
-   const topics=event.topics.filter((topic:string)=>features.has(topicFeatures[topic]||''));if(!topics.length)return;
+   const topics=event.topics.filter((topic:string)=>topic==='text-acronyms'||features.has(topicFeatures[topic]||''));if(!topics.length)return;
    // A connection is no authorization lease: recheck membership on each delivery.
    const current=await db.employee.findFirst({where:{id:employeeId,orgId:scope.organization.id,status:'ACTIVE',orgRole:employee.orgRole},select:{id:true}}).catch(()=>null);
    if(!current)return close();
@@ -163,7 +164,7 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
   }};
   const heartbeat=setInterval(()=>{if(!closed){res.write(': keepalive\n\n');res.flush?.();}},25000);
   subscribers.add(subscriber);res.on('close',close);
-  res.write('event: ready\ndata: '+JSON.stringify({orgId:scope.organization.id,versions:await revisionSnapshot(db,scope.organization.id,Object.keys(topicFeatures).filter(topic=>features.has(topicFeatures[topic]!)))})+'\n\n');res.flush?.();
+  res.write('event: ready\ndata: '+JSON.stringify({orgId:scope.organization.id,versions:await revisionSnapshot(db,scope.organization.id,[...Object.keys(topicFeatures).filter(topic=>features.has(topicFeatures[topic]!)),'text-acronyms'])})+'\n\n');res.flush?.();
   // The regular authentication middleware validated this token; never keep it past expiry.
   let expiresAt=Date.now()+3600000;try{const claims=JSON.parse(Buffer.from(String(req.get('authorization')).split('.')[1]||'','base64url').toString());if(Number.isFinite(claims.exp))expiresAt=Math.min(expiresAt,claims.exp*1000);}catch{}
   const expiry=setTimeout(close,Math.max(1000,expiresAt-Date.now()));res.on('close',()=>clearTimeout(expiry));
