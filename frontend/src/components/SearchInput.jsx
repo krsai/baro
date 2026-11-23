@@ -10,6 +10,7 @@ const SearchInput = ({ value, onChange, placeholder, sx, inputProps = {}, slotPr
 
   return (
     <TextField
+      data-text-case="preserve"
       value={value}
       onChange={onChange}
       placeholder={resolvedPlaceholder}

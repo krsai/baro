@@ -1,0 +1,58 @@
+// Keep this implementation identical to backend/src/utils/humanTextCase.js.
+const acronyms=new Set(['API','AR/AP','AR','AP','FOB','CIF','CFR','EXW','FCA','DAP','DDP','DDU','NVOCC','IATA','FIATA','AWB','FCR','BOM','BL','B/L','CBM','CNEE','CT','DG','ETA','ETD','FCL','FK','HBL','H/B/L','HAWB','HS','HTML','ID','IME','ISO','JSON','KG','KRW','LCL','MAWB','MBL','M/B/L','PDF','POD','POL','PT','QR','SHPR','SKU','SQL','SR','ST','TEU','URL','USD','VAT','VND','XML']);
+const humanKeys=new Set(['name','nameen','nameko','namevi','title','label','description','remark','remarks','memo','note','notes','address','addressen','companyaddress','pickupaddress','deliveryaddress','origin','destination','placeofreceipt','placeofdelivery','issueplace','contactname','manager','representative','driver','designer','season','vessel','bankname','employeename','recipient','recipientname','actualrequestername','actualrequesteraddress','purpose','rejectreason','reason','delayreason','warehousename','departmentname','positionname','stylename','processname','productname','itemname','currencyname']);
+const companyKeys=new Set(['companyname','companynameen','companynameko','companynamevi','organizationname','organizationnameen','organizationnameko','organizationnamevi']);
+const protectedTrees=new Set(['snapshot','snapshots','requestsnapshot','sharedsnapshot','original','before','after','file','files','base64','html','template','signature','hash','auth','user','metadata','approvalSelection'.toLowerCase(),'policy','sourceSnapshot'.toLowerCase()]);
+const companyContainers=new Set(['company','organization','entity','customer','supplier','seller','buyer','issuer','forwarder','shipperparty','consigneeparty','notifyparty','shipper','consignee','notify','linkedcompany','officialcompany','companyconnection']);
+const fieldKey=value=>String(value||'').replace(/[_-]/g,'').toLowerCase();
+
+export function titleCaseWords(value){
+ if(typeof value!=='string'||!value)return value;
+ // Match complete protected tokens first; never rewrite references embedded in prose.
+ return value.replace(/https?:\/\/[^\s<>]+|[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}|\{[^{}]+\}|[\p{L}\p{M}\d]+(?:[/'’][\p{L}\p{M}\d]+)*/giu,token=>{
+  if(token.includes('@')||/^https?:\/\//i.test(token)||token.startsWith('{')||/\d/.test(token))return token;
+  if(!/^[\p{Script=Latin}\p{M}/'’]+$/u.test(token))return token;
+  if(token==='AT'||acronyms.has(token.toUpperCase()))return token.toUpperCase();
+  if(token.toLowerCase()==='saas')return 'SaaS';
+  const lower=token.toLocaleLowerCase('en-US');
+  return lower.replace(/(^|[/'’])([\p{Script=Latin}])/gu,(match,separator,letter,offset)=>
+   separator&&offset>0&&/['’](s|t|re|ve|ll|d|m)$/.test(lower.slice(offset))?match:separator+letter.toLocaleUpperCase('en-US'));
+ });
+}
+
+export function textFieldCase(meta={}){
+ const explicit=meta['data-text-case']||meta.inputProps?.['data-text-case'];
+ if(explicit)return explicit;
+ if(meta.select||meta.disabled||meta.InputProps?.readOnly||meta.readOnly||meta.inputProps?.readOnly||meta.inputProps?.role==='combobox')return 'preserve';
+ if(meta.type&&!['text',''].includes(meta.type))return 'preserve';
+ const key=fieldKey(meta.name||meta.inputProps?.name),label=typeof meta.label==='string'?meta.label:'';
+ if(companyKeys.has(key)||/company\s*name|organization\s*name|업체명|회사명|사업체명|tên công ty|tên doanh nghiệp/i.test(label))return 'preserve';
+ if(/^(country|currency|incoterm|size|gender|locale|language|timezone|swift|iban|sku)$/.test(key)||/\b(country|currency|incoterm|size|gender|language|time.?zone|swift|iban|sku)\b|통화|국가|사이즈|성별|언어|인코텀즈/i.test(label))return 'preserve';
+ if(/code|number|email|phone|url|password|search|keyword|account.?holder|filename|token|\bno\.?\b|\bunit\b|\bmarks\b|코드|번호|이메일|전화|연락처|검색|비밀번호|예금주|단위|mã|số điện|tìm kiếm|điện thoại/i.test(key+' '+label)||/^(?:(?:master|house|m\.?|h\.?)\s*)?(?:b\/?l|awb)$/i.test(label.trim()))return 'preserve';
+ if(/^(shipper|consignee|notify|deliveryagent)$/.test(key)||/shipper|consignee|notify|SHPR|CNEE|송하인|수하인|통지처/i.test(label)&&!/address|contact|주소|담당자|địa chỉ/i.test(label))return 'party';
+ if(humanKeys.has(key)||/\b(name|address|description|remark|memo|notes?|purpose|title|representative|driver|designer|vessel)\b|이름|성명|담당자|대표자|주소|설명|내용|비고|메모|제목|직원명|품목명|공정명|스타일명|선박명|tên|địa chỉ|ghi chú|mô tả/i.test(label))return 'title';
+ return label?'title':'preserve';
+}
+
+export function titleCasePartyBlock(value){
+ const at=value.indexOf('\n');return at<0?value.toUpperCase():value.slice(0,at).toUpperCase()+titleCaseWords(value.slice(at));
+}
+
+export function normalizeHumanPayload(value,{path='',key='',ancestors=[],depth=0}={}){
+ if(depth>40||value===null||value===undefined)return value;
+ const normalizedKey=fieldKey(key);
+ if(protectedTrees.has(normalizedKey))return value;
+ if(typeof value==='string'){
+  if(companyKeys.has(normalizedKey))return value.toUpperCase();
+  const companyPath=/\/(organizations?|business-partners|customers|partner-editor|company-profile|company-identity|system-entities|entities|onboarding|auth\/workspaces)(\/|$)/i.test(path)&&!/(employees?|users?)(\/|$)/i.test(path);
+  const companyRecord=companyContainers.has(fieldKey(ancestors.at(-1)))||companyPath&&ancestors.length===0||companyPath&&ancestors.some(part=>['patch','contacts'].includes(part));
+  if(/^name(en|ko|vi)?$/.test(normalizedKey)&&companyRecord)return value.toUpperCase();
+  if(['shipper','consignee','notify','deliveryagent'].includes(normalizedKey)){
+   return titleCasePartyBlock(value);
+  }
+  return humanKeys.has(normalizedKey)?titleCaseWords(value):value;
+ }
+ if(Array.isArray(value))return value.map(item=>normalizeHumanPayload(item,{path,key,ancestors,depth:depth+1}));
+ if(typeof value!=='object')return value;
+ return Object.fromEntries(Object.entries(value).map(([child,item])=>[child,normalizeHumanPayload(item,{path,key:child,ancestors:key?[...ancestors,key]:ancestors,depth:depth+1})]));
+}

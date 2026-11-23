@@ -201,6 +201,9 @@ import {
   resolveAtAttendanceQueryDateRange,
 } from "./services/attendanceFallback";
 
+import {humanTextCaseInput} from './middleware/humanTextCase';
+import {titleCaseWords} from './utils/humanTextCase';
+
 const app = express();
 app.use(compression());
 app.use(cors());
@@ -221,6 +224,7 @@ app.use(async (req, res, next) => {
   }
 });
 
+app.use(humanTextCaseInput);
 const workspaceEvents=createWorkspaceEvents(prisma,{requireSystemAdmin,requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:(scope:any)=>hasRoleAccessPolicyFeature(scope)});
 app.use(workspaceEvents.middleware);
 app.get('/workspace-events',workspaceEvents.stream);
@@ -19519,8 +19523,8 @@ app.patch("/system/company-requests/:id/approve", async (req, res) => {
     data: {
       name: companyRequest.organizationNameEn,
       businessNumber: companyRequest.businessNumber,
-      representative: companyRequest.contactName || null,
-      address: companyRequest.companyAddress?.toUpperCase() || null,
+      representative: titleCaseWords(companyRequest.contactName) || null,
+      address: titleCaseWords(companyRequest.companyAddress) || null,
       country: organizationCountry ?? null,
       email: companyRequest.contactEmail,
       phone: companyRequest.contactPhone,

@@ -1,4 +1,5 @@
 import { getCurrentLanguageCode, normalizeLanguageCode } from '../utils/appLanguage';
+import {titleCaseWords} from '../utils/humanTextCase.mjs';
 
 export const UI_MESSAGES = {
   common: {
@@ -1174,7 +1175,7 @@ export const getUiMessage = (
   params = null
 ) => {
   const template =
-    resolveLocalizedMessage(resolveMessageNode(key), languageCode) || String(fallback || '');
+    titleCaseWords(resolveLocalizedMessage(resolveMessageNode(key), languageCode) || String(fallback || ''));
   if (!params || typeof params !== 'object') return template;
   return formatMessage(template, params);
 };

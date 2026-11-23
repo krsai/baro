@@ -1,5 +1,6 @@
 import { ui } from './ui';
 import FieldFeedback from '../components/FieldFeedback';
+import BusinessTextInput,{BusinessInputLabel} from '../components/BusinessTextInput';
 import {responsiveTableStyles} from './tableLayout';
 import { getLabelPalette, LABEL_PALETTE } from './labelPalette';
 import { createTheme } from '@mui/material/styles';
@@ -189,6 +190,7 @@ const baseTheme = createTheme({
     },
     MuiTextField: {
       defaultProps: {
+        slots:{input:BusinessTextInput,inputLabel:BusinessInputLabel},
         variant: 'outlined',
         size: 'small',
       },

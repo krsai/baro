@@ -8,7 +8,7 @@ export default function CompanyNameField({ onChange, onCompositionStart, onCompo
     if (!composing.current && !event.nativeEvent?.isComposing) event.target.value = event.target.value.toUpperCase();
     onChange?.(event);
   };
-  return <TextField {...props} onChange={commit}
+  return <TextField {...props} data-text-case="preserve" onChange={commit}
     onCompositionStart={event => { composing.current = true; onCompositionStart?.(event); }}
     onCompositionEnd={event => {
       composing.current = false;
