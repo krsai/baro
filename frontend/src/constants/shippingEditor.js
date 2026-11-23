@@ -83,3 +83,7 @@ Object.assign(shippingEditorText.vi,{newPreset:'Thông tin lưu mới'});
 Object.assign(shippingEditorText.ko,{chargeableWeightKg:'???? C.W. (kg)'});
 Object.assign(shippingEditorText.en,{chargeableWeightKg:'Chargeable weight C.W. (kg)'});
 Object.assign(shippingEditorText.vi,{chargeableWeightKg:'Tr?ng l??ng t?nh c??c C.W. (kg)'});
+
+Object.assign(shippingEditorText.ko,{saveAddress:"주소록 수정",registeredAddress:"거래처 등록 주소",saveRegisteredAddress:"주소록에 저장"});
+Object.assign(shippingEditorText.en,{saveAddress:"Update address",registeredAddress:"Registered company address",saveRegisteredAddress:"Save to address book"});
+Object.assign(shippingEditorText.vi,{saveAddress:"Cập nhật địa chỉ",registeredAddress:"Địa chỉ đăng ký của công ty",saveRegisteredAddress:"Lưu vào sổ địa chỉ"});

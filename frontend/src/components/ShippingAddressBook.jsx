@@ -63,13 +63,13 @@ export default function ShippingAddressBook({orgId,customerId,current,registered
   search={<SearchInput sx={{width:'100%'}} label={t.addressSearch} autoComplete="off" value={query} disabled={blocked||!scopeCustomerId&&!resolveCustomer} onChange={event=>setQuery(event.target.value)}/>}
   layoutProps={{'data-address-workspace':true}} listProps={{'data-address-list':true}} detailProps={{'data-address-detail':true}}
   list={<DialogRecordList rows={filtered} columns={[{key:'name',label:personLabel||t.addressTitle,value:row=>row.label,width:'40%'},{key:'address',label:t.savedAddress,value:row=>row.data.address}]} selectedKey={edit.selectionKey||null} onSelect={open} previewDisabled={dirty} disabled={blocked} loading={loading} error={readError} loaded={!!scopeCustomerId||!!resolveCustomer} onRetry={blocked?undefined:()=>setReload(v=>v+1)} languageCode={languageCode}/>}
-  frameDetail detailTitle={t.addressHeading} detail={<Stack spacing={2}>
+  frameDetail detailTitle={edit.version!=null?t.editAddress:edit.selectionKey==='registered-party'?t.registeredAddress:t.addressHeading} detail={<Stack spacing={2}>
    {edit.address.length>160&&<Alert severity="error">{t.routeAddressTooLong}</Alert>}
    {!englishValid&&<Alert severity="error">{shippingEnglishText[languageCode]||shippingEnglishText.en}</Alert>}
    {saveError&&<Alert severity="error">{t.failed}</Alert>}
    <ShippingAddressFields value={edit} onChange={setEdit} t={t} languageCode={languageCode} disabled={blocked} autoFocus personLabel={personLabel}/>
   </Stack>}
-  detailFooter={<DialogRecordActions onDelete={edit.version!=null?()=>mutate(true):undefined} deleteLabel={t.deleteAddress} deleteDisabled={blocked} busy={busy} onSave={()=>mutate()} saveLabel={uncertain?t.retry:edit.version?t.saveAddress:t.addToAddressBook} saveDisabled={disabled||!uncertain&&(!scopeCustomerId&&!resolveCustomer||loading||readError||!edit.label.trim()||!addressValid||!!edit.version&&!dirty)}/>}
+  detailFooter={<DialogRecordActions onDelete={edit.version!=null?()=>mutate(true):undefined} deleteLabel={t.deleteAddress} deleteDisabled={blocked} busy={busy} onSave={()=>mutate()} saveLabel={uncertain?t.retry:edit.version!=null?t.saveAddress:edit.selectionKey==='registered-party'?t.saveRegisteredAddress:t.addToAddressBook} saveDisabled={disabled||!uncertain&&(!scopeCustomerId&&!resolveCustomer||loading||readError||!edit.label.trim()||!addressValid||!!edit.version&&!dirty)}/>}
   actions={<PageActions secondary={<Button disabled={blocked} onClick={async()=>{if(await leave())onClose();}}>{t.close}</Button>} primary={<Button variant="contained" disabled={blocked||!addressValid} onClick={apply}>{t.applyLocation}</Button>}/>}/>
  ;
 }
