@@ -1,3 +1,4 @@
+import {titleCaseWords} from '../utils/humanTextCase.mjs';
 import SearchPanel from './SearchPanel';
 import {PARTY_KIND_TEXT} from '../constants/partyKind';
 import React,{useMemo,useState} from 'react';
@@ -41,7 +42,7 @@ export default function PartnerDirectory({embedded=false,title,rows,loading,erro
        </Stack>
        {row.subtitle && <Typography variant="caption" color="text.secondary">{row.subtitle}</Typography>}
       </TableCell>
-      <TableCell>{row.country?getStaticOptionLabel('country',row.country,row.country,languageCode):'-'}</TableCell><TableCell>{row.contactName||'-'}</TableCell><TableCell>{row.phone||'-'}</TableCell><TableCell>{row.email||'-'}</TableCell>
+      <TableCell>{row.country?getStaticOptionLabel('country',row.country,row.country,languageCode):'-'}</TableCell><TableCell>{titleCaseWords(row.contactName)||'-'}</TableCell><TableCell>{row.phone||'-'}</TableCell><TableCell>{row.email||'-'}</TableCell>
       <TableCell><StatusLabel tone={row.isActive===false?'gray':'green'} label={row.isActive===false?labels.inactive:labels.active}/></TableCell><TableCell>{registeredDate(row.registeredAt,languageCode)}</TableCell>
       <TableCell align="right" data-table-actions><Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center" onDoubleClick={event=>event.stopPropagation()}><Button variant="outlined" disabled={!canOpen} onClick={()=>onOpen(row.source)}>{labels.detail}</Button>{renderActions?.(row.source)}</Stack></TableCell>
      </TableRow>)}

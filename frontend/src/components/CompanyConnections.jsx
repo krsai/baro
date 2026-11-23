@@ -1,3 +1,4 @@
+import {humanTextDisplay} from '../utils/humanTextDisplay.mjs';
 import Dialog from './AppDialog';
 import {keyboardAction} from '../utils/keyboardPolicy.mjs';
 import {navigationScope} from '../utils/formFocus.mjs';
@@ -38,9 +39,9 @@ export function CompanyConnectionField({orgId,name,businessNumber,country,value,
  const profileRows=row=>[
   ['name',[...new Set([languageCode==='ko'?row.nameKo:languageCode==='vi'?row.nameVi:row.name,row.name].filter(Boolean))].join(' / ')],
   ['industry',classificationSummary(row.officialClassification,languageCode)||row.industryLabels?.[languageCode==='ko'?'nameKo':languageCode==='vi'?'nameVi':'nameEn']||row.industryLabels?.nameEn||(INDUSTRY_FALLBACK[languageCode]||INDUSTRY_FALLBACK.en)[row.industry]||row.industry],
-  ['representative',row.representative],['contact',[row.phone,row.email].filter(Boolean).join(' · ')],
+  ['representative',humanTextDisplay(row.representative,{key:'representative'})],['contact',[row.phone,row.email].filter(Boolean).join(' · ')],
   ['country',getStaticOptionOptions('country',languageCode).find(option=>option.value===row.country)?.label||row.country],
-  ['address',row.address],['number',row.businessNumber],
+  ['address',humanTextDisplay(row.address,{key:'address'})],['number',row.businessNumber],
  ];
  const [options,setOptions]=useState([]),[error,setError]=useState(''),[loading,setLoading]=useState(false),[checked,setChecked]=useState(false),[linked,setLinked]=useState(knownCompany);
  const [review,setReview]=useState(false),[selected,setSelected]=useState(null);

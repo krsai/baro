@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {titleCaseWords,textFieldCase,normalizeHumanPayload,titleCasePartyBlock} from '../frontend/src/utils/humanTextCase.mjs';
+import {humanTextDisplay} from '../frontend/src/utils/humanTextDisplay.mjs';
 const require=createRequire(import.meta.url);
 const backend=require('../backend/dist/utils/humanTextCase');
 const {humanTextCaseInput}=require('../backend/dist/middleware/humanTextCase');
@@ -43,4 +44,15 @@ test('HTTP normalization runs only for new JSON write input, keeping GET and bin
   const req={method,path:'/employees',body:{name:'JOHN SMITH'},is:()=>isJson};let called=0;
   humanTextCaseInput(req,{},()=>called++);assert.equal(req.body.name,expected);assert.equal(called,1);
  }
+});
+
+test('external labels and typed detail fields format without rewriting company names or frozen text',()=>{
+ assert.equal(textFieldCase({inputProps:{'aria-label':'Contact person'}}),'title');
+ assert.equal(textFieldCase({slotProps:{htmlInput:{'aria-label':'Email'}}}),'preserve');
+ assert.equal(textFieldCase({slotProps:{htmlInput:{'data-text-case':'preserve'}},label:'Address'}),'preserve');
+ for(const key of ['contactName','representative','employeeName','address'])assert.equal(humanTextDisplay('JEONG DONGWON',{key}),'Jeong Dongwon');
+ for(const key of ['name','code','phone','email','country'])assert.equal(humanTextDisplay('EXACT VALUE',{key}),'EXACT VALUE');
+ assert.equal(humanTextDisplay('JEONG DONGWON',{key:'name',textCase:'title'}),'Jeong Dongwon');
+ assert.equal(humanTextDisplay('FROZEN ADDRESS',{key:'address',textCase:'preserve'}),'FROZEN ADDRESS');
+ const node={type:'span',props:{children:'KEEP ORIGINAL'}};assert.equal(humanTextDisplay(node,{key:'address'}),node);
 });

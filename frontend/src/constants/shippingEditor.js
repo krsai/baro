@@ -87,3 +87,6 @@ Object.assign(shippingEditorText.vi,{chargeableWeightKg:'Tr?ng l??ng t?nh c??c C
 Object.assign(shippingEditorText.ko,{saveAddress:"주소록 수정",registeredAddress:"거래처 등록 주소",saveRegisteredAddress:"주소록에 저장"});
 Object.assign(shippingEditorText.en,{saveAddress:"Update address",registeredAddress:"Registered company address",saveRegisteredAddress:"Save to address book"});
 Object.assign(shippingEditorText.vi,{saveAddress:"Cập nhật địa chỉ",registeredAddress:"Địa chỉ đăng ký của công ty",saveRegisteredAddress:"Lưu vào sổ địa chỉ"});
+Object.assign(shippingEditorText.ko,{updatePreset:'주소록 수정',updateRequester:'고객 정보 수정',registeredPartyDetails:'등록 거래처 정보'});
+Object.assign(shippingEditorText.en,{updatePreset:'Update address book entry',updateRequester:'Update customer',registeredPartyDetails:'Registered partner details'});
+Object.assign(shippingEditorText.vi,{updatePreset:'Cập nhật mục danh bạ',updateRequester:'Cập nhật khách hàng',registeredPartyDetails:'Thông tin đối tác đã đăng ký'});

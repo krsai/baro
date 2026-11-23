@@ -1,3 +1,4 @@
+import {titleCaseWords} from '../../../utils/humanTextCase.mjs';
 import Dialog from '../../../components/AppDialog';
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import TenureRecognitionDialog from '../../../components/TenureRecognitionDialog';
@@ -385,7 +386,7 @@ const buildEmployeeDraft = (member, employee, options = {}) => {
     : PAY_TYPE_KEYS.GENERAL;
   return {
     name:
-      String(employee?.name || '').trim() ||
+      titleCaseWords(String(employee?.name || '').trim()) ||
       String(options.currentUserName || '').trim() ||
       (options.useEmailFallback ? resolveNameFromEmail(member?.email) : ''),
     bankName: employee?.bankName || '',
@@ -420,7 +421,7 @@ const getEmployeeDisplayName = (member, employee, myEmail, currentUserName) => {
   const normalizedMemberEmail = normalizeEmail(member?.email);
   return (
     String(employee?.name || '').trim() ||
-    (normalizedMemberEmail === normalizeEmail(myEmail) ? String(currentUserName || '').trim() : '') ||
+    (normalizedMemberEmail === normalizeEmail(myEmail) ? titleCaseWords(String(currentUserName || '').trim()) : '') ||
     '-'
   );
 };

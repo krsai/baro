@@ -1,3 +1,4 @@
+import {titleCaseWords} from '../utils/humanTextCase.mjs';
 import DialogDetailPanel from './DialogDetailPanel';
 import ReadOnlyField from './ReadOnlyField';
 import BankAccountEditorDialog from './BankAccountEditorDialog';
@@ -38,7 +39,7 @@ export function PayeeDetails({draft,accounts=[],busy,error,languageCode,onRetry,
     {!employee&&<Stack direction="row" useFlexGap flexWrap="wrap" alignItems="center" gap={.5}><Typography variant="caption" color="text.secondary">{industry.industry}</Typography>{draft?.serviceTypes?.length?draft.serviceTypes.map(row=><StatusLabel key={row.id} label={partnerIndustryLabel(row.systemDefault||row,languageCode)||row.code||'—'} tone="gray"/>):<Typography variant="body2" color="text.secondary">—</Typography>}</Stack>}
      {!employee&&<InformationRows rows={[[labels.businessNumber,draft?.businessNumber]]}/>}
    </Stack>
-    <Stack spacing={.75}><Typography variant="subtitle2">{labels.contact}</Typography><InformationRows rows={employee?[[detail.phone,draft?.contactPhone],[labels.email,draft?.email]]:[[detail.person,draft?.contactName],[detail.phone,draft?.contactPhone],[labels.email,draft?.email],[labels.address,draft?.address]]}/></Stack>
+    <Stack spacing={.75}><Typography variant="subtitle2">{labels.contact}</Typography><InformationRows rows={employee?[[detail.phone,draft?.contactPhone],[labels.email,draft?.email]]:[[detail.person,titleCaseWords(draft?.contactName)],[detail.phone,draft?.contactPhone],[labels.email,draft?.email],[labels.address,titleCaseWords(draft?.address)]]}/></Stack>
    {showAccounts&&<Stack spacing={.75} data-testid="payee-accounts">
     <Typography variant="subtitle2">{labels.banks}{draft&&!busy&&!error&&` · ${accounts.length}`}</Typography>
     {!draft?<InformationRows rows={[[labels.bank,null],[labels.number,null],[labels.holder,null]]}/>:busy?<Stack direction="row" spacing={1} alignItems="center"><CircularProgress size={16}/><Typography variant="body2" color="text.secondary">{detail.loading}</Typography></Stack>:error?<Alert severity="error" action={<Button onClick={onRetry}>{t.retry}</Button>}>{t.error}</Alert>:!accounts.length?<Alert severity="warning">{t.noAccount}</Alert>:accounts.map(account=>{

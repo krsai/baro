@@ -1,3 +1,4 @@
+import {titleCaseWords} from '../utils/humanTextCase.mjs';
 import WorkspacePageBoundary from '../components/WorkspacePageBoundary';
 import useNavigationOrder from '../hooks/useNavigationOrder';
 import {applyNavigationOrder} from '../utils/navigationOrder.mjs';
@@ -528,7 +529,7 @@ const MainLayout = () => {
       typeof activeProfile?.employeeName === 'string'
         ? activeProfile.employeeName.trim()
         : '';
-    if (nameFromProfile) return nameFromProfile;
+    if (nameFromProfile) return titleCaseWords(nameFromProfile);
 
     const metadataCandidates = [
       user?.user_metadata?.name,
@@ -539,7 +540,7 @@ const MainLayout = () => {
       (candidate) => typeof candidate === 'string' && candidate.trim()
     );
     if (typeof metadataName === 'string' && metadataName.trim()) {
-      return metadataName.trim();
+      return titleCaseWords(metadataName.trim());
     }
 
     const fallbackEmail = activeProfile?.email || user?.email || '';

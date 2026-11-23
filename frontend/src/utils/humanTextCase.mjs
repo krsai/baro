@@ -21,11 +21,11 @@ export function titleCaseWords(value){
 }
 
 export function textFieldCase(meta={}){
- const explicit=meta['data-text-case']||meta.inputProps?.['data-text-case'];
+ const explicit=meta['data-text-case']||meta.inputProps?.['data-text-case']||meta.slotProps?.htmlInput?.['data-text-case'];
  if(explicit)return explicit;
  if(meta.select||meta.disabled||meta.InputProps?.readOnly||meta.readOnly||meta.inputProps?.readOnly||meta.inputProps?.role==='combobox')return 'preserve';
  if(meta.type&&!['text',''].includes(meta.type))return 'preserve';
- const key=fieldKey(meta.name||meta.inputProps?.name),label=typeof meta.label==='string'?meta.label:'';
+ const key=fieldKey(meta.name||meta.inputProps?.name||meta.slotProps?.htmlInput?.name),label=typeof meta.label==='string'?meta.label:meta.inputProps?.['aria-label']||meta.slotProps?.htmlInput?.['aria-label']||meta['aria-label']||'';
  if(companyKeys.has(key)||/company\s*name|organization\s*name|업체명|회사명|사업체명|tên công ty|tên doanh nghiệp/i.test(label))return 'preserve';
  if(/^(country|currency|incoterm|size|gender|locale|language|timezone|swift|iban|sku)$/.test(key)||/\b(country|currency|incoterm|size|gender|language|time.?zone|swift|iban|sku)\b|통화|국가|사이즈|성별|언어|인코텀즈/i.test(label))return 'preserve';
  if(/code|number|email|phone|url|password|search|keyword|account.?holder|filename|token|\bno\.?\b|\bunit\b|\bmarks\b|코드|번호|이메일|전화|연락처|검색|비밀번호|예금주|단위|mã|số điện|tìm kiếm|điện thoại/i.test(key+' '+label)||/^(?:(?:master|house|m\.?|h\.?)\s*)?(?:b\/?l|awb)$/i.test(label.trim()))return 'preserve';
