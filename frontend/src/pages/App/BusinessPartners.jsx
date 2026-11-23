@@ -6,9 +6,8 @@ import {companyIndustryText} from '../../constants/companyIndustries';
 import {partnerIndustryLabel} from '../../utils/partnerIndustry.mjs';
 import DeleteActionButton from '../../components/DeleteActionButton';
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import {Box,Button,CircularProgress,Drawer,IconButton,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Tooltip,Typography} from '@mui/material';
+import {Box,Button,CircularProgress,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Tooltip,Typography} from '@mui/material';
 import Alert from "../../components/AppNotice";
-import CloseIcon from '@mui/icons-material/Close';
 import {DialogActions,DialogContent,DialogTitle} from '@mui/material';
 import { emitWorkspaceDataChanged, subscribeWorkspaceDataChanged } from '../../utils/workspaceDataEvents';
 import PartnerDirectory from '../../components/PartnerDirectory';
@@ -24,9 +23,9 @@ import {classificationSummary,classificationName,PARTNER_CLASSIFICATION_TEXT} fr
 import {canAccessPath} from '../../utils/accessControl';
 
 const TEXT = {
-  ko: { title: '거래처', add: '거래처 등록', edit: '수정', search: '업체명, 담당자, 연락처 검색', name: '업체명', type: '타입', contact: '담당자', phone: '연락처', status: '상태', active: '사용 중', inactive: '사용 중지', empty: '등록된 거래처가 없습니다.', history: '거래 내역', workHistory: '외주 작업 내역', noHistory: '연결된 거래 내역이 없습니다.', date: '작업일', style: '스타일', process: '공정', unitPrice: '개당 단가', quantity: '수량', amount: '금액', loadError: '거래처 목록을 불러오지 못했습니다.', historyError: '거래 내역을 불러오지 못했습니다.' },
-  en: { title: 'Partners', add: 'Add Partner', edit: 'Edit', search: 'Search company, contact, or phone', name: 'Company', type: 'Type', contact: 'Contact person', phone: 'Phone', status: 'Status', active: 'Active', inactive: 'Inactive', empty: 'No partners registered.', history: 'Transaction History', workHistory: 'Outsourced Work History', noHistory: 'No linked transactions.', date: 'Work date', style: 'Style', process: 'Process', unitPrice: 'Unit price', quantity: 'Quantity', amount: 'Amount', loadError: 'Failed to load partners.', historyError: 'Failed to load transaction history.' },
-  vi: { title: 'Đối tác', add: 'Thêm đối tác', edit: 'Sửa', search: 'Tìm công ty, người liên hệ hoặc số điện thoại', name: 'Công ty', type: 'Loại', contact: 'Người liên hệ', phone: 'Số điện thoại', status: 'Trạng thái', active: 'Đang sử dụng', inactive: 'Ngừng sử dụng', empty: 'Chưa có đối tác.', history: 'Lịch sử giao dịch', workHistory: 'Lịch sử gia công', noHistory: 'Chưa có giao dịch liên kết.', date: 'Ngày làm việc', style: 'Mẫu', process: 'Công đoạn', unitPrice: 'Đơn giá', quantity: 'Số lượng', amount: 'Thành tiền', loadError: 'Không thể tải danh sách đối tác.', historyError: 'Không thể tải lịch sử giao dịch.' },
+  ko: { title: '거래처', add: '거래처 등록', edit: '상세', search: '업체명, 담당자, 연락처 검색', name: '업체명', type: '타입', contact: '담당자', phone: '연락처', status: '상태', active: '사용 중', inactive: '사용 중지', empty: '등록된 거래처가 없습니다.', history: '거래 내역', workHistory: '외주 작업 내역', noHistory: '연결된 거래 내역이 없습니다.', date: '작업일', style: '스타일', process: '공정', unitPrice: '개당 단가', quantity: '수량', amount: '금액', loadError: '거래처 목록을 불러오지 못했습니다.', historyError: '거래 내역을 불러오지 못했습니다.' },
+  en: { title: 'Partners', add: 'Add Partner', edit: 'Details', search: 'Search company, contact, or phone', name: 'Company', type: 'Type', contact: 'Contact person', phone: 'Phone', status: 'Status', active: 'Active', inactive: 'Inactive', empty: 'No partners registered.', history: 'Transaction History', workHistory: 'Outsourced Work History', noHistory: 'No linked transactions.', date: 'Work date', style: 'Style', process: 'Process', unitPrice: 'Unit price', quantity: 'Quantity', amount: 'Amount', loadError: 'Failed to load partners.', historyError: 'Failed to load transaction history.' },
+  vi: { title: 'Đối tác', add: 'Thêm đối tác', edit: 'Chi tiết', search: 'Tìm công ty, người liên hệ hoặc số điện thoại', name: 'Công ty', type: 'Loại', contact: 'Người liên hệ', phone: 'Số điện thoại', status: 'Trạng thái', active: 'Đang sử dụng', inactive: 'Ngừng sử dụng', empty: 'Chưa có đối tác.', history: 'Lịch sử giao dịch', workHistory: 'Lịch sử gia công', noHistory: 'Chưa có giao dịch liên kết.', date: 'Ngày làm việc', style: 'Mẫu', process: 'Công đoạn', unitPrice: 'Đơn giá', quantity: 'Số lượng', amount: 'Thành tiền', loadError: 'Không thể tải danh sách đối tác.', historyError: 'Không thể tải lịch sử giao dịch.' },
 };
 
 // The shared partner panel is selected by role in TradePartners.
@@ -37,9 +36,9 @@ const TITLE_BY_TYPE = {
 };
 
 const LIST_TEXT = {
-  ko: { viewHistory: '내역보기', costHistory: '비용 신청 내역' },
-  en: { viewHistory: 'View history', costHistory: 'Payment request history' },
-  vi: { viewHistory: 'Xem lịch sử', costHistory: 'Lịch sử đề nghị thanh toán' },
+  ko: { costHistory: '비용 신청 내역' },
+  en: { costHistory: 'Payment request history' },
+  vi: { costHistory: 'Lịch sử đề nghị thanh toán' },
 };
 
 const DELETE_TEXT = {
@@ -75,6 +74,8 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
   const [costs, setCosts] = useState([]);
   const costLabels = TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko;
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError,setHistoryError]=useState(false);
+  const historyGeneration=useRef(0);
   const loadGeneration=useRef(0);
   const loaded=useRef(false),inFlight=useRef(null),refreshPending=useRef(false),lastAttempt=useRef(0);
   const refreshBlocked=!active||createOpen||Boolean(editingPartner)||deleting||Boolean(deletingPartner);
@@ -126,14 +127,14 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
   const serviceName = useCallback(item=>partnerIndustryLabel(item,languageCode),[languageCode]);
   const directoryRows=useMemo(()=>partners.filter(partner=>(!unified||!category||partner.classification?.roleIds?.includes(category))).map(partner=>({id:partner.id,source:partner,attentionLabel:!isService&&partner.sourceKind==='CUSTOMER'&&partner.missingSalesPriceStyleCount>0?({ko:'\uB2E8\uAC00',en:'Pricing',vi:'\u0110\u01a1n gi\u00e1'}[languageCode]||'Pricing'):null,code:partner.code,name:resolveCustomerDisplayName(partner,languageCode),country:partner.country,contactName:partner.contactName,phone:partner.contactPhone,email:partner.email,registeredAt:partner.createdAt,isActive:partner.isActive,subtitle:classificationSummary(partner.classification,languageCode),searchText:[partner.name,partner.nameKo,partner.nameVi,partner.address].filter(Boolean).join(' ')})),[partners,languageCode,serviceName,unified,category,isService]);
   const openHistory = async (partner) => {
-    setSelected(partner); setHistory([]); setCosts([]); setHistoryLoading(true);
-    try { const result = await requestJSON(`/business-partners/${partner.id}/history${buildQueryString({ orgId: activeOrgId })}`, { skipGlobalLoading: true }); setHistory(Array.isArray(result?.records) ? result.records : []); setCosts(Array.isArray(result?.costs) ? result.costs : []); }
-    catch (historyError) { setError(historyError?.message || labels.historyError); }
-    finally { setHistoryLoading(false); }
+    const generation=++historyGeneration.current;setSelected(partner); setHistory([]); setCosts([]); setHistoryError(false);setHistoryLoading(true);
+    try { const result = await requestJSON(`/business-partners/${partner.id}/history${buildQueryString({ orgId: activeOrgId })}`, { skipGlobalLoading: true }); if(generation!==historyGeneration.current||!mounted.current)return;setHistory(Array.isArray(result?.records) ? result.records : []); setCosts(Array.isArray(result?.costs) ? result.costs : []); }
+    catch { if(generation===historyGeneration.current&&mounted.current)setHistoryError(true); }
+    finally { if(generation===historyGeneration.current&&mounted.current)setHistoryLoading(false); }
   };
   return (
-    <PartnerDirectory embedded={embedded} title={pageTitle} languageCode={languageCode} rows={directoryRows} loading={loading} error={queryFailed} onRetry={loadPartners} onAdd={()=>setCreateOpen(true)} canAdd={canEdit} onOpen={setEditingPartner} canOpen={canEdit}
-      renderActions={partner=><>{(!isService||partner.sourceKind!=='CUSTOMER')&&<Button variant="contained" onClick={()=>partner.sourceKind==='CUSTOMER'?navigateToPath('/customer-pricing?customerId='+partner.relationshipId):openHistory(partner)}>{partner.sourceKind==='CUSTOMER'?({ko:'단가',en:'Pricing',vi:'Đơn giá'}[languageCode]||'Pricing'):listLabels.viewHistory}</Button>}<Tooltip title={partner.hasUsageHistory!==false?deleteLabels.blocked:deleteLabels.remove}><span><DeleteActionButton aria-label={deleteLabels.remove} disabled={!canEdit||deleting||partner.hasUsageHistory!==false} onClick={()=>setDeletingPartner(partner)}/></span></Tooltip></>}
+    <PartnerDirectory embedded={embedded} title={pageTitle} languageCode={languageCode} rows={directoryRows} loading={loading} error={queryFailed} onRetry={loadPartners} onAdd={()=>setCreateOpen(true)} canAdd={canEdit} onOpen={partner=>{setEditingPartner(partner);if(partner.sourceKind!=='CUSTOMER')void openHistory(partner);}} canOpen={canEdit}
+      renderActions={partner=><><Tooltip title={partner.hasUsageHistory!==false?deleteLabels.blocked:deleteLabels.remove}><span><DeleteActionButton aria-label={deleteLabels.remove} disabled={!canEdit||deleting||partner.hasUsageHistory!==false} onClick={()=>setDeletingPartner(partner)}/></span></Tooltip></>}
     >
       {error&&<Alert severity="error" onClose={()=>setError('')}>{error}</Alert>}
       <BusinessPartnerDialog
@@ -142,20 +143,18 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
         activeOrgId={activeOrgId}
         languageCode={languageCode}
         partner={editingPartner}
-        initialType={type || 'PROCESS_OUTSOURCING'}
-        lockType={Boolean(type)}
-      />
-      <Dialog open={Boolean(deletingPartner)} onClose={() => !deleting && setDeletingPartner(null)} fullWidth maxWidth="xs"><DialogTitle>{deleteLabels.confirm}</DialogTitle><DialogContent>{deletingPartner?.name}</DialogContent><DialogActions><Button color="error" variant="contained" disabled={deleting} onClick={removePartner}>{deleteLabels.remove}</Button></DialogActions></Dialog>
-      <Drawer anchor="right" open={Boolean(selected)} onClose={() => setSelected(null)} PaperProps={{ sx: { width: { xs: '100%', md: 760 }, p: 2, display: 'flex', flexDirection: 'column', overflow: 'hidden' } }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2} sx={{ flexShrink: 0 }}><Box><Typography variant="h6">{labels.history}</Typography><Typography color="text.secondary">{selected?.name} · {selected ? classificationSummary(selected.classification,languageCode) : ''}</Typography></Box><IconButton onClick={() => setSelected(null)}><CloseIcon /></IconButton></Stack>
-        <Box sx={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateRows: costs.length > 0 ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)', gap: 3 }}>
+        detailContent={editingPartner?.sourceKind==='CUSTOMER'?(!isService&&<Button onClick={()=>navigateToPath('/customer-pricing?customerId='+editingPartner.relationshipId)}>{({ko:'단가',en:'Pricing',vi:'Đơn giá'}[languageCode]||'Pricing')}</Button>):selected&&<Stack spacing={2}><Typography variant="h6">{labels.history}</Typography>{historyError?<Alert severity="error" action={<Button onClick={()=>openHistory(selected)}>{({ko:'다시 시도',en:'Retry',vi:'Thử lại'}[languageCode])}</Button>}>{labels.historyError}</Alert>:<Box sx={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateRows: 'auto', gap: 3 }}>
         <Box sx={{ minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <Typography variant="subtitle1" fontWeight={700} mb={1} sx={{ flexShrink: 0 }}>{labels.workHistory}</Typography><TableContainer component={Paper} variant="outlined" sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}><Table size="small"><TableHead><TableRow><TableCell>{labels.date}</TableCell><TableCell>{labels.style}</TableCell><TableCell>{labels.process}</TableCell><TableCell align="right">{labels.unitPrice}</TableCell><TableCell align="right">{labels.quantity}</TableCell><TableCell align="right">{labels.amount}</TableCell></TableRow></TableHead><TableBody>{historyLoading ? <TableRow><TableCell colSpan={6} align="center"><CircularProgress size={24} /></TableCell></TableRow> : null}{!historyLoading && history.length === 0 ? <TableStatusRow colSpan={6} languageCode={languageCode} state="empty"/> : null}{history.map((record) => <TableRow key={record.id}><TableCell>{record.workDate || '-'}</TableCell><TableCell>{record.styleCode || record.styleName || '-'}</TableCell><TableCell>{[record.processCode, record.processName].filter(Boolean).join(' · ') || '-'}</TableCell><TableCell align="right">{formatNumberWithCommas(record.unitPrice || 0)}</TableCell><TableCell align="right">{formatNumberWithCommas(record.quantity || 0)}</TableCell><TableCell align="right">{formatNumberWithCommas(record.amount || 0)}</TableCell></TableRow>)}</TableBody></Table></TableContainer>
         </Box>
         {costs.length > 0 && <Box sx={{ minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}><Typography variant="subtitle1" fontWeight={700} mb={1} sx={{ flexShrink: 0 }}>{listLabels.costHistory}</Typography>
         <TableContainer component={Paper} variant="outlined" sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}><Table size="small"><TableHead><TableRow><TableCell>{costLabels.date}</TableCell><TableCell>{costLabels.industry}</TableCell><TableCell>{costLabels.description}</TableCell><TableCell>{costLabels.amount}</TableCell></TableRow></TableHead><TableBody>{!historyLoading && !costs.length && <TableStatusRow colSpan={4} languageCode={languageCode} state="empty"/>}{costs.map(cost => <TableRow key={cost.id}><TableCell>{cost.transactionDate}</TableCell><TableCell>{serviceName(cost.serviceType)}</TableCell><TableCell>{cost.description}</TableCell><TableCell>{formatNumberWithCommas(cost.amount)} {cost.currency}</TableCell></TableRow>)}</TableBody></Table></TableContainer></Box>}
-        </Box>
-      </Drawer>
+        </Box>}</Stack>}
+        initialType={type || 'PROCESS_OUTSOURCING'}
+        lockType={Boolean(type)}
+      />
+      <Dialog open={Boolean(deletingPartner)} onClose={() => !deleting && setDeletingPartner(null)} fullWidth maxWidth="xs"><DialogTitle>{deleteLabels.confirm}</DialogTitle><DialogContent>{deletingPartner?.name}</DialogContent><DialogActions><Button color="error" variant="contained" disabled={deleting} onClick={removePartner}>{deleteLabels.remove}</Button></DialogActions></Dialog>
+
     </PartnerDirectory>
   );
 }

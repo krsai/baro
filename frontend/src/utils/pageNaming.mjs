@@ -4,7 +4,7 @@ export const PAGE_ROUTES = [
   ['/system-setting/industry-menus','accessPolicy','page'],
   ['/shipping','transportList','list'],
   ['/transport-exchange','transportList','list'],
-  ['/freight','freight','page'],
+  ['/freight','freight','list'],
   ['/account-overview','accountOverview','page'],
   ['/bank-ledger','bankLedger','list'],
   ['/dashboard','dashboard','page'], ['/business','business','list'],
@@ -30,17 +30,17 @@ export const PAGE_ROUTES = [
   ['/business-partner','partners','list'], ['/customer','partners','list'],
   ['/outsourcing-partner','partners','list'], ['/material-supplier','partners','list'], ['/logistics-partner','partners','list'],
   ['/customer-pricing','customerPricing','page'],
-  ['/order-shipments','orderShipments','page','detail'], ['/order','order','list','edit'], ['/style','style','list','edit'],
+  ['/order-shipments','orderShipments','page','detail'], ['/order','order','list','detail'], ['/style','style','list','detail'],
   ['/customer-production-report','customerProductionReport','page'],
   ['/st-review','standardReview','page'], ['/shipment-review','shipmentReview','page'],
   ['/qc-review','qcReview','page'], ['/assignment','assignment','page','detail'],
-  ['/work-history','workHistory','list','edit'],
-  ['/outsourcing-record','outsourcingRecord','list','edit'],
-  ['/attendance','attendance','list','edit'],
+  ['/work-history','workHistory','list','detail'],
+  ['/outsourcing-record','outsourcingRecord','list','detail'],
+  ['/attendance','attendance','list','detail'],
   ['/work-time','workTime','page'],
   ['/inventory/stock','inventoryStock','page'],
-  ['/inventory/movements','inventoryHistory','page'],
-  ['/inventory/materials','materials','page'], ['/inventory/settings','materialSettings','page'],
+  ['/inventory/movements','inventoryHistory','list'],
+  ['/inventory/materials','materials','list'], ['/inventory/settings','materialSettings','page'],
   ['/payroll','payroll','list','detail'], ['/revenue-forecast','revenueForecast','page'],
   ['/invoices','invoice','list'], ['/revenue-analysis','revenueAnalysis','page'],
   ['/attribute/colors','attributeColors','page'],
@@ -58,6 +58,8 @@ const ACTIONS = {
   vi: {list:'Danh sách',create:'Tạo',edit:'Sửa',detail:'Chi tiết',revise:'Điều chỉnh'},
 };
 export function formatPageTitle(name, mode, languageCode = 'ko') {
+  // Editing is a capability of a detail screen, never a navigation level.
+  if (mode === 'edit') mode = 'detail';
   const language = ACTIONS[languageCode] ? languageCode : 'en';
   const action = ACTIONS[language][mode];
   if (!action) return name;
@@ -75,8 +77,9 @@ export function resolvePageNaming(path, languageCode, translate) {
   let mode = rest ? childMode || 'detail' : baseMode;
   if (rest === '/new') mode = 'create';
   if (['/shipping','/transport-exchange'].includes(base) && !rest && url.searchParams.has('id')) mode = 'detail';
-  if(base==='/bank-ledger'&&rest.startsWith('/edit/'))mode='edit';
-  if (base === '/customer' && rest) mode = rest === '/new' ? 'create' : 'edit';
+  if (base === '/freight' && !rest && url.searchParams.has('id')) mode = 'detail';
+  if(base==='/bank-ledger'&&rest.startsWith('/edit/'))mode='detail';
+  if (base === '/customer' && rest) mode = rest === '/new' ? 'create' : 'detail';
   if (base === '/invoices' && rest === '/new' && url.searchParams.has('revision')) mode = 'revise';
   const nameKey = base === '/customer' && rest ? 'customer'
     : base === '/inventory/movements' && rest === '/new' ? 'inventoryEntry' : key;

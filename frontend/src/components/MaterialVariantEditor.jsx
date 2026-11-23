@@ -28,6 +28,7 @@ export default function MaterialVariantEditor({orgId,baseId,row,languageCode,onC
  return selectedBaseId?<VariantForm key={selectedBaseId} {...{orgId,baseId:selectedBaseId,row,languageCode,onClose,onSaved,selector,dirty,locked,closeForm,title}}/>:React.cloneElement(selector,{autoOpen:true,searchOnly:true,onSearchClose:onClose});
 }
 function VariantForm({orgId,baseId,row,languageCode,onClose,onSaved,selector,dirty,locked,closeForm,title}){
+ const readOnly=Boolean(row&&(row.used||row.editable===false));
  const t=materialItemText[languageCode]||materialItemText.en,m=materialVariantManagementText[languageCode]||materialVariantManagementText.en,dialogs=usePageDialogs();
  const a=materialRegistrationText[languageCode]||materialRegistrationText.en,c=inventoryColorText[languageCode]||inventoryColorText.en;
  const [preview,setPreview]=useState(null);
@@ -42,7 +43,7 @@ function VariantForm({orgId,baseId,row,languageCode,onClose,onSaved,selector,dir
  const close=async()=>{if(locked.current)return;if(!changed||await dialogs.confirm('',{purpose:'discard'}))onClose();};closeForm.current=close;
  const typeEnabled=options?.fields.type!=='HIDDEN';
  const save=async()=>{
-  if(lock.current)return;lock.current=true;locked.current=true;setBusy(true);setError('');
+  if(readOnly||lock.current)return;lock.current=true;locked.current=true;setBusy(true);setError('');
   try{
    if(!pending.current){
     let typeId=row?.attributes.type?.id??null;
@@ -59,9 +60,9 @@ function VariantForm({orgId,baseId,row,languageCode,onClose,onSaved,selector,dir
   }catch(e){if(live.current){if(e.status>=400&&e.status<500)pending.current=null;setError(variantManagementError(e,m));}}
   finally{lock.current=false;if(live.current){locked.current=Boolean(pending.current);setBusy(false);}}
  };
- const isLocked=busy||Boolean(pending.current),invalid=!options||!attributes||!row&&registered===null||!owner?.id||options.fields.type==='REQUIRED'&&!typeText.trim();
+ const isLocked=busy||Boolean(pending.current)||readOnly,invalid=!options||!attributes||!row&&registered===null||!owner?.id||options.fields.type==='REQUIRED'&&!typeText.trim();
  const columns=[{key:'owner',label:t.owner,value:value=>materialVariantOwner(value,languageCode)},{key:'type',label:t.type,value:value=>materialVariantType(value,languageCode)},{key:'unit',label:t.unit,value:value=>materialItemName(value.unit,languageCode)}];
- const actions=<DialogRecordActions busy={busy} saveDisabled={!pending.current&&invalid} onSave={save} saveLabel={pending.current&&error?t.retry:t.save}/>;
+ const actions=readOnly?null:<DialogRecordActions busy={busy} saveDisabled={!pending.current&&invalid} onSave={save} saveLabel={pending.current&&error?t.retry:t.save}/>;
  const form=<Stack spacing={2}>
   {error&&<AppNotice severity="error" action={!options||!attributes||!row&&registered===null?<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>:undefined}>{error}</AppNotice>}
   {!options&&!error&&<LinearProgress/>}
@@ -72,7 +73,7 @@ function VariantForm({orgId,baseId,row,languageCode,onClose,onSaved,selector,dir
  return <ListDetailDialog open title={title} slotProps={{paper:{'aria-labelledby':undefined,'aria-label':title}}} onClose={close} maxWidth={row?'sm':false}
   tools={selector&&React.cloneElement(selector,{disabled:isLocked})}
   onNew={!row?()=>setPreview(null):undefined} newLabel={c.new} newDisabled={isLocked}
-  list={!row?<DialogRecordList rows={rankMaterialCandidates(registered||[],typeText,owner?.id)} columns={columns} selectedKey={preview?.id} onPreview={setPreview} onSelect={value=>setPreview(current=>current?.id===value.id?null:value)} disabled={isLocked} loading={registered===null&&!error} error={registered===null&&Boolean(error)} onRetry={()=>setReload(n=>n+1)} languageCode={languageCode}/>:<DialogDetailPanel footer={actions}>{form}</DialogDetailPanel>}
+  list={!row?<DialogRecordList rows={rankMaterialCandidates(registered||[],typeText,owner?.id)} columns={columns} selectedKey={preview?.id} onPreview={setPreview} onSelect={setPreview} disabled={isLocked} loading={registered===null&&!error} error={registered===null&&Boolean(error)} onRetry={()=>setReload(n=>n+1)} languageCode={languageCode}/>:<DialogDetailPanel footer={actions}>{form}</DialogDetailPanel>}
   detail={row?null:preview?<DialogDetailPanel title={a.similar} footer={<Button disabled={isLocked} onClick={()=>setPreview(null)}>{c.clear}</Button>}><RecordDetails framed={false} fields={columns.map(column=>({...column,value:column.value(preview)}))}/></DialogDetailPanel>:<DialogDetailPanel title={m.add} footer={actions}>{form}</DialogDetailPanel>}
-  actions={<Button disabled={isLocked} onClick={close}>{t.close}</Button>}/>;
+  actions={<Button disabled={busy||Boolean(pending.current)} onClick={close}>{t.close}</Button>}/>;
 }

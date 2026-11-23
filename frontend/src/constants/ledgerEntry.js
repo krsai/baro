@@ -6,9 +6,9 @@ export const ledgerEntryText={
  vi:{...payrollPayableText.vi,OPENING:"AR/AP đầu kỳ",BANK:'Thu chi',FEE:'Phí',WRITEOFF:'Xử lý nợ xấu',details:'Chi tiết',link:'Liên kết chứng từ',search:'Tìm mã hoặc đối tác',select:'Chọn',empty:'Không tìm thấy tài liệu.',searchHint:'Tìm theo mã quản lý hoặc tên đối tác.',total:'Giá trị chứng từ',remaining:'Số tiền chưa đối chiếu',addFee:'Thêm dòng phí',addLoss:'Thêm dòng nợ xấu',parent:'Dòng liên kết',feeReason:'Nội dung phí',lossReason:'Lý do xử lý nợ xấu',noncash:'Không làm thay đổi số dư ngân hàng.',matched:'Số tiền đối chiếu chứng từ',bank:'Số tiền thực thu chi',hint:'Ghi phí và nợ xấu thành dòng riêng bên dưới giao dịch.',items:'Thanh toán từng khoản chi',limit:'Tối đa 50 dòng.',reason:'Mục đích / nội dung',noAccount:'Chọn tài khoản trước.',FILE:'Tự lưu trữ',INVOICE:'Hóa đơn',EXPENSE:'Đề nghị chi',difference:'Chênh lệch',feeHint:'Phí khấu trừ từ tiền thu hoặc đã bao gồm trong tiền thực chi.',WRITEOFFHint:'Nhập số tiền không thu được và lý do.'}
 };
 
-Object.assign(ledgerEntryText.ko,{editTitle:'입출금 수정',edit:'수정',delete:'삭제',deleted:'삭제됨',includeDeleted:'삭제 내역 포함',code:'비용·회계 코드',linked:'연결 증빙',memo:'비고 / 사유'});
-Object.assign(ledgerEntryText.en,{editTitle:'Edit transaction',edit:'Edit',delete:'Delete',deleted:'Deleted',includeDeleted:'Include deleted entries',code:'Expense / accounting code',linked:'Linked evidence',memo:'Note / reason'});
-Object.assign(ledgerEntryText.vi,{editTitle:'Sửa thu chi',edit:'Sửa',delete:'Xóa',deleted:'Đã xóa',includeDeleted:'Hiện giao dịch đã xóa',code:'Mã chi phí / kế toán',linked:'Chứng từ liên kết',memo:'Ghi chú / lý do'});
+Object.assign(ledgerEntryText.ko,{editTitle:'입출금 상세',edit:'상세',delete:'삭제',deleted:'삭제됨',includeDeleted:'삭제 내역 포함',code:'비용·회계 코드',linked:'연결 증빙',memo:'비고 / 사유'});
+Object.assign(ledgerEntryText.en,{editTitle:'transaction Details',edit:'Details',delete:'Delete',deleted:'Deleted',includeDeleted:'Include deleted entries',code:'Expense / accounting code',linked:'Linked evidence',memo:'Note / reason'});
+Object.assign(ledgerEntryText.vi,{editTitle:'Chi tiết thu chi',edit:'Chi tiết',delete:'Xóa',deleted:'Đã xóa',includeDeleted:'Hiện giao dịch đã xóa',code:'Mã chi phí / kế toán',linked:'Chứng từ liên kết',memo:'Ghi chú / lý do'});
 
 ledgerEntryText.ko.deleteReason='삭제 사유';ledgerEntryText.en.deleteReason='Deletion reason';ledgerEntryText.vi.deleteReason='Lý do xóa';
 

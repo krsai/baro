@@ -17,7 +17,7 @@ import Partners from '../pages/App/TradePartners';
 import Ledger from '../pages/App/BankLedgerEntry';
 import Expense from '../pages/App/TransactionRequestEntry';
 import Invoice from '../pages/App/invoice/InvoiceWorkspace';
-const TEXT={ko:{title:'원본 확인 · 수정',move:'원래 화면으로 이동'},en:{title:'Review · edit source',move:'Open full page'},vi:{title:'Xem · sửa bản gốc',move:'Mở trang đầy đủ'}};
+const TEXT={ko:{title:'원본 상세',move:'원래 화면으로 이동'},en:{title:'Source details',move:'Open full page'},vi:{title:'Chi tiết bản gốc',move:'Mở trang đầy đủ'}};
 // A dialog renders an absolute source route while /dashboard remains mounted.
 // Reset only matched route ancestry; keep the real router, auth and app scopes.
 const DOCUMENT_ROUTE_CONTEXT={outlet:null,matches:[],isDataRoute:false};

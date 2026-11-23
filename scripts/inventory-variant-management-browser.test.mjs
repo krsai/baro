@@ -44,7 +44,12 @@ try{
   });
   await page.goto(`http://127.0.0.1:${port}/${fixture.split('/')[1]}`);
   const used=page.getByRole('row').filter({has:page.getByRole('cell',{name:'Used item',exact:true})});await used.waitFor();
-  assert.equal(await used.getByRole('button',{name:m.edit,exact:true}).isDisabled(),true);assert.equal(await used.getByRole('button',{name:m.remove,exact:true}).isDisabled(),true);
+  assert.equal(await used.getByRole('button',{name:m.edit,exact:true}).isDisabled(),false);assert.equal(await used.getByRole('button',{name:m.remove,exact:true}).isDisabled(),true);
+  await used.getByRole('button',{name:m.edit,exact:true}).click();
+  const readOnlyDetail=page.getByRole('dialog');await readOnlyDetail.getByRole('combobox',{name:t.variant,exact:true}).waitFor();
+  assert.equal(await readOnlyDetail.getByRole('combobox',{name:t.variant,exact:true}).isDisabled(),true);
+  assert.equal(await readOnlyDetail.getByRole('button',{name:t.save,exact:true}).count(),0);assert.equal(writes.length,0);
+  await readOnlyDetail.getByRole('button',{name:t.close,exact:true}).click();await readOnlyDetail.waitFor({state:'hidden'});
   assert.equal(await page.getByRole('dialog').count(),0);
   const register=page.locator('header').getByRole('button',{name:t.registerMaster,exact:true});
   assert.equal(await page.getByRole('button',{name:t.registerMaster,exact:true}).count(),1);
@@ -72,8 +77,6 @@ try{
   await existing.click();
   assert.equal(await editor.locator('[data-record-details]').count(),1,'existing item opens shared details');
   assert.equal(writes.length,0,'preview must not register or select a material');
-  await existing.click();assert.equal(await editor.getByRole('combobox',{name:t.variant,exact:true}).inputValue(),'10x10x10');
-  await existing.click();
   await editor.getByRole('button',{name:(inventoryColorText[lang]||inventoryColorText.en).clear,exact:true}).click();
   assert.equal(await editor.getByRole('combobox',{name:t.variant,exact:true}).inputValue(),'10x10x10','returning from preview preserves the new draft');
   assert.equal(await editor.getByRole('button',{name:t.addVariant,exact:true}).count(),0);

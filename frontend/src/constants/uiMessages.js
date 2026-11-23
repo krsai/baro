@@ -215,7 +215,7 @@ export const UI_MESSAGES = {
   },
   orderDetail: {
     newTitle: { ko: '신규 주문 등록', en: 'New Order', vi: 'Tao don hang moi' },
-    editTitle: { ko: '주문 정보 수정', en: 'Edit Order', vi: 'Sua thong tin don hang' },
+    editTitle: { ko: '주문 정보 상세', en: 'Order Details', vi: 'Chi tiết thong tin don hang' },
     lockLabel: { ko: '주문 수정 잠금', en: 'Order Edit Lock', vi: 'Khóa sua don hang' },
     lockSwitchAria: {
       ko: '주문 수정 잠금 스위치',
@@ -956,7 +956,7 @@ export const UI_MESSAGES = {
       vi: 'Chưa có khach hang nao.',
     },
     createTitle: { ko: '고객 등록', en: 'Add Customer', vi: 'Tao khach hang' },
-    editTitle: { ko: '고객 정보 수정', en: 'Edit Customer', vi: 'Sua khach hang' },
+    editTitle: { ko: '고객 정보 상세', en: 'Customer Details', vi: 'Chi tiết khach hang' },
     drawerDescription: {
       ko: '고객 기본 정보를 입력합니다.',
       en: 'Enter the customer basic information.',
@@ -1042,7 +1042,7 @@ Object.assign(UI_MESSAGES, {
     factoryCode: { ko: '공장 코드', en: 'Factory Code', vi: 'Mã nhà máy' },
     factoryCodeHelper: { ko: '영문 2~3자리 (예: HN, SEO)', en: '2–3 uppercase letters (e.g. HN, SEO)', vi: '2–3 chữ cái viết hoa (ví dụ: HN, SEO)' },
     createTitle: { ko: '\uACF5\uC7A5 \uCD94\uAC00', en: 'Add Factory', vi: 'Them nha may' },
-    editTitle: { ko: '\uACF5\uC7A5 \uC218\uC815', en: 'Edit Factory', vi: 'Sua nha may' },
+    editTitle: { ko: '\uACF5\uC7A5 \uC218\uC815', en: 'Factory Details', vi: 'Chi tiết nha may' },
     name: { ko: '\uACF5\uC7A5\uBA85', en: 'Factory Name', vi: 'Ten nha may' },
     address: { ko: '\uC8FC\uC18C', en: 'Address', vi: 'Địa chỉ' },
     manager: { ko: '\uAD00\uB9AC\uC790', en: 'Manager', vi: 'Quản lý' },

@@ -43,7 +43,7 @@ const EMPLOYEE_BOARD_TEXT = {
   pageTitle: { ko: '직원 관리', en: 'Employee Management', vi: 'Quản lý nhan vien' },
   addEmployee: { ko: '직원 추가', en: 'Add Employee', vi: 'Them nhan vien' },
   drawerAddTitle: { ko: '직원 추가', en: 'Add Employee', vi: 'Them nhan vien' },
-  drawerEditTitle: { ko: '직원 수정', en: 'Edit Employee', vi: 'Sua nhan vien' },
+  drawerEditTitle: { ko: '직원 상세', en: 'Employee Details', vi: 'Chi tiết nhan vien' },
   loginEmailLabel: { ko: '로그인 이메일', en: 'Login Email', vi: 'Email dang nhap' },
   employeeCodePrefix: { ko: '사번', en: 'Employee Code', vi: 'Ma nhan vien' },
   nameLabel: { ko: '이름', en: 'Name', vi: 'Ten' },

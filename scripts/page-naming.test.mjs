@@ -27,12 +27,12 @@ test('retired industry menu link inherits the unified access policy identity',()
 test('list, creation and editing use the same business name and one action vocabulary',()=>{
   assert.equal(name('/outsourcing-record').title,'비용 신청 목록');
   assert.equal(name('/outsourcing-record/new').title,'비용 신청 등록');
-  assert.equal(name('/outsourcing-record/edit/request/17').title,'비용 신청 수정');
+  assert.equal(name('/outsourcing-record/edit/request/17').title,'비용 신청 상세');
   assert.equal(name('/order/new').title,'주문 등록');
-  assert.equal(name('/order/123').title,'주문 수정');
-  assert.equal(name('/style/123?ownerOrgId=1').title,'스타일 수정');
+  assert.equal(name('/order/123').title,'주문 상세');
+  assert.equal(name('/style/123?ownerOrgId=1').title,'스타일 상세');
   assert.equal(name('/customer/new').title,'고객사 등록');
-  assert.equal(name('/customer/1').title,'고객사 수정');
+  assert.equal(name('/customer/1').title,'고객사 상세');
   for(const path of ['/business-partner','/customer','/outsourcing-partner','/material-supplier']) assert.equal(name(path).title,'거래처 목록');
 });
 test('single screens, settings and view-only details do not pretend to be editing lists',()=>{
@@ -49,9 +49,22 @@ test('single screens, settings and view-only details do not pretend to be editin
 test('localized grammar is shared by all labels without stale record IDs',()=>{
   assert.equal(formatPageTitle('Payment Request','list','en'),'Payment Request List');
   assert.equal(formatPageTitle('Payment Request','create','en'),'Create Payment Request');
-  assert.equal(formatPageTitle('Đề nghị thanh toán','edit','vi'),'Sửa Đề nghị thanh toán');
+  assert.equal(formatPageTitle('Đề nghị thanh toán','edit','vi'),'Chi tiết Đề nghị thanh toán');
   assert.equal(formatPageTitle('Đề nghị thanh toán','list','vi'),'Danh sách Đề nghị thanh toán');
   assert.equal(name('/order/123').title,name('/order/456').title);
+});
+
+test('every existing editable record resolves to detail in all languages, including legacy edit URLs',()=>{
+ for(const lang of ['ko','en','vi'])for(const path of [
+  '/order/17','/style/17','/customer/17','/attendance/17','/work-history/17',
+  '/outsourcing-record/edit/request/17','/bank-ledger/edit/17','/shipping?id=17',
+  '/freight?type=masters&id=17',
+ ]){
+  const page=name(path,lang);
+  assert.equal(page.mode,'detail',path);
+  assert.equal(page.title,formatPageTitle(page.menuLabel,'detail',lang));
+ }
+ for(const path of ['/inventory/materials','/inventory/movements'])assert.equal(name(path).mode,'list');
 });
 test('menu names use the same source while preserving structure and access identities',()=>{
   const accessChildren=[{path:'/customer',label:'Customer access',featureKey:'CUSTOMER'}];

@@ -45,7 +45,7 @@ const PAGE_MESSAGES = {
   closeCreateForm: { ko: '추가 닫기', en: 'Close Form', vi: 'Dong form' },
   noOrganizations: { ko: '등록된 회사가 없습니다.', en: 'No organizations found.', vi: 'Chưa có cong ty nao.' },
   createTitle: { ko: '회사 등록', en: 'Create Organization', vi: 'Tao cong ty' },
-  editTitle: { ko: '구독 편집', en: 'Edit Subscription', vi: 'Sua goi dich vu' },
+  editTitle: { ko: '구독 상세', en: 'Subscription Details', vi: 'Chi tiết goi dich vu' },
   status: { ko: '구독 상태', en: 'Subscription Status', vi: 'Trạng thái goi dich vu' },
   serviceContactEmail: { ko: '서비스 담당 이메일', en: 'Service Contact Email', vi: 'Email phu trach dich vu' },
   billingEmail: { ko: '청구 이메일', en: 'Billing Email', vi: 'Email thanh toan' },

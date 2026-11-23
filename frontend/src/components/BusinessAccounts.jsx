@@ -5,7 +5,7 @@ import BankAccountEditorDialog from './BankAccountEditorDialog';
 import React,{useEffect,useRef,useState} from 'react';
 import {Box,Button,CircularProgress,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
 import Alert from "./AppNotice";
-import EditOutlined from '@mui/icons-material/EditOutlined';
+import EditOutlined from '@mui/icons-material/VisibilityOutlined';
 import DragIndicator from '@mui/icons-material/DragIndicator';
 import {DragDropContext,Draggable,Droppable} from '@hello-pangea/dnd';
 import EntityDetailSection from './EntityDetailSection';

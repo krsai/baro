@@ -1,4 +1,6 @@
 import Dialog from './AppDialog';
+import useUnsavedChanges from '../hooks/useUnsavedChanges';
+import {usePageDialogs} from './PageDialogProvider';
 import {partnerHandledItemsText} from '../constants/partnerHandledItems';
 import PartnerHandledItemsFields from './PartnerHandledItemsFields';
 import {companyDocumentContactError,partnerContactText} from '../constants/companyDocumentContact';
@@ -25,7 +27,7 @@ export const BUSINESS_PARTNER_TYPES = ['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER
 
 const TEXT = {
   ko: {
-    titleCreate: '거래처 등록', titleEdit: '거래처 수정',
+    titleCreate: '거래처 등록', titleEdit: '거래처 상세',
     type: '타입', name: '업체명', contact: '담당자', phone: '연락처', active: '사용 중',
     cancel: '취소', save: '등록', saveEdit: '저장',
     required: '업체명을 입력해 주세요.',
@@ -33,7 +35,7 @@ const TEXT = {
     outsourcing: '외주 업체', supplier: '유통',
   },
   en: {
-    titleCreate: 'Add Partner', titleEdit: 'Edit Partner',
+    titleCreate: 'Add Partner', titleEdit: 'Partner Details',
     type: 'Type', name: 'Company name', contact: 'Contact person', phone: 'Phone', active: 'Active',
     cancel: 'Cancel', save: 'Add', saveEdit: 'Save',
     required: 'Enter a company name.',
@@ -41,7 +43,7 @@ const TEXT = {
     outsourcing: 'Outsourcing partner', supplier: 'Distribution',
   },
   vi: {
-    titleCreate: 'Thêm đối tác', titleEdit: 'Sửa đối tác',
+    titleCreate: 'Thêm đối tác', titleEdit: 'Chi tiết đối tác',
     type: 'Loại', name: 'Tên công ty', contact: 'Người liên hệ', phone: 'Số điện thoại', active: 'Đang sử dụng',
     cancel: 'Hủy', save: 'Thêm', saveEdit: 'Lưu',
     required: 'Vui lòng nhập tên công ty.',
@@ -89,11 +91,13 @@ function PartnerEditorState({
   lockType = false,
   partner = null,
   title,
+  detailContent,
   onAccountsChange,
   relationshipId,
   onSelectExisting,
 }) {
   const labels = TEXT[languageCode] || TEXT.ko;
+  const dialogs=usePageDialogs();
   const common = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
   const isEdit = Boolean(partner?.id||relationshipId);
   const editorText=partnerEditorText[languageCode]||partnerEditorText.en;
@@ -103,6 +107,7 @@ function PartnerEditorState({
   useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
   const [connectionActionsTarget,setConnectionActionsTarget]=useState(null);
   const [form, setForm] = useState(() => buildFormFromPartner(partner, initialType));
+  const initialForm=useRef(JSON.stringify(buildFormFromPartner(partner,initialType)));
   const [saving, setSaving] = useState(false);
   const locked=saving||loadingProfile||profileFailed;
   const [error, setError] = useState('');
@@ -112,6 +117,9 @@ function PartnerEditorState({
   const reducedMotion=useMediaQuery('(prefers-reduced-motion: reduce)'),panelVisible=panelOpen||panelExiting;
   const togglePanel=(next,kind='classification')=>{if(next)setPanelKind(kind);if(!next&&panelOpen)setPanelExiting(true);setPanelOpen(next);};
   const [optionsReady,setOptionsReady]=useState(false),[classificationLoaded,setClassificationLoaded]=useState(false);
+  const dirty=open&&(JSON.stringify(form)!==initialForm.current||pendingAccounts.length>0);
+  useUnsavedChanges(dirty);
+  const close=async()=>{if(!saving&&(!dirty||await dialogs.confirm('',{purpose:'discard'})))onClose?.();};
   const officialClassification=form.linkedCompany&&(form.linkedCompany.officialClassification||record?.officialClassification);
   const hasOfficialClassification=Boolean(officialClassification?.industryIds?.length);
   const displayedClassification=hasOfficialClassification?officialClassification:form.classification;
@@ -119,7 +127,7 @@ function PartnerEditorState({
 
   useEffect(() => {
     if (open) {
-      setForm(buildFormFromPartner(partner, initialType));
+      const next=buildFormFromPartner(partner, initialType);initialForm.current=JSON.stringify(next);setForm(next);
       setError('');
       setHandledPanelRequest(null);setShowHandledErrors(false);setHandledValidation({ready:false,missing:false});
       setPendingAccounts([]);setPanelKind(isEdit?'classification':'connections');setPanelOpen(!isEdit);setPanelExiting(false);
@@ -129,7 +137,7 @@ function PartnerEditorState({
   useEffect(()=>{
     if(!open)return;let alive=true;const controller=new AbortController();
     setClassificationLoaded(!isEdit);setProfileFailed(false);setLoadingProfile(isEdit);
-    if(isEdit)requestJSON('/partner-editor/'+(relationshipId?'relationship/'+relationshipId:'entity/'+partner.id)+buildQueryString({orgId:activeOrgId}),{skipCache:true,signal:controller.signal}).then(profile=>{if(alive){if(!Number.isSafeInteger(profile?.id)||!['BUSINESS','CUSTOMER'].includes(profile.sourceKind)||partner?.id&&profile.id!==partner.id||relationshipId&&profile.relationshipId!==Number(relationshipId))throw Error('INVALID_PARTNER_PROFILE');setLoadedPartner(profile);setForm(buildFormFromPartner(profile,initialType));setClassificationLoaded(true);}}).catch(failure=>{if(alive&&failure.name!=='AbortError')setProfileFailed(true);}).finally(()=>{if(alive)setLoadingProfile(false);});
+    if(isEdit)requestJSON('/partner-editor/'+(relationshipId?'relationship/'+relationshipId:'entity/'+partner.id)+buildQueryString({orgId:activeOrgId}),{skipCache:true,signal:controller.signal}).then(profile=>{if(alive){if(!Number.isSafeInteger(profile?.id)||!['BUSINESS','CUSTOMER'].includes(profile.sourceKind)||partner?.id&&profile.id!==partner.id||relationshipId&&profile.relationshipId!==Number(relationshipId))throw Error('INVALID_PARTNER_PROFILE');setLoadedPartner(profile);const next=buildFormFromPartner(profile,initialType);initialForm.current=JSON.stringify(next);setForm(next);setClassificationLoaded(true);}}).catch(failure=>{if(alive&&failure.name!=='AbortError')setProfileFailed(true);}).finally(()=>{if(alive)setLoadingProfile(false);});
     return()=>{alive=false;controller.abort();};
   },[open,partner?.id,relationshipId,activeOrgId,initialType,isEdit,profileReload]);
 
@@ -193,7 +201,7 @@ function PartnerEditorState({
   };
 
   return (
-    <Dialog open={open} onClose={() => !saving && onClose?.()} scroll="paper" fullWidth maxWidth={panelVisible?'lg':'md'} PaperProps={{sx:{m:{xs:1,sm:3},width:{xs:"calc(100% - 16px)",sm:"calc(100% - 48px)"},maxHeight:{xs:"calc(100dvh - 16px)",sm:"calc(100dvh - 48px)"},display:"flex",flexDirection:"column",overflow:"hidden",transition:reducedMotion?'none':'max-width 200ms ease'}}}>
+    <Dialog open={open} onClose={close} scroll="paper" fullWidth maxWidth={panelVisible?'lg':'md'} PaperProps={{sx:{m:{xs:1,sm:3},width:{xs:"calc(100% - 16px)",sm:"calc(100% - 48px)"},maxHeight:{xs:"calc(100dvh - 16px)",sm:"calc(100dvh - 48px)"},display:"flex",flexDirection:"column",overflow:"hidden",transition:reducedMotion?'none':'max-width 200ms ease'}}}>
       <DialogTitle sx={{flexShrink:0}}><Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}><Box component="span">{title || (isEdit ? labels.titleEdit : labels.titleCreate)}</Box><Box component="span" ref={setConnectionActionsTarget} sx={{display:'inline-flex',flexShrink:0}}/></Stack></DialogTitle>
       {loadingProfile&&<LinearProgress/>}
       {profileFailed&&<Alert severity="error" sx={{mx:3,mb:1}} action={<Button onClick={()=>setProfileReload(value=>value+1)}>{editorText.retry}</Button>}>{editorText.loadError}</Alert>}
@@ -210,6 +218,7 @@ function PartnerEditorState({
 
 
           {record?.sourceKind==='CUSTOMER'&&hasApparelBrandIndustry(displayedClassification)&&<EntityDetailSection title={editorText.order}><TextField fullWidth select size="small" label={editorText.size} value={normalizeSizeSetCode(form.defaultSizeSetCode)} disabled={locked||profileLocked} onChange={event=>setForm(current=>({...current,defaultSizeSetCode:event.target.value}))}>{getSizeSetOptions(languageCode).map(option=><MenuItem key={option.code} value={option.code}>{option.label}</MenuItem>)}</TextField></EntityDetailSection>}
+          {detailContent}
         </Stack><Slide direction="left" in={panelOpen} timeout={reducedMotion?0:200} mountOnEnter unmountOnExit onExited={()=>setPanelExiting(false)}><Box ref={setPanelTarget} sx={{minWidth:0}}/></Slide></Box>
       </DialogContent>
       <DialogActions sx={{flexShrink:0,px:3,py:2,flexWrap:'wrap',gap:1,'& > :not(style) ~ :not(style)':{ml:0}}}>

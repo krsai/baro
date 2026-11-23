@@ -43,7 +43,7 @@ import {TRANSACTION_TEXT} from '../../components/OutsourcingServiceDialog';
 import { emitWorkspaceDataChanged, subscribeWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
 
 const ENTRY_TITLES = { ko: '비용 신청 등록', en: 'New Payment Request', vi: 'Tạo đề nghị thanh toán' };
-const EDIT_TITLES = { ko: '비용 신청 수정', en: 'Edit Payment Request', vi: 'Sửa đề nghị thanh toán' };
+const EDIT_TITLES = { ko: '비용 신청 상세', en: 'Payment Request Details', vi: 'Chi tiết đề nghị thanh toán' };
 const LOCKED_TEXT = { ko: '최종 마감된 주문의 비용 신청은 수정할 수 없습니다.', en: 'This request is read-only because its order is finally locked.', vi: 'Không thể sửa đề nghị vì đơn hàng đã khóa quyết toán.' };
 const CHANGED_TEXT = { ko: '다른 사용자가 신청서를 수정했습니다. 화면을 다시 열어 최신 내용을 확인한 뒤 저장해 주세요.', en: 'This request was changed by another user. Reopen it to review the latest version before saving.', vi: 'Đề nghị đã được người khác sửa. Vui lòng mở lại để kiểm tra phiên bản mới nhất trước khi lưu.' };
 const FORM_TEXT={ko:{auto:'등록 시 자동 부여',required:'필수 입력 항목을 확인해 주세요',number:'관리번호는 자동으로 부여됩니다.'},en:{auto:'Assigned automatically on registration',required:'Please complete the required fields',number:'Management numbers are assigned automatically.'},vi:{auto:'Tự động cấp khi đăng ký',required:'Vui lòng điền các trường bắt buộc',number:'Mã quản lý được cấp tự động.'}};
@@ -239,7 +239,7 @@ export default function TransactionRequestEntry() {
     titleActions={<Stack direction="row" spacing={1}>
       <Button disabled={saving} onClick={close}>{labels.cancel}</Button>
       <SaveButton loading={saving} disabled={loading || loadError || form.readOnly || !submission && valid && editing && !dirty} onClick={save}>
-        {submission ? labels.retry : editing?(changeApprovalText[languageCode]||changeApprovalText.en).requestUpdate:getUiMessage('common.save', 'Save', languageCode)}
+        {submission ? labels.retry : getUiMessage('common.save', 'Save', languageCode)}
       </SaveButton>
     </Stack>}
   >

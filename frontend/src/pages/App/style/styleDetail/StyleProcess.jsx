@@ -32,7 +32,7 @@ import {
   Typography} from '@mui/material';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
+import EditIcon from '@mui/icons-material/VisibilityOutlined';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -174,7 +174,7 @@ const STYLE_PROCESS_MESSAGES = {
     add: '추가',
     save: '저장',
     cancel: '취소',
-    edit: '수정',
+    edit: '상세',
     reviewRequiredLabel: '공정 검토 필요',
     reviewCommentLabel: '검토 코멘트',
     reviewCommentPlaceholder: '예: 주머니 입구 접기와 부착은 묶음 공정으로 재검토 필요',
@@ -184,7 +184,7 @@ const STYLE_PROCESS_MESSAGES = {
     deactivateConfirm: '이 공정에는 이미 작업기록이 있어 완전히 삭제하지 않고 비활성화합니다. 기존 작업기록·AT 학습 데이터는 그대로 유지되며, 같은 공정코드로 다시 추가하면 복원됩니다. 계속할까요?',
     deactivateInstead: '작업기록이 연결된 공정입니다. 삭제하면 완전히 지워지지 않고 비활성화됩니다.',
     processVersionsButton: '공정 버전',
-    editingTitle: '공정 수정',
+    editingTitle: '공정 상세',
     orderColumn: '순서',
     codeColumn: '코드',
     processColumn: '공정명',
@@ -264,7 +264,7 @@ const STYLE_PROCESS_MESSAGES = {
     add: 'Add',
     save: 'Save',
     cancel: 'Cancel',
-    edit: 'Edit',
+    edit: 'Details',
     reviewRequiredLabel: 'Needs review',
     reviewCommentLabel: 'Review comment',
     reviewCommentPlaceholder: 'e.g. Folded pocket opening should be merged with pocket attach',
@@ -274,7 +274,7 @@ const STYLE_PROCESS_MESSAGES = {
     deactivateConfirm: 'This process already has work records, so it will be deactivated instead of deleted. Existing work records and AT training data are preserved, and re-adding it with the same process code restores it. Continue?',
     deactivateInstead: 'This process is linked to work records. Deleting it will deactivate it instead of removing it completely.',
     processVersionsButton: 'Process Versions',
-    editingTitle: 'Edit Process',
+    editingTitle: 'Process Details',
     orderColumn: 'Order',
     codeColumn: 'Code',
     processColumn: 'Process',
@@ -354,7 +354,7 @@ const STYLE_PROCESS_MESSAGES = {
     add: 'Them',
     save: 'Luu',
     cancel: 'Huy',
-    edit: 'Sua',
+    edit: 'Chi tiết',
     reviewRequiredLabel: 'Cần xem lại cong doan',
     reviewCommentLabel: 'Ghi chu xem lai',
     reviewCommentPlaceholder: 'vi du: can gop cong doan gap mieng tui va rap tui',
@@ -364,7 +364,7 @@ const STYLE_PROCESS_MESSAGES = {
     deactivateConfirm: 'Cong doan nay da co ban ghi lam viec nen se duoc vo hieu hoa thay vi xoa. Ban ghi lam viec va du lieu hoc AT hien co van duoc giu nguyen, va them lai cung ma cong doan se khoi phuc no. Tiep tuc?',
     deactivateInstead: 'Cong doan nay da lien ket voi ban ghi lam viec. Xoa se vo hieu hoa thay vi xoa hoan toan.',
     processVersionsButton: 'Phien ban cong doan',
-    editingTitle: 'Sua cong doan',
+    editingTitle: 'Chi tiết cong doan',
     orderColumn: 'Thu tu',
     codeColumn: 'Ma',
     processColumn: 'Ten cong doan',

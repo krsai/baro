@@ -5,7 +5,7 @@ import { hasLocalizedName } from '../../utils/localizedName.mjs';
 import SettingInheritanceControls, { SETTING_SCOPE_TEXT } from '../../components/SettingInheritanceControls';
 import SettingDeleteButton from '../../components/SettingDeleteButton';
 import { IconButton, Tooltip } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
+import EditIcon from '@mui/icons-material/VisibilityOutlined';
 import React, { useCallback, useEffect, useState } from 'react';
 import {Button,Checkbox,DialogActions,DialogContent,DialogTitle,FormControlLabel,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableHead,TableRow,TextField} from '@mui/material';
 import Alert from "../../components/AppNotice";
@@ -23,7 +23,7 @@ export default function TransactionCodeSettings({ systemDefaults = false }) {
   const servicesPath = systemDefaults ? '/system-setting-defaults/services' : '/outsourcing-service-types';
   const common = TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko;
   const taxLabels = { ko: { title: '세금 구분', legacy: '기존 미분류', vat: '과세' }, en: { title: 'Tax treatment', legacy: 'Legacy unclassified', vat: 'VAT' }, vi: { title: 'Phân loại thuế', legacy: 'Chưa phân loại', vat: 'Chịu thuế' } }[languageCode] || { title: 'Tax treatment', legacy: 'Legacy unclassified', vat: 'VAT' };
-  const labels = { ko: { title: '거래 코드·입력 옵션', add: '코드 등록', industry: '업종·입력 옵션 관리', vat: 'VAT 적용', active: '사용 중', edit: '수정', save: '저장' }, en: { title: 'Transaction codes and input options', add: 'Add code', industry: 'Manage industries and inputs', vat: 'Enable VAT', active: 'Active', edit: 'Edit', save: 'Save' }, vi: { title: 'Mã giao dịch và tùy chọn nhập', add: 'Thêm mã', industry: 'Quản lý ngành và thông tin nhập', vat: 'Áp dụng VAT', active: 'Đang sử dụng', edit: 'Sửa', save: 'Lưu' } }[languageCode] || {};
+  const labels = { ko: { title: '거래 코드·입력 옵션', add: '코드 등록', industry: '업종·입력 옵션 관리', vat: 'VAT 적용', active: '사용 중', edit: '상세', save: '저장' }, en: { title: 'Transaction codes and input options', add: 'Add code', industry: 'Manage industries and inputs', vat: 'Enable VAT', active: 'Active', edit: 'Details', save: 'Save' }, vi: { title: 'Mã giao dịch và tùy chọn nhập', add: 'Thêm mã', industry: 'Quản lý ngành và thông tin nhập', vat: 'Áp dụng VAT', active: 'Đang sử dụng', edit: 'Chi tiết', save: 'Lưu' } }[languageCode] || {};
   const [codes, setCodes] = useState([]), [services, setServices] = useState([]), [error, setError] = useState(''), [open, setOpen] = useState(false), [industryOpen, setIndustryOpen] = useState(false), [form, setForm] = useState(blank), [saving, setSaving] = useState(false);
   const load = useCallback(async () => { try { const query = buildQueryString({ orgId: activeOrgId, all: '1' }); const [rows, industries] = await Promise.all([requestJSON(`${codesPath}${query}`, { skipCache: true }), requestJSON(`${servicesPath}${query}`, { skipCache: true })]); setCodes(rows); setServices(industries); } catch { setError(common.loadError); } }, [activeOrgId, common.loadError, codesPath, servicesPath]);
   useEffect(() => { load(); }, [load]);

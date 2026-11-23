@@ -14,13 +14,14 @@ try{
   const t=freightText[lang],page=await browser.newPage({viewport:{width,height:1000}}),errors=[],jobs=[],docs=[];let savedMaster,savedDispatch;
   page.setDefaultTimeout(10000);page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
-  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={showNotification:()=>{},markTabChanged:()=>{},clearTabChanged:()=>{}};export const useAppActions=()=>a;'}));
+  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={showNotification:()=>{},markTabChanged:()=>{},clearTabChanged:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>a;'}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/freight/**',async route=>{
    const req=route.request();if(req.method()==='OPTIONS')return route.fulfill({headers});const url=new URL(req.url()),p=url.pathname.split('/freight/')[1];let json;
    if(p==='options')json=[{id:11,name:'Customer A'},{id:12,name:'Customer B'}];
    else if(p==='masters'&&req.method()==='POST'){const body=req.postDataJSON();savedMaster={...body,id:'master',number:'MASTER-1',version:1,history:[]};json=savedMaster;}
    else if(p==='masters')json={rows:savedMaster?[savedMaster]:[],total:savedMaster?1:0};
+   else if(p==='masters/master'&&req.method()==='PUT'){const input=req.postDataJSON();assert.equal(input.version,savedMaster.version);savedMaster={...savedMaster,...input,version:savedMaster.version+1};json={...savedMaster,jobs};}
    else if(p==='masters/master')json={...savedMaster,jobs};
    else if(p==='dispatches'&&req.method()==='POST'){savedDispatch={...req.postDataJSON(),id:'dispatch',number:'DSP-001',version:1,history:[],documents:[],packages:[]};json=savedDispatch;}
    else if(p==='dispatches')json={rows:savedDispatch?[savedDispatch]:[],total:savedDispatch?1:0};
@@ -51,6 +52,10 @@ try{
   await page.getByRole('tab',{name:t.jobs,exact:true}).click();await page.getByRole('button',{name:'SHP-002',exact:true}).click();await page.getByRole('button',{name:t.addPackage,exact:true}).click();dialog=page.getByRole('dialog');await dialog.getByRole('textbox',{name:t.label,exact:true}).fill('PKG-001');await dialog.getByRole('textbox',{name:t.dispatch,exact:true}).fill('DSP-001');await page.waitForTimeout(300);await dialog.getByRole('textbox',{name:t.dispatch,exact:true}).press('Enter');if(await page.getByRole('dialog').count()>1)await page.getByText('DSP-001',{exact:true}).last().click();await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.waitFor({state:'hidden'});await page.getByRole('button',{name:'PKG-001',exact:true}).waitFor();
   await page.getByRole('button',{name:t.AN+' · '+t.createDocument,exact:true}).click();dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:'AN-001 · '+t.draft,exact:true}).waitFor();assert.ok(await dialog.locator('iframe').count());await dialog.getByRole('button',{name:t.close,exact:true}).click();
   await page.getByRole('tab',{name:t.masters,exact:true}).click();await page.getByRole('button',{name:'MASTER-1',exact:true}).click();await page.getByText(t.children+' · 2',{exact:true}).waitFor();await page.getByRole('cell',{name:'HOUSE-A',exact:true}).waitFor();await page.getByRole('cell',{name:'HOUSE-B',exact:true}).waitFor();
-  assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);console.log('PASS forwarding master / two houses / wizard / draft '+lang+' '+width);await page.close();
+  const origin=page.locator('#freight-origin');await origin.fill('UNSAVED ORIGIN');
+  await page.getByRole('tab',{name:t.jobs,exact:true}).click();assert.equal(await origin.inputValue(),'UNSAVED ORIGIN');assert.notEqual(savedMaster.data.origin,'UNSAVED ORIGIN');
+  await page.getByRole('button',{name:t.save,exact:true}).click();
+  await page.getByRole('button',{name:t.save,exact:true}).waitFor();assert.equal(savedMaster.data.origin,'UNSAVED ORIGIN');assert.equal(savedMaster.version,2);
+  assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);console.log('PASS forwarding master / two houses / wizard / draft / direct detail save '+lang+' '+width);await page.close();
  }
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}

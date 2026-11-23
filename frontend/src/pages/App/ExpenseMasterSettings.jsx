@@ -21,7 +21,7 @@ import ChevronRight from '@mui/icons-material/ChevronRight';
 import StatusLabel from '../../components/StatusLabel';
 import HierarchyPanel from '../../components/HierarchyPanel';
 import { INDUSTRY_TREE_TEXT,TRANSACTION_CLASSIFICATION_FLOW } from '../../constants/industryHierarchy';
-import EditIcon from '@mui/icons-material/Edit';
+import EditIcon from '@mui/icons-material/VisibilityOutlined';
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
 import { EXPENSE_TEXT } from '../../constants/expenseTypes';
@@ -50,7 +50,7 @@ export default function ExpenseMasterSettings({ units = false }) {
   const path = units ? '/system-setting-defaults/expense-units' : '/system-setting-defaults/services';
   const tree = INDUSTRY_TREE_TEXT[languageCode] || INDUSTRY_TREE_TEXT.en;
   const rolePath='/system-setting-defaults/partner-roles';
-  const roleText=({ko:{add:'구분 등록',edit:'구분 수정'},en:{add:'Add category',edit:'Edit category'},vi:{add:'Thêm nhóm',edit:'Sửa nhóm'}})[languageCode]||{add:'Add category',edit:'Edit category'};
+  const roleText=({ko:{add:'구분 등록',edit:'구분 상세'},en:{add:'Add category',edit:'category Details'},vi:{add:'Thêm nhóm',edit:'Chi tiết nhóm'}})[languageCode]||{add:'Add category',edit:'category Details'};
   const [roleForm,setRoleForm]=useState(null),[roleError,setRoleError]=useState('');
   const saveRole=async()=>{
     setSaving(true);setRoleError('');
