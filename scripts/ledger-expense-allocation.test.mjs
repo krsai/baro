@@ -1,3 +1,4 @@
+import {appendExpenseRemark} from '../frontend/src/utils/ledgerExpenseRemark.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {syncSingleExpenseAllocations as sync} from '../frontend/src/utils/ledgerExpenseAllocation.mjs';
@@ -19,4 +20,13 @@ test('multiple expense allocations retain explicit payments and invalid amounts 
  const multi={...expense,expenseItems:[{itemId:'a',amount:'30'},{itemId:'b',amount:'70'}]};assert.deepEqual(sync([multi])[0],multi);
  assert.equal(sync([{...expense,amount:'invalid'}])[0].expenseItems[0].amount,'');
  assert.equal(sync([{...expense,amount:'9999999999999.99'}])[0].expenseItems[0].amount,'9999999999999.99');
+});
+
+test('expense remark copy preserves multiline source and manual additions without truncation or duplicates',()=>{
+ const source={id:42,remark:'Chi phí vận chuyển\nShipping expense\n\nAdditional source detail'};
+ const copied=appendExpenseRemark('Payment note',source);assert.equal(copied,'Payment note\n\n'+source.remark);
+ assert.equal(appendExpenseRemark(copied,source),copied);assert.equal(appendExpenseRemark('',source),source.remark);
+ assert.equal(appendExpenseRemark('Payment note',{id:43,remark:'  '}),'Payment note');
+ assert.equal(appendExpenseRemark('x'.repeat(990),{id:44,remark:'y'.repeat(500)}).length,1492);
+ source.remark='Later source edit';assert.equal(copied,'Payment note\n\nChi phí vận chuyển\nShipping expense\n\nAdditional source detail');
 });

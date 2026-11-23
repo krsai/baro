@@ -1,3 +1,4 @@
+import {accountingRemarkText} from '../frontend/src/constants/accountingRemark.js';
 import {accountingCompactText} from '../frontend/src/constants/accountingCompact.js';
 import {expensePaymentText} from '../frontend/src/constants/expensePaymentSchedule.js';
 const remarkOnly=process.argv.includes('--remark-only');
@@ -107,7 +108,7 @@ try {
       assert.deepEqual(errors,[]);await page.close();continue;
     }
     if(remarkOnly){
-      const remark=page.getByRole('textbox',{name:/REMARK/});await remark.waitFor();
+      const remark=page.getByRole('textbox',{name:/REMARK/});await remark.waitFor();assert.equal(await remark.getAttribute('placeholder'),accountingRemarkText[lang].hint);
       if(locked){assert.equal(await remark.isDisabled(),true);await page.close();continue;}
       await page.waitForFunction(()=>!document.querySelector('textarea')?.disabled);
       const save=page.locator('button.MuiButton-contained').first();

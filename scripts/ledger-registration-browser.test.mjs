@@ -1,3 +1,4 @@
+import {accountingRemarkText} from '../frontend/src/constants/accountingRemark.js';
 import {ledgerFlowText} from '../frontend/src/constants/ledgerFlow.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -28,9 +29,10 @@ try{
   await page.route('**/src/context/ManagementPeriodContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useManagementPeriod=()=>({startDate:'2026-04-01',loading:false});`}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'},stages=[{key:'step1',role:'ACCOUNTANT',employeeId:2,name:'Accountant',candidates:[{id:2,name:'Accountant'}]},{key:'step2',role:'ACCOUNTANT',employeeId:3,name:'Senior',candidates:[{id:3,name:'Senior'}]}];
   const reply=(pattern,json)=>page.route(pattern,r=>r.fulfill({headers,json}));
+  await reply('**/app-settings?*',{});
   await reply('**/bank-ledger/accounts?*',{accounts:[{id:'a',entityAccountId:'ma',displayName:'Bank A',currencyCode:'USD'},{id:'b',entityAccountId:'mb',displayName:'Bank B',currencyCode:'USD'},{id:'v',entityAccountId:'mv',displayName:'Bank VND',currencyCode:'VND'}]});
   await reply('**/bank-ledger/counterparties?*',[{kind:'PARTNER',id:11,name:'BARO',code:'BARO'},{kind:'ACCOUNT',id:'ma',name:'Bank A',currencyCode:'USD'},{kind:'ACCOUNT',id:'mb',name:'Bank B',currencyCode:'USD'},{kind:'ACCOUNT',id:'mv',name:'Bank VND',currencyCode:'VND'}]);
-  await reply('**/bank-ledger/evidence/search?*',{documents:[{id:'inv',reference:'INV-TEST',amount:'50',remaining:'50',counterparty:{kind:'PARTNER',id:11,name:'BARO'},items:[]}]});
+  await reply('**/bank-ledger/evidence/search?*',{documents:process.argv.includes('--remarks-only')?[{id:42,version:1,reference:'EXP-42',remark:'Chi phí vận chuyển / Shipping expense',amount:'10',remaining:'10',counterparty:{kind:'PARTNER',id:11,name:'BARO'},items:[{id:101,description:'Shipping',amount:'10',remaining:'10',accountingCode:{id:7,code:'GENE'}}]}]:[{id:'inv',reference:'INV-TEST',amount:'50',remaining:'50',counterparty:{kind:'PARTNER',id:11,name:'BARO'},items:[]}]});
   await reply('**/transaction-codes?*',[{id:9,code:'FEEE',nameEn:'Bank fee',isActive:true,vatEnabled:false,base:{entryMode:'GENERAL',cashDirection:'OUT'}},{id:7,code:'GENE',nameEn:'General',isActive:true,vatEnabled:false,base:{entryMode:'GENERAL',cashDirection:'BOTH'}},{id:8,code:'FXCE',nameEn:'Currency exchange',isActive:true,vatEnabled:false,base:{entryMode:'GENERAL',cashDirection:'BOTH'}}]);
   await reply('**/approval-action-settings?*',{drafter:{id:1,name:'Drafter'},grades:[],settings:{registrationStages:[{role:'ACCOUNTANT',gradeMatch:'ANY'},{role:'ACCOUNTANT',gradeMatch:'MINIMUM',gradeId:2}]}});
   await page.route('**/change-approval-preview?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});return r.fulfill({headers,json:{complete:true,stages,policy:{totals:[{currency:'USD',amount:'30'}]}}});});
@@ -38,6 +40,13 @@ try{
   await page.route('**/bank-ledger/entries/batch?*',r=>{direct.push(r.request().method());return r.fulfill({headers,status:409,json:{error:'CHANGE_APPROVAL_REQUIRED'}});});
   if(!process.argv.includes('--partners-only')){
   await page.goto(`http://127.0.0.1:${port}/ledger-registration-acceptance.html`);const t=bankLedgerMessages[lang],e=ledgerEvidenceText[lang],w=ledgerWorkspaceText[lang],l=ledgerEntryText[lang],c=changeApprovalText[lang];
+  if(process.argv.includes('--remarks-only')){
+   const hint=accountingRemarkText[lang],remark=page.getByRole('textbox',{name:l.documentRemark,exact:false});await remark.waitFor();assert.equal(await remark.getAttribute('placeholder'),hint.hint);assert.equal(await remark.getAttribute('required'),'');
+   const row=page.locator('[data-ledger-entry-row="0"]');const from=row.getByRole('textbox',{name:ledgerFlowText[lang].from,exact:false});await from.fill('Bank A');await from.press('Enter');const to=row.getByRole('textbox',{name:ledgerFlowText[lang].to,exact:false});await to.fill('BARO');await to.press('Enter');await row.getByRole('textbox',{name:t.amount,exact:true}).fill('10');
+   await row.getByRole('combobox',{name:l.evidenceKind,exact:true}).click();await page.getByRole('option',{name:l.app,exact:true}).click();await remark.fill('Manual note');await row.getByRole('button',{name:l.unlinked,exact:true}).click();const proof=page.getByRole('dialog');await proof.getByRole('textbox',{name:l.search,exact:true}).fill('EXP-42');await proof.getByRole('button',{name:l.select,exact:true}).click();await proof.waitFor({state:'hidden'});assert.equal(await remark.inputValue(),'Manual note\n\nChi phí vận chuyển / Shipping expense');
+   await remark.fill('   ');await page.getByRole('button',{name:t.save,exact:true}).click();await page.waitForFunction(()=>document.querySelector('textarea[required]')?.getAttribute('aria-invalid')==='true');assert.equal(requests.length,0);
+   await remark.fill('Chi phí vận chuyển / Shipping expense\nAdditional payment note');await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:c.request,exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});assert.equal(requests.length,1);assert.equal(requests[0].payload.rows[0].expenseRequestId,42);assert.equal(requests[0].payload.rows[0].expenseItems[0].itemId,101);assert.equal(requests[0].payload.rows[0].remark,'Chi phí vận chuyển / Shipping expense\nAdditional payment note');assert.deepEqual(errors,[]);console.log('PASS linked expense remark, manual additions, required hint',lang,width);await page.close();continue;
+  }
   const header=page.getByTestId('document-entry-header');assert.equal(await header.getByRole('textbox',{name:t.account,exact:true}).count(),0);
   if(width>=1000)assert.ok(await header.getByTestId('document-entry-approval').evaluate(element=>Math.abs(element.getBoundingClientRect().right-element.parentElement.getBoundingClientRect().right+16)<=2),'Ledger approval stays at the right edge');assert.ok(await header.getByTestId('document-entry-fields').evaluate(element=>{const fields=[...element.firstElementChild.children].filter(field=>field.getBoundingClientRect().width>0);return fields[0].getBoundingClientRect().width<=157;}));assert.ok(await header.locator('[data-approval-summary-title]').evaluateAll(elements=>elements.length===3&&elements.every(element=>getComputedStyle(element).textAlign==='center')));await page.getByRole('button',{name:w.add,exact:true}).click();assert.equal(await page.locator('[data-ledger-entry-row]').count(),2);
   assert.equal(await page.locator('[data-ledger-entry-row]').getByRole('combobox',{name:t.account,exact:true}).count(),0);
@@ -90,5 +99,5 @@ try{
   }
   assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.close();
  }
- console.log('PASS: From/To parties, IBT and FXC single-line approvals, both currency amounts/rate/totals, shared date; ko/en/vi desktop/mobile.');
+ console.log(process.argv.includes('--remarks-only')?'PASS: expense FK remark copy, manual additions, mandatory remark and ko/en/vi desktop/mobile hints.':'PASS: From/To parties, IBT and FXC single-line approvals, both currency amounts/rate/totals, shared date; ko/en/vi desktop/mobile.');
 }finally{await browser?.close();server.kill();unlinkSync(fixture);}

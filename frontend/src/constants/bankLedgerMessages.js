@@ -75,3 +75,7 @@ Object.assign(bankLedgerMessages.vi.errors,{MATERIAL_ITEM_REQUIRED:'Chọn mặt
 Object.assign(bankLedgerMessages.ko.errors,{LEDGER_EXPENSE_VAT_MISMATCH:'비용 신청 증빙과 부가세율을 맞춰 주세요.',LEDGER_EXPENSE_DIFFERENCE_REASON_REQUIRED:'비용 신청과 지급 금액이 다른 이유를 리마크에 입력해 주세요.'});
 Object.assign(bankLedgerMessages.en.errors,{LEDGER_EXPENSE_VAT_MISMATCH:'Match the VAT rate to the expense evidence.',LEDGER_EXPENSE_DIFFERENCE_REASON_REQUIRED:'Explain the expense / payment amount difference in Remark.'});
 Object.assign(bankLedgerMessages.vi.errors,{LEDGER_EXPENSE_VAT_MISMATCH:'Thuế suất phải khớp chứng từ đề nghị chi.',LEDGER_EXPENSE_DIFFERENCE_REASON_REQUIRED:'Nhập lý do chênh lệch đề nghị chi và thanh toán vào ghi chú.'});
+
+bankLedgerMessages.ko.errors.LEDGER_REMARK_REQUIRED='리마크를 입력해 주세요.';
+bankLedgerMessages.en.errors.LEDGER_REMARK_REQUIRED='Enter a remark.';
+bankLedgerMessages.vi.errors.LEDGER_REMARK_REQUIRED='Vui lòng nhập ghi chú.';

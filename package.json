@@ -228,6 +228,7 @@
     "test:expense-list-browser": "node scripts/expense-list-browser.test.mjs",
     "test:expense-draft-access": "node scripts/expense-draft-access-browser.test.mjs",
     "test:expense-request-editor": "npm --prefix backend run build && node --test scripts/expense-request-editor.test.mjs",
+    "test:accounting-remarks": "npm --prefix backend run build && node --test scripts/ledger-registration.test.mjs scripts/ledger-expense-allocation.test.mjs && node scripts/ledger-registration-browser.test.mjs --remarks-only && node scripts/expense-editor-browser.test.mjs --remark-only",
     "test:expense-editor-browser": "node scripts/expense-editor-browser.test.mjs",
     "test:expense-code-presentation": "node --test scripts/expense-code-presentation.test.mjs",
     "test:page-layout-browser": "node scripts/page-layout-browser.test.mjs",

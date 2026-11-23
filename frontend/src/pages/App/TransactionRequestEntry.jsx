@@ -1,3 +1,4 @@
+import {accountingRemarkText} from '../../constants/accountingRemark';
 import {materialItemText} from '../../constants/materialItems';
 import useWorkspaceRefreshOnEvent from '../../hooks/useWorkspaceRefreshOnEvent';
 import {accountingCompactText} from '../../constants/accountingCompact';
@@ -279,7 +280,7 @@ export default function TransactionRequestEntry() {
           )}</Droppable>
         </DragDropContext>
         <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'minmax(0,1fr) 360px'},gap:3,p:3,bgcolor:'grey.50'}} data-testid="expense-summary">
-          <TextField fullWidth multiline minRows={4} required={!form.paidCorrectionOnly} error={validationAttempt>0&&!form.paidCorrectionOnly&&!remarkValid} label={header.remark} value={form.remark || ''} disabled={disabled||form.paidCorrectionOnly} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} sx={{height:'100%','& .MuiInputBase-root':{height:'100%',alignItems:'flex-start'},'& textarea':{height:'100% !important',overflow:'auto !important'}}}/>
+          <TextField fullWidth multiline minRows={4} required={!form.paidCorrectionOnly} error={validationAttempt>0&&!form.paidCorrectionOnly&&!remarkValid} placeholder={(accountingRemarkText[languageCode]||accountingRemarkText.en).hint} label={header.remark} value={form.remark || ''} disabled={disabled||form.paidCorrectionOnly} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} sx={{height:'100%','& .MuiInputBase-root':{height:'100%',alignItems:'flex-start'},'& textarea':{height:'100% !important',overflow:'auto !important'}}}/>
         <Stack alignItems="flex-end" spacing={1} data-testid="expense-totals" sx={{minWidth:0}}>
           {totals.map(total => <Stack key={total.currency} spacing={1} sx={{ width: '100%' }}>
             <Typography variant="subtitle2">{total.currency}</Typography>
