@@ -28,14 +28,14 @@ try{
   await page.route('**/text-acronyms',r=>r.fulfill({json:{revision:0,entries:[{acronym:'SR'}]}}));
   const customer={id:11,code:'CUS',name:'CUSTOMER'},supplier={id:12,code:'SUP',name:'SUPPLIER'},headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   const job={id:'job1',number:'SR-001',orgId:7,customerId:11,mode:mode==='EXPRESS'?'AIR':mode,service:mode==='EXPRESS'?'EXPRESS':'GENERAL',status:'DRAFT',receiptStatus:composition==='MASTER_HOUSE'?'PENDING':'ACCEPTED',version:1,data:{shipper:'SR SENDER',consignee:'SR BUYER',cargo:'SR CARGO',origin:'HANOI',destination:'BUSAN',customer:customer},bills:[],documents:[]};
-  const original=structuredClone(job.data),charges=[{id:'legacy-charge',billId:null,direction:'SALES',description:'EXISTING UNASSIGNED',currencyCode:'USD',amount:'999',version:1,sourceKind:'MANUAL',quantity:null,unitPrice:null}],billWrites=[],chargeWrites=[];let failHouse=true,failCharge=true,accepts=0;
+  const original=structuredClone(job.data),charges=[{id:'legacy-charge',billId:null,direction:'SALES',description:'EXISTING UNASSIGNED',currencyCode:'USD',amount:'999',version:1,sourceKind:'MANUAL',quantity:null,unitPrice:null}],billWrites=[],chargeWrites=[];let failHouse=true,failCharge=true,accepts=0,listReads=0;
   await page.route('**/freight/**',async route=>{
    const req=route.request();if(req.method()==='OPTIONS')return route.fulfill({headers});const p=new URL(req.url()).pathname.split('/freight/')[1];let json;
    if(p==='options')json=[customer,supplier];
-   else if(p==='transport-jobs')json=req.method()==='POST'?job:{rows:[job],total:1};
+   else if(p==='transport-jobs'){if(req.method()==='GET')listReads++;json=req.method()==='POST'?job:{rows:[job],total:1};}
    else if(p==='transport-jobs/options')json={forwarder:{id:7,name:'FORWARDER'},employees:[],currencies:[{code:'USD'}]};
    else if(p==='transport-jobs/job1/document-setup'){assert.equal(req.method(),'PUT');const input=req.postDataJSON();assert.equal(input.version,job.version);job.data={...job.data,documentSetup:{composition:input.composition,documentType:input.documentType}};job.version++;json=job;}
-   else if(p==='transport-jobs/job1')json=job;
+   else if(p==='transport-jobs/job1'){if(process.argv.includes('--open-only'))await new Promise(resolve=>setTimeout(resolve,500));json=job;}
    else if(p==='transport-jobs/job1/documents'){const input=req.postDataJSON(),bill=job.bills.find(row=>row.id===input.billId);assert.equal(input.kind,'MASTER_DRAFT');assert.equal(bill.kind,'MASTER');json={id:'master-copy',number:'M-COPY',kind:input.kind,sourceVersion:job.version,snapshot:{layout:'transport-v1',issuer:{name:'FORWARDER'},source:{id:job.id,number:job.number,mode:job.mode,data:{...job.data,...bill.data},bill:{...bill},documentType:job.data.documentSetup.documentType}}};job.documents.push(json);}
    else if(p==='transport-jobs/job1/bills'||p.startsWith('transport-jobs/job1/bills/')){
     assert.ok(['POST','PUT'].includes(req.method()));const body=req.postDataJSON();billWrites.push(body);
@@ -58,7 +58,7 @@ try{
   });
   await page.goto(`http://127.0.0.1:${port}/${path.basename(fixture)}${newDirect?'?newDirect':''}`);
   if(newDirect){await page.getByRole('button',{name:'Register Direct SR',exact:true}).click();assert.equal(accepts,0);}
-  else{const listRow=page.locator('[data-shipping-row="job1"]');await listRow.waitFor();await page.locator('[data-table-status=loading]').waitFor({state:'hidden'});await listRow.click();assert.equal(await listRow.count(),1);await listRow.dblclick();await page.getByRole('dialog').getByText(t.requestTitle+' \u00b7 '+job.number,{exact:true}).waitFor();assert.equal(await listRow.count(),1);await page.getByRole('button',{name:t.receiveTransport,exact:true}).click();if(composition==='MASTER_HOUSE')for(let i=0;i<100&&accepts===0;i++)await new Promise(r=>setTimeout(r,20));assert.equal(accepts,composition==='MASTER_HOUSE'?1:0);}
+  else{const listRow=page.locator('[data-shipping-row="job1"]');await listRow.waitFor();await page.locator('[data-table-status=loading]').waitFor({state:'hidden'});await listRow.click();assert.equal(await listRow.count(),1);const beforeOpenReads=listReads;await listRow.dblclick();if(process.argv.includes('--open-only')){await page.getByRole('dialog').locator('[data-table-status=loading]').waitFor();assert.equal(await page.locator('table[data-table-layout=fixed] [data-table-status=loading]').count(),0);assert.equal(await listRow.count(),1);}await page.getByRole('dialog').getByText(t.requestTitle+' \u00b7 '+job.number,{exact:true}).waitFor();assert.equal(await listRow.count(),1);assert.equal(listReads,beforeOpenReads);if(process.argv.includes('--open-only')){await page.close();console.log('PASS request opens without background loading or duplicate list fetch',lang,width,mode,composition);continue;}await page.getByRole('button',{name:t.receiveTransport,exact:true}).click();if(composition==='MASTER_HOUSE')for(let i=0;i<100&&accepts===0;i++)await new Promise(r=>setTimeout(r,20));assert.equal(accepts,composition==='MASTER_HOUSE'?1:0);}
   assert.equal(await page.locator('.app-page-header').getByRole('button',{name:shippingText[lang].share,exact:true}).count(),0);
   const optional=['ROAD','EXPRESS'].includes(mode),compositionDialog=page.getByRole('dialog');
   if(optional){
