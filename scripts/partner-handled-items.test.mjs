@@ -22,7 +22,8 @@ test('restriction is optional, per shared industry, base-ID based and distinguis
  assert.equal(handledItemAnomaly(other,[1],{selections:[{...choice,base:{isActive:true,industryLinks:[{systemIndustryId:3}]}}]}),'PARTNER_HANDLED_SETTINGS');
  assert.equal(handledItemAnomaly(other,[],{selections:[choice]}),null,'unrelated industries cannot supply an allow rule');
  const source={code:{base:{...other,expenseType:{code:'FUNDS'},cashDirection:'IN'}},direction:'OUT',handledPolicy:{selections:[choice]}};
- assert.deepEqual(accountingAlertKinds(source,{classification:{industryIds:[1]}}),['DIRECTION'],'financial exception leaves the direction check intact');
+ assert.deepEqual(accountingAlertKinds(source,{classification:{industryIds:[1]}}),['DIRECTION','PARTNER_HANDLED_ITEM'],'a historical financial type must not bypass current handled-item checks');
+ assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,industryLinks:[{systemIndustryId:1,industry:{code:'FUNDS'}}]}}},{classification:{industryIds:[1]}}),['DIRECTION'],'current financial exception leaves the direction check intact');
 });
 test('toggle and local item policy round trip, update existing expense/ledger alerts, preserve history and reject stale/foreign writes',async()=>{
  const f=await changeApprovalFixture();try{
@@ -34,9 +35,9 @@ test('toggle and local item policy round trip, update existing expense/ledger al
  const second=await db.transactionCodeBase.create({data:{code:'MBT',nameEn:'Mobilon tape',nameKo:'모빌론 테이프',nameVi:'Băng Mobilon',serviceTypeId:industryId,entryMode:'GENERAL',industryLinks:{create:{systemIndustryId:industryId}}}});
  const variant=await db.settingTransactionCodeDefault.create({data:{baseId:second.id,serviceTypeId:industryId,taxTreatmentId:s.code.taxTreatmentId,code:'MBTE',nameEn:'Mobilon',nameKo:'Mobilon',nameVi:'Mobilon'}});
  const code=await db.transactionCode.create({data:{ownerOrgId:org,serviceTypeId:s.code.serviceTypeId,baseId:second.id,systemDefaultId:variant.id,taxTreatmentId:s.code.taxTreatmentId,code:'MBTE',nameEn:'Mobilon',nameKo:'Mobilon',nameVi:'Mobilon'}});
- const input=()=>({partnerOrgId:s.vendor.id,requestDate:'2026-11-17',clientKey:crypto.randomUUID(),items:[{transactionCodeId:code.id,currency:'USD',quantity:'1',unitPrice:'10',vatRate:'0',details:{reference:'DOC',evidenceFile:'proof.pdf'}}]});
+ const input=()=>({partnerOrgId:s.vendor.id,requestDate:'2026-11-17',remark:'Handled item alert review',clientKey:crypto.randomUUID(),items:[{transactionCodeId:code.id,currency:'USD',quantity:'1',unitPrice:'10',vatRate:'0',details:{reference:'DOC',evidenceFile:'proof.pdf'}}]});
  await db.$transaction(tx=>registerExpenseRequest(tx,org,actor,input()));
- await postLedgerEntry(db,org,'admin@example.test',s.account.id,{clientKey:crypto.randomUUID(),transactionDate:'2026-11-17',direction:'OUT',amount:'10',accountingCodeId:code.id,evidenceType:'FILE',evidenceNumber:'DOC',counterparty:{kind:'PARTNER',id:s.vendor.id}});
+ await postLedgerEntry(db,org,'admin@example.test',s.account.id,{clientKey:crypto.randomUUID(),transactionDate:'2026-11-17',direction:'OUT',amount:'10',remark:'Handled item payment review',accountingCodeId:code.id,evidenceType:'FILE',evidenceNumber:'DOC',counterparty:{kind:'PARTNER',id:s.vendor.id}});
  const alerts=()=>accountingAlertCandidates(db,org,{expense:true,ledger:true,invoice:false});assert.equal((await alerts()).length,0);
  const beforeCosts=await db.partnerTransactionCost.findMany(),beforeLedger=await db.bankLedgerEntry.findMany();
  const routes=new Map(),app={get:(p,h)=>routes.set('GET '+p,h),put:(p,h)=>routes.set('PUT '+p,h)};

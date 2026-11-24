@@ -9,18 +9,18 @@ import {companyIndustryMenuFeatures} from './industryMenuPolicy';
 import {shippingGeneralCustomerId} from './shippingGeneralCustomer';
 const hash=(value:any)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const prefix=(orgId:number,actorId:number)=>`ACCOUNTING_ALERT_ACK_USER:${orgId}:${actorId}:`;
-const industryInclude={partnerRole:true,expenseType:true};
-const codeInclude={base:{include:{industryLinks:{include:{industry:{include:industryInclude}}},serviceType:{include:industryInclude},expenseType:true}},serviceType:{include:{systemDefault:{include:industryInclude}}}};
-const financialIndustry=(industry:any)=>industry?.code==='FUNDS'||industry?.expenseType?.code==='FUNDS'||['FINANCE','FUNDS'].includes(industry?.partnerRole?.code);
+const codeInclude={base:{include:{industryLinks:{include:{industry:{include:{partnerRole:true}}}}}}};
+const financialIndustry=(industry:any)=>industry?.code==='FUNDS'||['FINANCE','FUNDS'].includes(industry?.partnerRole?.code);
 export function isFinancialAccountingCode(code:any){
- const sources:any[]=[code?.serviceType,code?.serviceType?.systemDefault,code?.base?.serviceType,code?.base?.expenseType,...(code?.industries||[]),...(code?.base?.industries||[]),...(code?.base?.industryLinks||[]).map((link:any)=>link.industry)];
+ // Historical storage/type FKs must not exempt a reclassified code.
+ const sources=(code?.base?.industryLinks||[]).map((link:any)=>link.industry);
  return sources.some(financialIndustry);
 }
 export function handledItemAnomaly(base:any,shared:number[],policy:any){
  if(!shared.length)return null;
  let stale=false;
  for(const id of shared){
-  const industry=base.industryLinks?.find((link:any)=>link.systemIndustryId===id)?.industry??(base.serviceTypeId===id?base.serviceType:null);
+  const industry=base.industryLinks?.find((link:any)=>link.systemIndustryId===id)?.industry;
   if(!industry?.handledItemSelection)return null;
   const choices=(policy?.selections||[]).filter((row:any)=>row.industryId===id);
   if(!choices.length)return null;
@@ -34,7 +34,7 @@ export function accountingAlertKinds(source:any,partner:any,generalCustomerId:nu
  if(source.paymentDifference)return ['EXPENSE_PAYMENT_DIFFERENCE'];
  const code=source.code,base=code?.base;if(!code||!base)return ['LEDGER','SETTLEMENT'].includes(source.sourceKind)&&source.accountingCodeId==null?['UNCODED_LEDGER']:[];
  const kinds=[];if(source.employee?.status==='TERMINATED'&&source.direction==='OUT'&&(!source.employee.leftAt||source.date>new Date(source.employee.leftAt).toISOString().slice(0,10)))kinds.push('RETIRED_EMPLOYEE');if(['IN','OUT'].includes(base.cashDirection)&&base.cashDirection!==source.direction)kinds.push('DIRECTION');
- const links=base.industryLinks||[],allowed=links.length?links.map((link:any)=>link.systemIndustryId):base.serviceTypeId?[base.serviceTypeId]:[];
+ const links=base.industryLinks||[],allowed=links.map((link:any)=>link.systemIndustryId);
  const classification=partner?.linkedCompany&&partner.officialClassification?.industryIds?.length?partner.officialClassification:partner?.classification;
  const actual=classification?.industryIds||[];
  const generalExpress=generalCustomerId!=null&&source.partyId===generalCustomerId&&base.code==='EXP';

@@ -29,9 +29,9 @@ test('direction checks both ways and real multi-industry IDs, never names or unk
  assert.deepEqual(accountingAlertKinds(source,{classification:{industryIds:[]}}),['DIRECTION']);
  for(const officialClassification of [null,{industryIds:[]}])assert.deepEqual(accountingAlertKinds(source,{linkedCompany:{subscriberOrgId:9},officialClassification,classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY']);
  assert.deepEqual(accountingAlertKinds(source,{linkedCompany:{subscriberOrgId:9},officialClassification:{industryIds:[2]},classification:{industryIds:[3]}}),['DIRECTION']);
- assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,expenseType:{code:'FUNDS'}}}},{classification:{industryIds:[3]}}),['DIRECTION']);
- for(const industry of [{code:'TYPE_CUSTOM',expenseType:{code:'FUNDS'}},{code:'TYPE_CUSTOM',partnerRole:{code:'FINANCE'}},{code:'TYPE_CUSTOM',partnerRole:{code:'FUNDS'}}]){
-  for(const base of [{...source.code.base,industryLinks:[],serviceType:industry},{...source.code.base,industryLinks:[{systemIndustryId:1,industry}]}]){
+ assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,expenseType:{code:'FUNDS'}}}},{classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY']);
+ for(const industry of [{code:'FUNDS'},{code:'TYPE_CUSTOM',partnerRole:{code:'FINANCE'}},{code:'TYPE_CUSTOM',partnerRole:{code:'FUNDS'}}]){
+  for(const base of [{...source.code.base,industryLinks:[{systemIndustryId:1,industry}]}]){
    assert.deepEqual(accountingAlertKinds({...source,code:{base}},{classification:{industryIds:[3]}}),['DIRECTION']);
    assert.deepEqual(accountingAlertKinds({...source,direction:'IN',code:{base}},{classification:{industryIds:[3]}}),[]);
   }
@@ -39,12 +39,14 @@ test('direction checks both ways and real multi-industry IDs, never names or unk
  assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,industryLinks:[{systemIndustryId:1,industry:{partnerRole:{code:'FINANCE'}}},{systemIndustryId:2,industry:{partnerRole:{code:'LOGISTICS'}}}]}}},{classification:{industryIds:[3]}}),['DIRECTION'],'any explicit finance association exempts industry matching while direction remains checked');
  assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,serviceType:{code:'EQUIPMENT',nameKo:'재무',partnerRole:{code:'MANAGEMENT'}}}}},{classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY']);
 });
-test('server finance exemption matches the input classification across company and base FKs',()=>{
+test('finance exemption uses current explicit industries and ignores historical company, type and base FKs',()=>{
  const base={id:1,serviceTypeId:2,cashDirection:'IN',industryLinks:[{systemIndustryId:2,industry:{partnerRole:{code:'MATERIAL_SUPPLIER'}}}]};
  for(const financial of [{code:'FUNDS'},{code:'LOCAL_FINANCE',partnerRole:{code:'FINANCE'}},{code:'LOCAL_FINANCE',expenseType:{code:'FUNDS'}}]){
-  for(const code of [{base,serviceType:{systemDefault:financial}},{base:{...base,serviceType:financial}}]){
-   assert.equal(isFinancialAccountingCode(code),isInternalFundsCode(code));assert.equal(isFinancialAccountingCode(code),true);
-   assert.deepEqual(accountingAlertKinds({code,direction:'OUT'},{classification:{industryIds:[3]}}),['DIRECTION']);
+  for(const code of [{base,serviceType:financial},{base,serviceType:{systemDefault:financial}},{base:{...base,serviceType:financial}},{base:{...base,expenseType:financial}},{base:{...base,industryLinks:[{systemIndustryId:2,industry:{expenseType:financial}}]}}]){
+   const before=structuredClone(code);
+   assert.equal(isFinancialAccountingCode(code),false);assert.equal(isInternalFundsCode(code),false);
+   assert.deepEqual(accountingAlertKinds({code,direction:'OUT'},{classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY']);
+   assert.deepEqual(code,before);
   }
  }
  const ordinary={base,code:'LNCE',nameEn:'Loan Collection',serviceType:{nameKo:'재무',systemDefault:{partnerRole:{code:'MATERIAL_SUPPLIER'}}}};
@@ -52,12 +54,30 @@ test('server finance exemption matches the input classification across company a
  assert.deepEqual(accountingAlertKinds({code:ordinary,direction:'OUT'},{classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY']);
 });
 
+test('missing current industries are unknown and never inferred from a historical industry',()=>{
+ for(const industryLinks of [undefined,[]]){
+  const code={serviceType:{code:'FUNDS'},base:{serviceTypeId:1,serviceType:{code:'FUNDS'},cashDirection:'OUT',industryLinks}};
+  assert.equal(isFinancialAccountingCode(code),false);
+  assert.deepEqual(accountingAlertKinds({code,direction:'OUT'},{classification:{industryIds:[3]}}),[]);
+  assert.deepEqual(accountingAlertKinds({code,direction:'IN'},{classification:{industryIds:[3]}}),['DIRECTION']);
+ }
+});
+
+test('current financial links retain the exception in both helpers while direction checks stay active',()=>{
+ for(const industry of [{code:'FUNDS'},{partnerRole:{code:'FINANCE'}},{partnerRole:{code:'FUNDS'}}]){
+  const code={base:{cashDirection:'OUT',industryLinks:[{systemIndustryId:7,industry}]},serviceType:{code:'OFFICE'}};
+  assert.equal(isFinancialAccountingCode(code),true);assert.equal(isInternalFundsCode(code),true);
+  assert.deepEqual(accountingAlertKinds({code,direction:'IN'},{classification:{industryIds:[3]}}),['DIRECTION']);
+ }
+});
+
 test('actual company-scoped sources, personal acknowledgement, current-state revisions, immutable ledger and active membership',async()=>{
  const f=await changeApprovalFixture(),db=f.db;try{
   const s=await seedChangeApproval(db),org=s.company.id,base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}});
+  await db.accountingCodeIndustry.upsert({where:{baseId_systemIndustryId:{baseId:base.id,systemIndustryId:base.serviceTypeId}},create:{baseId:base.id,systemIndustryId:base.serviceTypeId},update:{}});
   await db.transactionCodeBase.update({where:{id:base.id},data:{cashDirection:'IN'}});
   const row=await postLedgerEntry(db,org,'admin@example.test',s.account.id,{clientKey:randomUUID(),transactionDate:'2026-11-05',direction:'OUT',amount:'10',remark:'Saved amount',accountingCodeId:s.code.id,evidenceType:'FILE',evidenceNumber:'Reference',counterparty:{kind:'PARTNER',id:s.vendor.id}});
-  await db.$transaction(tx=>registerExpenseRequest(tx,org,s.people.admin.id,{partnerOrgId:s.vendor.id,requestDate:'2026-11-05',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'12',vatRate:'0',details:{reference:'ALERT-TEST',evidenceFile:'stored.pdf'}}]}),{timeout:30000});
+  await db.$transaction(tx=>registerExpenseRequest(tx,org,s.people.admin.id,{partnerOrgId:s.vendor.id,requestDate:'2026-11-05',remark:'Insurance alert review',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'12',vatRate:'0',details:{reference:'ALERT-TEST',evidenceFile:'stored.pdf'}}]}),{timeout:30000});
   const sourceIndustry=await db.settingServiceDefault.findUnique({where:{id:base.serviceTypeId}}),otherIndustry=await db.settingServiceDefault.create({data:{code:'ALERT_OTHER',nameEn:'Other industry',nameKo:'Other',nameVi:'Other',partnerRoleId:sourceIndustry.partnerRoleId,entryMode:'GENERAL'}});
   await db.$transaction(tx=>saveClassification(tx,org,s.vendor.id,s.people.admin.id,{revision:0,roleIds:[sourceIndustry.partnerRoleId],industryIds:[otherIndustry.id]}));
   const initial=await listAccountingAlerts(db,org,s.people.admin.id,permissions);assert.equal(initial.total,4);assert.ok(initial.rows.some(item=>item.sourceKind==='EXPENSE'&&item.kind==='PARTNER_INDUSTRY'));
@@ -94,10 +114,10 @@ test('actual company-scoped sources, personal acknowledgement, current-state rev
   const financeRole=await db.partnerRole.upsert({where:{code:'FINANCE'},create:{code:'FINANCE',nameKo:'재무',nameEn:'Finance',nameVi:'Tài chính'},update:{}});
   const localFinance=await db.settingServiceDefault.create({data:{code:'ALERT_LOCAL_FINANCE',nameEn:'Local finance',nameKo:'Local finance',nameVi:'Local finance',partnerRoleId:financeRole.id,entryMode:'GENERAL'}});
   await db.outsourcingServiceType.update({where:{id:s.code.serviceTypeId},data:{systemDefaultId:localFinance.id}});
-  assert.equal((await listAccountingAlerts(db,org,s.people.admin.id,permissions)).total,0,'company code finance FK suppresses industry warnings even with a different base association');
+  assert.equal((await listAccountingAlerts(db,org,s.people.admin.id,permissions)).total,2,'historical company finance FK must not suppress warnings from current industry links');
   await db.transactionCodeBase.update({where:{id:base.id},data:{cashDirection:'IN'}});
   const localFinanceAlerts=await listAccountingAlerts(db,org,s.people.admin.id,permissions);
-  assert.ok(localFinanceAlerts.total>0);assert.ok(localFinanceAlerts.rows.every(row=>row.kind==='DIRECTION'));
+  assert.ok(localFinanceAlerts.rows.some(row=>row.kind==='DIRECTION'));assert.ok(localFinanceAlerts.rows.some(row=>row.kind==='PARTNER_INDUSTRY'));
   await db.transactionCodeBase.update({where:{id:base.id},data:{cashDirection:'OUT'}});
   await db.outsourcingServiceType.update({where:{id:s.code.serviceTypeId},data:{systemDefaultId:sourceIndustry.id}});
   assert.equal((await listAccountingAlerts(db,org,s.people.admin.id,permissions)).total,2);
