@@ -6,15 +6,16 @@ const source=`WITH records AS (
  SELECT r."orgId",r."assignmentPlanId",r."styleId",r."styleProcessId",r.quantity,r.id AS "recordId",r."workLogId",r."workerId",NULL::text AS "vendorName",'EMPLOYEE' AS kind FROM "WorkRecord" r WHERE r."orgId"=$1
  UNION ALL SELECT r."orgId",r."assignmentPlanId",r."styleId",r."styleProcessId",r.quantity,r.id AS "recordId",r."workLogId",NULL::integer AS "workerId",r."outsourceVendorName" AS "vendorName",'OUTSOURCING' AS kind FROM "OutsourcedWorkRecord" r WHERE r."orgId"=$1
 ), scoped AS (
- SELECT r.*,p."workOrderId",w."orderNumber",s.code AS "styleCode",s.name AS "styleName",sp."processCode",sp."processName",sp."genderScope",l."workDate",l."coverageStartDate",l."coverageEndDate",l."factoryId"
+ SELECT r.*,w.id AS "workOrderId",w."orderNumber",s.code AS "styleCode",s.name AS "styleName",sp."processCode",sp."processName",sp."genderScope",l."workDate",l."coverageStartDate",l."coverageEndDate",l."factoryId"
  FROM records r JOIN "AssignmentPlan" p ON p.id=r."assignmentPlanId" AND p."orgId"=r."orgId" AND p."styleId"=r."styleId"
- JOIN "WorkOrder" w ON w.id=p."workOrderId" AND w."orgId"=r."orgId"
+ LEFT JOIN "AssignmentCard" c ON c.id=p."assignmentCardId" AND c."orgId"=p."orgId"
+ JOIN "WorkOrder" w ON w.id=COALESCE(p."workOrderId",c."workOrderId") AND w."orgId"=r."orgId"
  JOIN "Style" s ON s.id=r."styleId" AND s."orgId"=r."orgId"
  JOIN "StyleProcess" sp ON sp.id=r."styleProcessId" AND sp."styleId"=r."styleId" AND sp."orgId"=r."orgId"
  JOIN "WorkLog" l ON l.id=r."workLogId" AND l."orgId"=r."orgId"
  WHERE NOT p."isCompleted" AND p."productionCompletedAt" IS NULL AND p."completedAt" IS NULL AND p."closedAt" IS NULL
  AND COALESCE(p."scheduleStatus",'')<>'PRODUCTION_COMPLETED'
- AND ($2::integer IS NULL OR p."workOrderId"=$2) AND ($3::integer IS NULL OR r."styleId"=$3) AND ($4::integer IS NULL OR r."styleProcessId"=$4)
+ AND ($2::integer IS NULL OR w.id=$2) AND ($3::integer IS NULL OR r."styleId"=$3) AND ($4::integer IS NULL OR r."styleProcessId"=$4)
 )`;
 async function actor(db:any,orgId:number,actorId:number){
  if(!Number.isSafeInteger(orgId)||orgId<=0||!Number.isSafeInteger(actorId)||actorId<=0)fail('PRODUCTION_EXCESS_ACCESS_DENIED',403);

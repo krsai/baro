@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import service from '../backend/dist/services/priorProductionCompletion.js';
 import invoice from '../backend/dist/services/invoiceOrderProgress.js';
-const { summarizePriorProduction: summarize, validatePriorPeriod, registerPriorCompletion } = service;
+const { summarizePriorProduction: summarize, validatePriorPeriod } = service;
+const registerPriorCompletion = (db, orgId, actorId, input) => service.registerPriorCompletion(db, orgId, actorId, input, async () => []);
 const prior = quantity => [{ quantity, canceledAt: null }];
 
 test('full historical completion needs no invented process/worker observations', () => {
@@ -51,7 +52,7 @@ test('registration uses authenticated employee FK and enforces retry identity, q
     workOrder: { findFirst: async () => ({ ...order, invoiceFinalLockedAt: locked ? new Date() : null }), update: async () => order },
     employee: { findFirst: async ({ where }) => where.id === 7 && where.orgId === 1 ? { id: 7 } : null },
     priorCompletionReason: { findFirst: async ({ where }) => where.id === 17 ? { id: 17 } : null },
-    assignmentPlan: { count: async () => closed ? 1 : 0 },
+    assignmentPlan: { count: async () => closed ? 1 : 0, findMany: async () => [] },
     priorProductionCompletion: {
       findUnique: async ({ where }) => stored.find(row => row.clientKey === where.orgId_clientKey.clientKey),
       aggregate: async () => ({ _sum: { quantity: stored.reduce((s, row) => s + row.quantity, 0) } }),

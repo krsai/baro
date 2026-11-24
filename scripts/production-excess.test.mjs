@@ -16,7 +16,8 @@ test('dashboard queries aggregate all months, assignments, employees and outsour
   await pg.exec(`CREATE TABLE "WorkOrder"(id INT PRIMARY KEY,"orgId" INT,"orderNumber" TEXT);
    CREATE TABLE "Style"(id INT PRIMARY KEY,"orgId" INT,code TEXT,name TEXT);
    CREATE TABLE "StyleProcess"(id INT PRIMARY KEY,"styleId" INT,"orgId" INT,"processCode" TEXT,"processName" TEXT,"genderScope" TEXT);
-   CREATE TABLE "AssignmentPlan"(id INT PRIMARY KEY,"orgId" INT,"workOrderId" INT,"styleId" INT,"isCompleted" BOOLEAN NOT NULL DEFAULT FALSE,"productionCompletedAt" TIMESTAMP,"completedAt" TIMESTAMP,"closedAt" TIMESTAMP,"scheduleStatus" TEXT);
+   CREATE TABLE "AssignmentCard"(id INT PRIMARY KEY,"orgId" INT,"workOrderId" INT);
+   CREATE TABLE "AssignmentPlan"(id INT PRIMARY KEY,"assignmentCardId" INT,"orgId" INT,"workOrderId" INT,"styleId" INT,"isCompleted" BOOLEAN NOT NULL DEFAULT FALSE,"productionCompletedAt" TIMESTAMP,"completedAt" TIMESTAMP,"closedAt" TIMESTAMP,"scheduleStatus" TEXT);
    CREATE TABLE "WorkLog"(id INT PRIMARY KEY,"orgId" INT,"workDate" TEXT,"coverageStartDate" TEXT,"coverageEndDate" TEXT,"factoryId" INT,note TEXT);
    CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,name TEXT);
    CREATE TABLE "Factory"(id INT PRIMARY KEY,"orgId" INT,name TEXT);
@@ -38,6 +39,16 @@ test('dashboard queries aggregate all months, assignments, employees and outsour
   const initial=await productionExcessList(db,7,1,{pageSize:5},gates);assert.equal(initial.total,2);assert.deepEqual(initial.rows.map(r=>[r.orderNumber,r.recorded,r.target,r.excess]),[['L18-1',2224,1084,1140],['L16-1',790,440,350]]);
   const detail=await productionExcessDetail(db,7,1,{orderId:1,styleId:10,processId:100},{},gates);assert.equal(detail.total,3);assert.equal(detail.records[0].kind,'OUTSOURCING');assert.equal(detail.records[0].name,'Vendor A');assert.equal(detail.records[2].workDate,'2026-05-31');assert.equal(detail.group.recordCount,3);
   const second=await productionExcessDetail(db,7,1,{orderId:1,styleId:10,processId:100},{page:1,pageSize:5},gates);assert.equal(second.records.length,0);
+  await pg.exec('INSERT INTO "AssignmentCard" VALUES(1,7,1),(2,7,2),(3,8,1); UPDATE "AssignmentPlan" SET "workOrderId"=NULL,"assignmentCardId"=1 WHERE id=12');
+  assert.deepEqual((await productionExcessList(db,7,1,{pageSize:5},gates)).rows,initial.rows,'card-only employee and outsourced records keep their order');
+  const fallback=await productionExcessDetail(db,7,1,{orderId:1,styleId:10,processId:100},{},gates);
+  assert.equal(fallback.group.recorded,790);assert.equal(fallback.total,3);
+  await pg.exec('UPDATE "AssignmentPlan" SET "workOrderId"=1,"assignmentCardId"=2 WHERE id=12');
+  assert.equal((await productionExcessDetail(db,7,1,{orderId:1,styleId:10,processId:100},{},gates)).total,3,'direct order wins a conflicting card');
+  assert.equal((await productionExcessDetail(db,7,1,{orderId:2,styleId:10,processId:100},{},gates)).total,0);
+  await pg.exec('UPDATE "AssignmentPlan" SET "workOrderId"=NULL,"assignmentCardId"=3 WHERE id=12');
+  assert.equal((await productionExcessDetail(db,7,1,{orderId:1,styleId:10,processId:100},{},gates)).total,1,'another company card cannot supply the order');
+  await pg.exec('UPDATE "AssignmentPlan" SET "workOrderId"=1,"assignmentCardId"=NULL WHERE id=12');
   const recordsBefore=await pg.query('SELECT * FROM "WorkRecord" ORDER BY id');
   for(const completion of ['"isCompleted"=TRUE','"productionCompletedAt"=CURRENT_TIMESTAMP','"completedAt"=CURRENT_TIMESTAMP','"closedAt"=CURRENT_TIMESTAMP',`"scheduleStatus"='PRODUCTION_COMPLETED'`]){
    await pg.exec(`UPDATE "AssignmentPlan" SET ${completion} WHERE id=21`);

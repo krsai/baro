@@ -1,6 +1,7 @@
 import { summarizeStyleProduction } from './productionProgress';
 import { Prisma } from '@prisma/client';
 import { createHttpError } from '../utils/http';
+import { orderAssignmentWhere } from './orderAssignments';
 
 export const priorCompletionInclude = {
   reason: true, createdByEmployee: { select: { id: true, name: true, employeeNo: true } },
@@ -23,7 +24,8 @@ export function summarizePriorProduction(ordered: number, progress: any[], prior
     progressPercent: result.progressPercent, isCompleted: result.isCompleted };
 }
 
-export async function registerPriorCompletion(db: any, orgId: number, employeeId: number, input: any) {
+export async function registerPriorCompletion(db: any, orgId: number, employeeId: number, input: any,
+  loadProgress: (tx: any, orgId: number, externalIds: string[]) => Promise<any[]>) {
   const { workOrderId, styleId, quantity, reasonId, clientKey } = input || {};
   if (![workOrderId, styleId, quantity, reasonId].every(v => Number.isSafeInteger(v) && v > 0 && v <= 2147483647) || typeof clientKey !== 'string' || clientKey.length < 8 || clientKey.length > 100) throw createHttpError(400, 'INVALID_PRIOR_COMPLETION');
   const completedPeriod = validatePriorPeriod(input.completedPeriod);
@@ -49,8 +51,21 @@ export async function registerPriorCompletion(db: any, orgId: number, employeeId
     if (quantity + (prior._sum.quantity || 0) > ordered) throw createHttpError(409, 'PRIOR_QUANTITY_EXCEEDS_ORDER');
     // Completion declarations already covering the full assignment could include
     // these garments. Require review instead of adding the same stock twice.
-    const closed = await tx.assignmentPlan.count({ where: { workOrderId, styleId, isCompleted: true } });
+    const closed = await tx.assignmentPlan.count({ where: { orgId, styleId, AND: [
+      orderAssignmentWhere(workOrderId, orgId),
+      { OR: [{ isCompleted: true }, { productionCompletedAt: { not: null } },
+        { completedAt: { not: null } }, { closedAt: { not: null } },
+        { scheduleStatus: 'PRODUCTION_COMPLETED' }] },
+    ] } });
     if (closed) throw createHttpError(409, 'EXISTING_COMPLETION_REQUIRES_REVIEW');
+    const plans = await tx.assignmentPlan.findMany({ where: { orgId, styleId, ...orderAssignmentWhere(workOrderId, orgId) },
+      select: { externalId: true } });
+    if (plans.length) {
+      const rows = await loadProgress(tx, orgId, plans.map((plan: any) => plan.externalId));
+      if (plans.some((plan: any) => !rows.some(row => row.id === plan.externalId)) || rows.some(row => row.isCompleted === true)) {
+        throw createHttpError(409, 'EXISTING_COMPLETION_REQUIRES_REVIEW');
+      }
+    }
     await tx.workOrder.update({ where: { id: workOrderId }, data: { updatedAt: new Date(Math.max(Date.now(), new Date(order.updatedAt).getTime() + 1)), updatedByEmployeeId: employeeId } });
     return tx.priorProductionCompletion.create({ data: { orgId, workOrderId, styleId, quantity, reasonId, completedPeriod, clientKey, createdByEmployeeId: employeeId }, include: priorCompletionInclude });
   });

@@ -28972,7 +28972,8 @@ app.post("/prior-production-completions", async (req, res) => {
   if (!Array.isArray(entries) || entries.length < 1 || entries.length > 100) return res.status(400).json({ error: 'INVALID_PRIOR_COMPLETION' });
   const saved = await prisma.$transaction(async tx => {
     const result = [];
-    for (const entry of [...entries].sort((a, b) => a.workOrderId - b.workOrderId || a.styleId - b.styleId)) result.push(await registerPriorCompletion(tx, access.organization.id, actorId, entry));
+    for (const entry of [...entries].sort((a, b) => a.workOrderId - b.workOrderId || a.styleId - b.styleId)) result.push(await registerPriorCompletion(tx, access.organization.id, actorId, entry,
+      (db, orgId, ids) => buildAssignmentPlanProgressRows(orgId, ids, { db })));
     return result;
   }, { isolationLevel: 'Serializable' });
   return res.json(saved);

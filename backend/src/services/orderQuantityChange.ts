@@ -1,4 +1,5 @@
 import { createHttpError } from '../utils/http';
+import { orderAssignmentWhere, orderAssignmentPlans } from './orderAssignments';
 
 // Keep a factual before/after audit, not a redistribution of completed production.
 export async function recordOrderQuantityReduction(tx: any, order: any, items: any[], rawReason: unknown,
@@ -10,10 +11,12 @@ export async function recordOrderQuantityReduction(tx: any, order: any, items: a
   if (!reductions.length) return null;
   const reason = String(rawReason || '').trim();
   if (reason.length > 1000) throw createHttpError(400, 'ORDER_REDUCTION_REASON_TOO_LONG');
-  const plans = await tx.assignmentPlan.findMany({ where: { workOrderId: order.id },
-    include: { workRecords: { select: { styleProcessId: true, quantity: true } },
+  const plans = await tx.assignmentPlan.findMany({ where: orderAssignmentWhere(order.id),
+    include: { assignmentCard: { select: { workOrderId: true, orgId: true } },
+      workRecords: { select: { styleProcessId: true, quantity: true } },
       outsourcedWorkRecords: { select: { styleProcessId: true, quantity: true } } } });
-  const facts = production(plans);
+  const facts = production(orderAssignmentPlans(order.id, plans).filter(plan =>
+    plan.workOrderId != null || plan.assignmentCard?.orgId === plan.orgId));
   const groups = new Map<string, any>();
   for (const fact of facts) {
     const key = `${fact.orgId}:${fact.styleId}`;
