@@ -18,3 +18,9 @@ Object.assign(shippingBillText.vi,{requestTitle:'Yêu Cầu Vận Chuyển',tran
 Object.assign(shippingBillText.ko,{masterDocument:'Master B/L · AWB',houseDocument:'House B/L · AWB'});
 Object.assign(shippingBillText.en,{masterDocument:'Master B/L · AWB',houseDocument:'House B/L · AWB'});
 Object.assign(shippingBillText.vi,{masterDocument:'Master B/L · AWB',houseDocument:'House B/L · AWB'});
+
+Object.assign(shippingBillText.ko,{receiveTransport:'운송 접수'});
+
+Object.assign(shippingBillText.en,{receiveTransport:'Accept Shipment'});
+
+Object.assign(shippingBillText.vi,{receiveTransport:'Tiếp Nhận Vận Chuyển'});
