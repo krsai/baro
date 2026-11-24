@@ -44,7 +44,7 @@
 
 - 운송 목록(`/shipping`)과 접수 후 상세(`/shipping/:jobId`)는 서로 다른 업무 탭이다. 목록 더블클릭·Enter/Space와 접수/직접 등록 후 이동은 공통 navigateToPath를 사용한다. 상세 내부 탭은 stage 쿼리로만 전환하며 목록과 상세의 인스턴스·검색 조건·초안은 공통 탭 보존 계약을 따른다. 같은 ID의 상세 탭을 중복 생성하지 않는다.
 
-- 운송 상세의 내부 탭은 기존 MUI Tabs/Tab 테마를 사용하고 탭 바로 아래의 단일 Paper 본문과 연결한다. 탭만 감싼 별도 카드·본문과의 공백을 두지 않는다. 상세는 기존 의뢰 폼을 embedded로 사용하며 서류 탭의 MBL/HBL 추가는 PageSectionHeader의 한 작업 행으로 묶는다. BL 타입/구성 선택은 제공하지 않는다. BL 입력은 일반 TextField를 사용한다. 페이지의 DialogDetailPanel 재사용 시 모달용 maxHeight·내부 스크롤을 해제해 페이지 본문이 스크롤되도록 하며, 폼별 저장·초안/재시도는 유지한다.
+- 운송 상세의 내부 탭은 기존 MUI Tabs/Tab 테마를 사용하고 탭 바로 아래의 단일 Paper 본문과 연결한다. 탭만 감싼 별도 카드·본문과의 공백을 두지 않는다. 운송 업무는 의뢰 요약과 별도 최소 업무 폼으로 구성하며 서류 탭의 MBL/HBL 추가는 PageSectionHeader의 한 작업 행으로 묶는다. BL 타입/구성 선택은 제공하지 않는다. BL 입력은 일반 TextField를 사용한다. 페이지의 DialogDetailPanel 재사용 시 모달용 maxHeight·내부 스크롤을 해제해 페이지 본문이 스크롤되도록 하며, 폼별 저장·초안/재시도는 유지한다.
 
 - 운송 SR의 최신 예외: `/shipping?id=`는 목록 위 의뢰 모달이며 접수 작업을 모달 하단에서 제공한다. `stage=bills/documents`는 운송 상세 페이지다. 기존 SR도 신규 의뢰 모달과 같은 폼·초안 보호를 사용한다.
 

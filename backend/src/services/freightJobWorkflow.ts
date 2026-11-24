@@ -10,6 +10,33 @@ const hash=(value:any)=>createHash('sha256').update(JSON.stringify(value)).diges
 async function lockedJob(tx:any,orgId:number,id:string){const rows=await tx.$queryRawUnsafe('SELECT * FROM "FreightJob" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',id,orgId);if(!rows.length)fail('FREIGHT_NOT_FOUND',404);return rows[0];}
 const writable=(row:any)=>{if(row.receiptStatus!=='ACCEPTED'||row.status==='CANCELLED')fail('SHIPPING_NOT_ACCEPTED',409);};
 
+// Operational edits never resubmit or revalidate the customer's request form.
+export async function saveJobOperationDetails(db:any,orgId:number,actorId:number,id:string,input:any){
+ await freightForwarder(db,orgId,actorId);
+ const keys=['assigneeId','vessel','voyage','etd','eta'];
+ if(!input||Object.keys(input).some(key=>!['version','requestId','fields'].includes(key))||!Number.isSafeInteger(input.version)||typeof input.requestId!=='string'||!/^[a-zA-Z0-9_-]{8,80}$/.test(input.requestId)||!input.fields||typeof input.fields!=='object'||Array.isArray(input.fields)||!Object.keys(input.fields).length||Object.keys(input.fields).some(key=>!keys.includes(key)))fail('FREIGHT_INVALID_INPUT');
+ const fields:any={};
+ for(const key of keys)if(Object.hasOwn(input.fields,key)){
+  const value=input.fields[key];
+  if(key==='assigneeId'){if(value!==null&&(!Number.isSafeInteger(value)||value<=0))fail('FREIGHT_INVALID_INPUT');fields[key]=value;}
+  else if(key==='etd'||key==='eta'){
+   if(value!==null&&(typeof value!=='string'||!/^\d{4}-\d\d-\d\d$/.test(value)||!Number.isFinite(Date.parse(value))||new Date(value).toISOString().slice(0,10)!==value))fail('FREIGHT_INVALID_INPUT');fields[key]=value;
+  }else fields[key]=text(value,key==='vessel'?160:100);
+ }
+ const requestHash=hash({version:input.version,fields});
+ return retryEditTransaction(db,async(tx:any)=>{
+  await freightForwarder(tx,orgId,actorId);const row=await lockedJob(tx,orgId,id);writable(row);
+  const prior=await tx.$queryRawUnsafe('SELECT "after" FROM "FreightAudit" WHERE "orgId"=$1 AND entity=\'operation-details\' AND "sourceId"=$2 AND "after"->\'data\'->\'operationEdit\'->>\'id\'=$3',orgId,id,input.requestId);
+  if(prior.length){if(prior[0].after.data.operationEdit.hash!==requestHash)fail('FREIGHT_CHANGED',409);return row;}
+  if(row.version!==input.version)fail('FREIGHT_CHANGED',409);
+  if(fields.assigneeId&&!await tx.employee.findFirst({where:{id:fields.assigneeId,orgId,status:'ACTIVE'},select:{id:true}}))fail('FREIGHT_ASSIGNEE_SCOPE',403);
+  const data={...row.data,...fields,operationEdit:{id:input.requestId,hash:requestHash}};
+  const updated=(await tx.$queryRawUnsafe('UPDATE "FreightJob" SET data=$1::jsonb,version=version+1,"updatedByEmployeeId"=$2,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$3 AND "orgId"=$4 RETURNING *',JSON.stringify(data),actorId,id,orgId))[0];
+  await tx.$executeRawUnsafe('INSERT INTO "FreightAudit"(id,"orgId",entity,"sourceId",version,"actorId","before","after") VALUES($1,$2,\'operation-details\',$3,$4,$5,$6::jsonb,$7::jsonb)',randomUUID(),orgId,id,updated.version,actorId,JSON.stringify(row),JSON.stringify(updated));
+  return updated;
+ });
+}
+
 export async function saveJobProgress(db:any,orgId:number,actorId:number,id:string,input:any){
  await freightForwarder(db,orgId,actorId);
  if(!input||Object.keys(input).some(key=>!['version','requestId','status','tasks','deliveryDate','recipient'].includes(key))||!Number.isSafeInteger(input.version)||typeof input.requestId!=='string'||!/^[a-zA-Z0-9_-]{8,80}$/.test(input.requestId)||!['DRAFT','BOOKED','IN_TRANSIT','ARRIVED','DELIVERED'].includes(input.status)||!Array.isArray(input.tasks)||input.tasks.length>40)fail('FREIGHT_INVALID_INPUT');

@@ -36,3 +36,9 @@ Object.assign(shippingBillText.ko,{"master":"MBL 연결 (선택)","unlinked":"�
 Object.assign(shippingBillText.en,{"master":"Linked MBL (Optional)","unlinked":"Standalone HBL"});
 
 Object.assign(shippingBillText.vi,{"master":"Liên Kết MBL (Tùy Chọn)","unlinked":"HBL Độc Lập"});
+
+Object.assign(shippingBillText.ko,{transportDetails:"업무 정보"});
+
+Object.assign(shippingBillText.en,{transportDetails:"Overview"});
+
+Object.assign(shippingBillText.vi,{transportDetails:"Thông Tin Nghiệp Vụ"});

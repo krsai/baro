@@ -82,7 +82,8 @@ export function resolvePageNaming(path, languageCode, translate) {
   if(base==='/bank-ledger'&&rest.startsWith('/edit/'))mode='detail';
   if (base === '/customer' && rest) mode = rest === '/new' ? 'create' : 'detail';
   if (base === '/invoices' && rest === '/new' && url.searchParams.has('revision')) mode = 'revise';
-  const nameKey = base==='/shipping'&&url.searchParams.has('id')&&(!url.searchParams.get('stage')||url.searchParams.get('stage')==='basic')?'shippingRequest':base === '/customer' && rest ? 'customer'
+  if(base==='/shipping'&&rest)mode='page';
+  const nameKey = base==='/shipping'&&rest?'shippingOperations':base==='/shipping'&&url.searchParams.has('id')&&(!url.searchParams.get('stage')||url.searchParams.get('stage')==='basic')?'shippingRequest':base === '/customer' && rest ? 'customer'
     : base === '/inventory/movements' && rest === '/new' ? 'inventoryEntry' : key;
   const menuLabel = translate(`menu.${nameKey}`);
   const screenLabel=base==='/inventory/settings'?translate('menu.materials'):menuLabel;

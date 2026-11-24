@@ -4,6 +4,7 @@ import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {chromium} from 'playwright-core';
+import {shippingOperationText} from '../frontend/src/constants/shippingOperations.js';
 import {shippingBillText} from '../frontend/src/constants/shippingBills.js';
 import {freightText} from '../frontend/src/constants/freight.js';
 import {shippingWorkbenchText} from '../frontend/src/constants/shippingWorkbench.js';
@@ -62,15 +63,15 @@ try{
    const listRow=page.locator('[data-shipping-row="job1"]');await listRow.waitFor();await page.locator('[data-table-status=loading]').waitFor({state:'hidden'});const beforeOpenReads=listReads,wasPending=job.receiptStatus==='PENDING';await listRow.dblclick();
    if(process.argv.includes('--open-only')){await page.getByRole('dialog').locator('[data-table-status=loading]').waitFor();assert.equal(await page.locator('table[data-table-layout=fixed] [data-table-status=loading]').count(),0);}
    if(wasPending){await page.getByRole('dialog').getByText(t.requestTitle+' \u00b7 '+job.number,{exact:true}).waitFor();assert.equal(await listRow.count(),1);}
-   else await page.getByTestId('shipping-detail-form').waitFor();
+   else await page.getByTestId('shipping-operations-form').waitFor();
    assert.equal(listReads,beforeOpenReads);
    if(process.argv.includes('--open-only')){await page.close();console.log('PASS scoped request/detail loading without duplicate list fetch',lang,width,mode,composition);continue;}
    if(wasPending){await page.getByRole('button',{name:t.receiveTransport,exact:true}).click();for(let i=0;i<100&&accepts===0;i++)await new Promise(r=>setTimeout(r,20));}
    assert.equal(accepts,wasPending?1:0);
   }
   assert.equal(await page.locator('.app-page-header').getByRole('button',{name:shippingText[lang].share,exact:true}).count(),0);
-  await page.getByTestId('shipping-detail-form').waitFor();assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.getByRole('radio').count(),0);assert.equal(billWrites.length,0);
-  const direct=page.locator('[data-shipping-charges="shipment"]');await direct.getByRole('button',{name:w.addCharge,exact:true}).waitFor();failCharge=false;
+  await page.getByTestId('shipping-operations-form').waitFor();assert.equal(await page.getByTestId('shipping-operations-form').locator('input[type=date]').count(),2);assert.equal(await page.getByTestId('shipping-operations-form').getByRole('textbox',{name:mode==='AIR'||mode==='EXPRESS'?shippingOperationText[lang].flight:shippingOperationText[lang].vessel,exact:true}).count(),['ROAD','EXPRESS'].includes(mode)?0:1);assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.getByRole('radio').count(),0);assert.equal(billWrites.length,0);
+  await page.getByRole('tab',{name:(shippingOperationText[lang]||shippingOperationText.en).charges,exact:true}).click();const direct=page.locator('[data-shipping-charges="shipment"]');await direct.getByRole('button',{name:w.addCharge,exact:true}).waitFor();failCharge=false;
   await direct.getByRole('button',{name:w.addCharge,exact:true}).click();await direct.getByRole('textbox',{name:titleCaseWords(w.description),exact:true}).fill('DELIVERY');await direct.getByRole('textbox',{name:titleCaseWords(t.unitPrice),exact:true}).fill('20');await direct.getByRole('button',{name:w.save,exact:true}).click();await direct.getByRole('cell',{name:'Delivery',exact:true}).waitFor();assert.equal(chargeWrites.at(-1).billId,null);failCharge=true;
   // Saving prepares the next empty charge row; discard it before switching tabs.
   await direct.getByRole('button',{name:w.cancel,exact:true}).click();

@@ -13,6 +13,11 @@
 
 ## 운송 신청(SR)·Master/House·AR/AP 최신 계약
 
+- 최신 사용자 정정(최소 운송 업무): 접수 후 화면/업무 탭 명칭은 ‘운송 업무’다. 의뢰 입력폼의 embedded 재사용을 중단하고 고객·구간·화물·당사자를 요약해 보여주며 원문은 별도로 조회한다. 별도 업무 폼의 수정 항목은 기존 담당자·ETD/ETA와 해상/항공의 선박/항공편·항차/편명만 사용한다. 내륙·특송에는 선박/항공편 항목을 표시하지 않는다. 부킹/마감/차량/기사 등 참고 화면의 미사용 항목을 추가하지 않는다. 업무 정보·진행·서류·금액 초안을 분리하고 업무 저장은 상단 단일 작업으로 제공한다. 아래 과거 의뢰와 동일 폼 기준보다 이 정정이 우선한다.
+- `PUT /freight/transport-jobs/:id/operation-details`는 담당자/선박/항차/ETD/ETA의 실제 변경 필드만 받는다. 회사/ACTIVE 직원/역할·접수·취소·행 잠금·현재 revision과 회사 소속 ACTIVE 담당자를 검사한다. requestId/hash·FreightAudit로 동일 요청 재시도를 처리하고 실패/불확실 결과는 입력/요청을 보존한다. 원본 고객/당사자/구간/화물·operations·문서/금액을 이 API에서 수정하지 않는다. 미확인 원문을 복원하거나 의뢰 전체를 재검증/재저장하지 않는다.
+- `20261124020000_shipping_operation_snapshot`은 기존 미연결 고객의 반복 UPDATE 때 requestSnapshot을 재생성하는 동작으로부터 접수 완료 건의 저장 원문을 보호한다. 기존 검사가 끝난 뒤 BEFORE UPDATE guard로 기존 snapshot을 그대로 유지하며 원본 rows의 일괄 UPDATE는 없다. 공통 실행기·Railway preflight·읽기 전용 시작 검사에 등록하고 재실행/롤백은 보존형 정책을 따른다. 운영 DB에는 별도 직접 실행하지 않는다.
+- 참고한 공개 UX: [GoFreight 선적·개별 MBL/HBL 입력](https://gofreight.com/knowledge/how-to-create-a-new-ocean-import-or-ocean-export-shipment-gofreight-help-center), [담당자·진행 업무 구분](https://gofreight.com/knowledge/what-is-the-status-tab-in-a-shipment-file). 타사 필수 항목·자동 청구/원장·권한 정책은 그대로 가져오지 않는다.
+
 - 최신 사용자 정정(상세 업무 탭): `/shipping` 목록에서 접수 완료 건을 더블클릭하거나 Enter/Space로 열면 `navigateToPath('/shipping/:jobId')`로 별도 상세 업무 탭을 연다. 같은 ID는 기존 탭을 활성화하고 서로 다른 운송건은 구분한다. 상세 내부의 `stage=documents` 전환은 같은 운송건 탭을 유지한다. 목록 인스턴스·검색/정렬/페이지·스크롤과 상세 초안은 공통 keep-alive/회사 scope로 보존한다. 접수 대기 건은 기존 의뢰 모달에서 접수 후 별도 상세 탭으로 이동하고, 직접 등록도 같은 경로를 사용한다. 예전 `?id=&stage=` 상세 링크는 새 경로로 이어가며 원래 목록 탭의 주소/제목을 복원한다. 비활성 운송 탭은 다른 탭의 쿼리 변경으로 내부 탭/초안을 바꾸지 않는다. 이 정정은 아래 과거 같은 목록 탭의 쿼리 전환 방식보다 우선한다.
 
 - 최신 사용자 정정(선택적 서류): 모든 운송 방식은 접수 후 의뢰 내용과 같은 폼을 운송 상세로 연다. 포워더 직접 등록은 기존 ACCEPTED 생성 후 상세로 바로 이동한다. BL 타입/구성 선택 및 public document-setup 쓰기 라우트는 제거한다. 상세 탭에서 원래 고객/당사자/구간/화물·직접 금액 초안·진행을 관리하고 서류 탭에서 독립 MBL/HBL·출력/CI/Packing List를 관리한다. 구성 선택·Master 자동 초안·Master 저장 후 House 자동 초안은 만들지 않는다. 아래 과거 구성 선택/필수 Master/구성별 DC 제한보다 이 정정을 우선한다.

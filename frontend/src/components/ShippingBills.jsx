@@ -20,9 +20,9 @@ import {shippingBillText} from '../constants/shippingBills';
 import {freightText} from '../constants/freight';
 import {billHierarchy,initialBillData} from '../utils/shippingBillData.mjs';
 
-export default function ShippingBills({job,orgId,languageCode,onDirtyChange,onChanged}){
+export default function ShippingBills({job,orgId,languageCode,onDirtyChange,onChanged,initialBillId}){
  const t=shippingBillText[languageCode]||shippingBillText.en,dialogs=usePageDialogs();
- const [rows,setRows]=useState(job.bills||[]),[selected,setSelected]=useState(()=>billHierarchy(job.bills||[])[0]?.id||null),[draft,setDraft]=useState(null),[formDirty,setFormDirty]=useState(false),[chargeDirty,setChargeDirty]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [rows,setRows]=useState(job.bills||[]),[selected,setSelected]=useState(()=>job.bills?.some(row=>row.id===initialBillId)?initialBillId:billHierarchy(job.bills||[])[0]?.id||null),[draft,setDraft]=useState(null),[formDirty,setFormDirty]=useState(false),[chargeDirty,setChargeDirty]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const dirty=formDirty||chargeDirty,blocked=dirty||busy;
  useEffect(()=>{onDirtyChange?.(blocked);return()=>onDirtyChange?.(false);},[blocked,onDirtyChange]);
  useEffect(()=>{if(!blocked)setRows(job.bills||[]);},[job.bills]);

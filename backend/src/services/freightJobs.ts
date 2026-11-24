@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {freightActor,freightForwarder,listFreight,saveFreight} from './freightOperations';
-import {saveJobProgress,createJobDocument} from './freightJobWorkflow';
+import {saveJobProgress,createJobDocument,saveJobOperationDetails} from './freightJobWorkflow';
 import {saveShippingTradeDocument} from './shippingTradeDocuments';
 import {billData} from './freightBillData';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
@@ -93,6 +93,7 @@ export function registerJobRoutes(app:any,db:any,access:any){
  route('post','',save);route('put','/:id',save);
  // Legacy documentSetup remains readable for old records; new composition writes are retired.
  route('put','/:id/progress',({orgId,actorId}:any,req:any)=>saveJobProgress(db,orgId,actorId,req.params.id,req.body));
+ route('put','/:id/operation-details',({orgId,actorId}:any,req:any)=>saveJobOperationDetails(db,orgId,actorId,req.params.id,req.body));
  route('post','/:id/documents',({orgId,actorId}:any,req:any)=>createJobDocument(db,orgId,actorId,req.params.id,req.body));
  route('post','/:id/trade-documents',({orgId,actorId}:any,req:any)=>saveShippingTradeDocument(db,orgId,actorId,req.params.id,req.body));
  route('post','/:id/bills',({orgId,actorId}:any,req:any)=>saveJobBill(db,orgId,actorId,req.params.id,req.body));

@@ -24,8 +24,8 @@ test('shipping record paths give each detail its own workspace identity and keep
  for(const lang of ['ko','en','vi']){
   const resolve=path=>resolvePageNaming(path,lang,()=> 'Transport');
   assert.equal(resolve('/shipping').mode,'list');
-  assert.equal(resolve('/shipping/job1').mode,'detail');
-  assert.equal(resolve('/shipping/job1').key,'transportList');
+  assert.equal(resolve('/shipping/job1').mode,'page');
+  assert.equal(resolve('/shipping/job1').key,'shippingOperations');
   assert.notEqual(resolve('/shipping/job1').path,resolve('/shipping').path);
   assert.notEqual(resolve('/shipping/job1').path,resolve('/shipping/job2').path);
   assert.equal(resolve('/shipping/job1?stage=documents').path,resolve('/shipping/job1').path);
