@@ -2221,3 +2221,9 @@ BOM에는 단순한 “한 벌당 숫자”만 저장하지 않는다. 기준 �
 - 접근 권한 업종 통합 표·체크박스: 구현·관련 검증 완료 / 운영 배포·인수 미확인. 의류 제조업·포워더 탭을 제거하고 두 업종의 제공·역할별 권한을 한 표에서 독립 편집한다. 활성 상태는 체크박스로 표시하며 기존 저장·미지원·고정 접근 제한을 유지한다. 메뉴 구성 회귀 6검사·프런트 빌드·번역/인코딩 통과. 실제 브라우저 저장/재조회는 미확인.
 
 - 거래처 비용 이력 세부 업종: 구현·관련 검증 완료 / 운영 배포·인수 미확인. 과거 PartnerTransactionCost.serviceType 표시를 제거하고 실제 transactionCode.base.industryLinks로 조회·표시한다. 연결 미설정은 —로 표시하며 과거 비용·결재·금액·FK·snapshot은 보존한다. 회귀 10건, 프런트/백엔드 빌드, 번역·인코딩 검사 통과.
+
+- 레거시·백업 점검: 소스·관련 테스트 점검 완료 / 수정·운영 데이터 확인 미실시. 파일 백업과 ManufacturerDataArchive/StyleIdentityArchive에서 런타임 자동 복원·원본 삭제를 막는 FK는 확인되지 않음. 백업 원문은 유지한다.
+  - 미수정 확인: PartnerTransactionCosts 목록·검색·업종 집계는 과거 serviceType 단일 FK를 사용한다. accountOverview 현금흐름은 현재 업종이 없을 때 base.serviceType을 대체 사용한다. accountingAlerts는 현재 업종이 비면 옛 업종으로 검사하며 옛 FUNDS 분류도 검사 제외 근거로 쓴다(함수 입력으로 재현).
+  - 삭제 검토: getCodeBaseUsage는 거래 이력 외 CodeItemType/PartnerHandledSelection/MaterialItem 설정도 삭제 차단 근거로 사용한다. getBusinessPartnerUsage는 일부 설정을 제외한 전체 실제 Organization FK를 조회한다. 자료 없음/설정만 있음/실제 거래 이력을 구별해 안내하고, 과거 업종은 IndustryRetirement 경로로 현재 목록에서 제거하는 기존 구조를 유지한다.
+  - 재생성·배포 검토: transactionSettingRoutes GET에서 공통 기본값의 누락된 회사 사본을 자동 생성한다(skipDuplicates로 기존 수정본 유지). 프런트는 이전 해시 파일을 14일 보존하며 열린 옛 탭은 옛 코드를 계속 실행할 수 있다. 수집 실패는 새 빌드도 차단한다. 파일 백업 자동 복원과 구별한다.
+  - 검증: asset-retention 4/4, legacy-retirement 11/15, accounting-code-usage 1/1. legacy-retirement 4건은 테스트 의존성/소스 binding 노후화로 실패. industry-retirement 1건은 fixture의 필수 remark 누락으로 삭제 검증 전에 실패하여 현재 통합 동작 미확인. 운영 DB·배포·백업 복원은 실행하지 않음.
