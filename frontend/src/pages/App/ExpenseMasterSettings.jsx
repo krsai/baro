@@ -66,7 +66,7 @@ export default function ExpenseMasterSettings({ units = false }) {
       const [items,parents]=await Promise.all([requestJSON(path,{skipCache:true}),industries?requestJSON('/system-setting-defaults/partner-roles',{skipCache:true}):Promise.resolve([])]);
       if(sequence!==loadSequence.current)return;
       setRows(items);setTypes(parents);
-      if(industries)setCategory(current=>parents.some(row=>row.id===current)?current:parents.find(row=>row.code==='PROCESS_OUTSOURCING')?.id||parents[0]?.id||null);
+      if(industries)setCategory(current=>parents.some(row=>row.id===current)?current:parents[0]?.id??null);
     }catch{if(sequence===loadSequence.current)setError(common.loadError);}finally{if(sequence===loadSequence.current)setLoading(false);}
   },[path,industries,common.loadError]);
   useChangeDrivenEffect(() => {if(active)load();return()=>{loadSequence.current++;};}, [load],{active:active});

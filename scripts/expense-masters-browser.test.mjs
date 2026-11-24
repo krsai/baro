@@ -29,6 +29,9 @@ try {
   });
   await page.goto(`http://127.0.0.1:${port}/expense-masters-acceptance.html`);
   await page.locator('#industries [data-testid=hierarchy-panel]').waitFor();assert.equal(await page.getByText('\uAD6C\uBD84 \uBBF8\uC9C0\uC815',{exact:true}).count(),0);await page.locator('#types').getByText('\uAC70\uB798 \uC720\uD615 \uAD00\uB9AC',{exact:true}).waitFor();
+  assert.match(await page.locator('#industries nav [aria-current=true]').innerText(),/^관리/);
+  if(!process.argv.includes('--initial-selection-only')){
+  await page.locator('#industries').getByRole('list').getByRole('button',{name:/\uC678\uC8FC \uC5C5\uCCB4/}).filter({has:page.locator('[data-testid=ChevronRightIcon]')}).click();
   assert.equal(await page.locator('#industries tbody').getByRole('button',{name:'\uC0AD\uC81C',exact:true}).isDisabled(),true);
   assert.equal(await page.locator('#industries nav').evaluate(el=>getComputedStyle(el).borderRightColor),'rgb(229, 234, 242)');
   await page.locator('#types').getByRole('button',{name:'수정',exact:true}).first().click();
@@ -70,4 +73,5 @@ try {
   await page.waitForFunction(()=>document.querySelector('#types tbody tr td').textContent==='LOGISTICS');assert.deepEqual(writes.at(-1).data,{previousIds:[1,2],ids:[2,1]});
   await page.locator('#industries').getByRole('button',{name:'\uAD00\uB9AC \uC544\uB798\uB85C',exact:true}).click();assert.deepEqual(writes.at(-1).data,{previousIds:[4,3,1,2],ids:[3,4,1,2]});
   assert.deepEqual(errors,[]);console.log('Expense masters passed: independent expense type and industry editing, preserved industry identity and no cost input controls in partner industries.');
+  }else console.log('Initial industry selection passed: first listed category selected instead of outsourcing.');
 } finally {await browser?.close();vite.kill();unlinkSync(fixture);}
