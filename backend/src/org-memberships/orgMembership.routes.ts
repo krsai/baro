@@ -400,6 +400,7 @@ export const createOrgMembershipRouter = ({
       status,
       factoryId,
       name,
+      phone,
       bankName,
       bankAccountNumber,
       position,
@@ -495,6 +496,7 @@ export const createOrgMembershipRouter = ({
         name,
         (existingEmployee?.name ?? requestedName) || null
       ),
+      phone: resolveOptionalString(phone, existingEmployee?.phone ?? null),
       bankName: resolveOptionalString(bankName, existingEmployee?.bankName ?? null),
       bankAccountNumber: resolveOptionalString(
         bankAccountNumber,

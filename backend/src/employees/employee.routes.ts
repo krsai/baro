@@ -482,6 +482,7 @@ export const createEmployeeRouter = ({
       gradeId,
       payType,
       name,
+      phone,
       bankName,
       bankAccountNumber,
       employeeNo,
@@ -693,6 +694,7 @@ export const createEmployeeRouter = ({
       ...(gradeIdNum !== undefined ? { gradeId: gradeIdNum } : {}),
       payType: resolvedPayType,
       name: resolveOptionalString(name, existingEmployee?.name ?? null),
+      phone: resolveOptionalString(phone, existingEmployee?.phone ?? null),
       bankName: resolveOptionalString(bankName, existingEmployee?.bankName ?? null),
       bankAccountNumber: resolveOptionalString(
         bankAccountNumber,

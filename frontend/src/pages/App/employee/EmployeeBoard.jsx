@@ -1,3 +1,4 @@
+import PersonalPhoneField from '../../../components/PersonalPhoneField';
 import {titleCaseWords} from '../../../utils/humanTextCase.mjs';
 import Dialog from '../../../components/AppDialog';
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
@@ -389,6 +390,7 @@ const buildEmployeeDraft = (member, employee, options = {}) => {
       titleCaseWords(String(employee?.name || '').trim()) ||
       String(options.currentUserName || '').trim() ||
       (options.useEmailFallback ? resolveNameFromEmail(member?.email) : ''),
+    phone: employee?.phone || '',
     bankName: employee?.bankName || '',
     bankAccountNumber: employee?.bankAccountNumber || '',
     orgRole,
@@ -405,6 +407,7 @@ const buildEmployeeDraft = (member, employee, options = {}) => {
 const buildDrawerSignature = (email, draft) => JSON.stringify({
   email: String(email || '').trim(),
   name: String(draft?.name || '').trim(),
+  phone: String(draft?.phone || '').trim(),
   bankName: String(draft?.bankName || '').trim(),
   bankAccountNumber: String(draft?.bankAccountNumber || '').trim(),
   orgRole: String(draft?.orgRole || '').toUpperCase(),
@@ -668,6 +671,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const [drawerEmail, setDrawerEmail] = useState('');
   const [drawerDraft, setDrawerDraft] = useState({
     name: '',
+    phone: '',
     bankName: '',
     bankAccountNumber: '',
     orgRole: 'WORKER',
@@ -1032,6 +1036,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         const employeePayload = {
           orgMembershipId: member.id,
           name: draft.name,
+          phone: draft.phone,
           bankName: draft.bankName,
           bankAccountNumber: draft.bankAccountNumber,
           roleId: draft.orgRole === 'WORKER' && draft.jobRoleId ? Number(draft.jobRoleId) : null,
@@ -1112,6 +1117,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     setDrawerEmail('');
     setDrawerDraft({
       name: '',
+      phone: '',
       bankName: '',
       bankAccountNumber: '',
       orgRole: defaultRole,
@@ -1253,6 +1259,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
             role: normalizedOrgRole || resolveDefaultInviteRole(roleOptions),
             status: resolvedStatus,
             name: normalizedName,
+            phone: drawerDraft.phone,
             bankName: drawerDraft.bankName,
             bankAccountNumber: drawerDraft.bankAccountNumber,
             employeeRoleId:
@@ -1590,6 +1597,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 disabled={isDrawerSaving}
                 inputProps={{'aria-description':drawerErrors.name ? tenantText(drawerErrors.name, languageCode) : undefined}}
               />
+              <PersonalPhoneField name="phone" languageCode={languageCode} label={({ko:'연락처',en:'Phone',vi:'Số Điện Thoại'})[languageCode]||'Phone'} value={drawerDraft.phone||''} disabled={isDrawerSaving} onChange={event=>handleDrawerDraftChange({phone:event.target.value})}/>
               <TextField
                 size="small"
                 label={tenantText('bankLabel', languageCode)}

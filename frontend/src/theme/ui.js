@@ -14,7 +14,10 @@ export const standardUi = {
 };
 
 export const compactUi = {...standardUi,
- radius:{control:3,panel:4},
+ color:{...standardUi.color,primary:'#1769aa',text:'#243447',heading:'#243447',muted:'#526579',border:'#cbd5df',canvas:'#eaf0f5',header:'#e2eaf1',hover:'#edf4fb'},
+ shadow:'none',
+ typography:{...standardUi.typography,titleFontSize:'1.0625rem',titleLetterSpacing:'0'},
+ radius:{control:2,panel:2},
  control:{...standardUi.control,height:32,iconSmallHeight:26,iconLargeHeight:36,inputPadding:'6px 10px'},
  layout:{...standardUi.layout,pagePadding:{xs:'12px',sm:'16px'},pageGap:'12px',sectionGap:'12px',headerGap:'12px',panelPadding:'12px'},
  table:{...standardUi.table,cellPadding:'7px 12px',compactPadding:'5px 10px'},

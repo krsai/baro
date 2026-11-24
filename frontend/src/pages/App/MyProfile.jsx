@@ -1,4 +1,4 @@
-import EntityPhoneField from '../../components/EntityPhoneField';
+import PersonalPhoneField from '../../components/PersonalPhoneField';
 import {emitWorkspaceDataChanged} from '../../utils/workspaceDataEvents';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -78,7 +78,7 @@ const InfoRow = ({ label, value, name, disabled, onChange, readOnlyText }) => (
         </Typography>
       )}
     </Typography>
-    {name==='phone'?<EntityPhoneField id={`personal-profile-${name}`} name={name} inputProps={{'aria-label':label}} value={value} onChange={disabled?undefined:onChange} InputProps={{readOnly:disabled}}/>:<TextField
+    {name==='phone'?<PersonalPhoneField id={`personal-profile-${name}`} name={name} inputProps={{'aria-label':label}} value={value} onChange={disabled?undefined:onChange} InputProps={{readOnly:disabled}}/>:<TextField
       fullWidth
       id={`personal-profile-${name || 'email'}`}
       name={name}

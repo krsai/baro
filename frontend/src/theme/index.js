@@ -46,7 +46,7 @@ const baseTheme = createTheme({
       fontWeight: 600,
     },
   },
-  spacing: 8, // Standard spacing unit
+  spacing: variant==='compact'?6:8, // Shared density grid
   transitions: {
     // Re-enable transitions for a smoother feel
     easing: {
@@ -564,9 +564,17 @@ const theme = createTheme(baseTheme, {
 });
 
 if(variant!=='compact')return theme;
-return createTheme(theme,{components:{
+return createTheme(theme,{shape:{borderRadius:2},palette:{primary:{main:ui.color.primary},background:{default:ui.color.canvas,paper:ui.color.surface},divider:ui.color.border},components:{
+ MuiPaper:{styleOverrides:{root:{borderRadius:2,boxShadow:'none'},outlined:{borderColor:ui.color.border}}},
+ MuiCard:{styleOverrides:{root:{borderRadius:2,boxShadow:'none'}}},
+ MuiAppBar:{styleOverrides:{root:{boxShadow:'none',borderBottom:'1px solid '+ui.color.border,'& .MuiToolbar-root':{minHeight:48}}}},
+ MuiDrawer:{styleOverrides:{paper:{backgroundColor:'#243747',color:'#e3ebf2',borderRight:'1px solid #182b3b','& .MuiListItemIcon-root, & .MuiSvgIcon-root':{color:'inherit'},'& .MuiTypography-caption':{color:'#b7c8d7'},'&& .MuiListItemButton-root':{borderRadius:0,margin:'1px 0',paddingTop:3,paddingBottom:3,color:'inherit','&:hover':{backgroundColor:'#314d63'},'& .MuiListItemIcon-root':{color:'inherit'},'&.Mui-disabled':{color:'#9eafbd',opacity:.65},'&.Mui-selected':{backgroundColor:'#1769aa',color:'#fff',boxShadow:'inset 3px 0 #71c4ff','&:hover':{backgroundColor:'#1c78bd'}}}}}},
+ MuiTableCell:{styleOverrides:{head:{backgroundColor:ui.color.header,color:ui.color.heading,borderBottom:'1px solid #aebdcb',fontWeight:700},body:{borderBottom:'1px solid #dce3ea'}}},
+ MuiDialogTitle:{styleOverrides:{root:{backgroundColor:'#f0f4f8',borderBottom:'1px solid '+ui.color.border}}},
+ MuiDialogActions:{styleOverrides:{root:{borderTop:'1px solid '+ui.color.border,backgroundColor:'#f6f8fa'}}},
+
  MuiCssBaseline:{styleOverrides:{'@media (pointer:coarse)':{':root':{'--ui-control-height':'36px','--ui-navigation-height':'42px','--ui-tab-height':'40px'}}}},
- MuiOutlinedInput:{styleOverrides:{root:{'@media (pointer:coarse)':{minHeight:36,'&:not(.MuiInputBase-multiline):not(.MuiAutocomplete-inputRoot)':{height:36}}}}},
+ MuiOutlinedInput:{styleOverrides:{notchedOutline:{borderColor:'#b8c6d3'},root:{'@media (pointer:coarse)':{minHeight:36,'&:not(.MuiInputBase-multiline):not(.MuiAutocomplete-inputRoot)':{height:36}}}}},
  MuiPickersOutlinedInput:{styleOverrides:{root:{'@media (pointer:coarse)':{height:36}}}},
  MuiPickersSectionList:{styleOverrides:{root:{padding:'6px 0'}}},
  MuiTab:{styleOverrides:{root:{borderRadius:'3px 3px 0 0',minHeight:32,padding:'3px 10px 5px'}}},
