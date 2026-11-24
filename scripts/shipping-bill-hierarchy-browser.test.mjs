@@ -72,6 +72,8 @@ try{
   }
   await compositionDialog.getByRole('radio',{name:t[composition],exact:true}).check();await compositionDialog.getByRole('button',{name:t.startBills,exact:true}).click();await compositionDialog.waitFor({state:'hidden'});
   await page.getByRole('button',{name:t.newMaster,exact:true}).click();let panel=page.locator('[data-list-detail-content]').first();
+  if(process.argv.includes('--layout-only')){const tabs=page.locator('[data-shipping-tabs]'),body=page.getByRole('tabpanel'),form=panel.locator('[data-dialog-detail]');await form.waitFor();const tabBox=await tabs.boundingBox(),bodyBox=await body.boundingBox();assert.ok(Math.abs(bodyBox.y-tabBox.y-tabBox.height)<=2);assert.equal(await form.evaluate(el=>getComputedStyle(el).maxHeight),'none');assert.equal(await panel.locator('.invoice-sheet').count(),0);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));if(lang==='ko'&&width===1440&&composition==='MASTER_ONLY')await page.screenshot({path:'logs/shipping-tabs-preview.png',fullPage:true});await page.close();console.log('PASS connected shipping tabs, page form scrolling and viewport fit',lang,width,composition);continue;}
+
   assert.equal(await panel.getByRole('textbox',{name:f.shipper,exact:true}).inputValue(),'SR SENDER');assert.equal(await panel.getByRole('textbox',{name:f.cargo,exact:true}).inputValue(),titleCaseWords('SR CARGO'));
   await panel.getByRole('textbox',{name:t.number,exact:true}).fill('M-001');await panel.getByRole('textbox',{name:f.shipper,exact:true}).fill('MASTER FORWARDER');
   await panel.getByRole('button',{name:t.save,exact:true}).click();await page.locator('[data-record-row]').filter({hasText:'M-001'}).waitFor();

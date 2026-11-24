@@ -1,4 +1,4 @@
-import InvoiceSheet from './InvoiceSheet';
+
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {Accordion,AccordionDetails,AccordionSummary,Box,Button,Paper,Stack,Typography} from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -6,7 +6,8 @@ import ListDetailLayout from './ListDetailLayout';
 import DialogRecordList from './DialogRecordList';
 import DialogDetailPanel from './DialogDetailPanel';
 import DialogRecordActions from './DialogRecordActions';
-import InvoiceDocumentField from './InvoiceDocumentField';
+import {TextField} from '@mui/material';
+import PageSectionHeader from './PageSectionHeader';
 import EntityDetailSection from './EntityDetailSection';
 import SearchableSelect from './SearchableSelect';
 import AppNotice from './AppNotice';
@@ -43,9 +44,11 @@ export default function ShippingBills({job,orgId,languageCode,onDirtyChange,onCh
  };
  const markForm=useCallback(value=>setFormDirty(value),[]),markCharges=useCallback(value=>setChargeDirty(value),[]);
  return <Stack spacing={2} data-shipping-bills>
-  {canEdit&&onConfigure&&(job.service!=='EXPRESS'||showHierarchy)&&<Box sx={{display:'flex',justifyContent:'flex-end'}}><Button disabled={busy||dirty} onClick={onConfigure}>{showHierarchy?t.composition:t.addOptionalBills}</Button></Box>}
+  <PageSectionHeader title={showHierarchy?t.title:t.shipmentCharges} titleVariant="subtitle1" actions={<Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+   {canEdit&&onConfigure&&(job.service!=='EXPRESS'||showHierarchy)&&<Button disabled={busy||dirty} onClick={onConfigure}>{showHierarchy?t.composition:t.addOptionalBills}</Button>}
+   {showHierarchy&&canEdit&&<><Button disabled={busy||single&&rows.some(row=>row.kind==='MASTER')} onClick={()=>add('MASTER')}>{t.newMaster}</Button>{!single&&<Button disabled={busy||!rows.some(row=>row.id===parentId&&row.kind==='MASTER')} onClick={()=>add('HOUSE')}>{t.newHouse}</Button>}</>}
+  </Stack>}/>
   {showHierarchy&&<>
-  <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" justifyContent="flex-end">{canEdit&&<><Button disabled={busy||single&&rows.some(row=>row.kind==='MASTER')} onClick={()=>add('MASTER')}>{t.newMaster}</Button>{!single&&<Button disabled={busy||!rows.some(row=>row.id===parentId&&row.kind==='MASTER')} onClick={()=>add('HOUSE')}>{t.newHouse}</Button>}</>}</Stack>
   {error&&<AppNotice severity="error">{error}</AppNotice>}
   <ListDetailLayout listWidth="minmax(220px,280px)" detailWidth="minmax(0,1fr)" list={<DialogRecordList rows={billHierarchy(rows)} selectedKey={selected} onSelect={choose} onPreview={row=>{if(!blocked&&!draft){setSelected(row.id);setError('');}}} previewDisabled={blocked||!!draft} disabled={busy} languageCode={languageCode} columns={[{key:'number',label:t.number,value:row=><Box component="span" sx={{pl:row.depth?2:0}}>{row.kind==='MASTER'?'M':'H'} · {row.number}{row.unlinked&&<Typography variant="caption" display="block">{t.unlinked}</Typography>}</Box>}]}/>}
    detail={current?<Stack spacing={2}>
@@ -72,13 +75,13 @@ function BillForm({initial,rows,job,orgId,languageCode,readOnly,disabled,onBusyC
   catch(e){const unknown=!e.status||e.status>=500;if(!unknown)pending.current=null;if(live.current){setUncertain(unknown);setError(t.failed);}}
   finally{lock.current=false;if(live.current)setBusy(false);onBusyChange(false);}
  };
- const field=(key,multiline=false)=> <InvoiceDocumentField key={key} name={key==='voyage'?'voyageNumber':key} appearance="form" label={t[key]||f[key]} value={value.data[key]||''} multiline={multiline} type={['etd','eta','issueDate'].includes(key)?'date':undefined} maxLength={key==='cargo'?4000:['shipper','consignee','notify','deliveryAgent','marks'].includes(key)?2000:500} disabled={blocked} onChange={event=>setValue(old=>({...old,data:{...old.data,[key]:event.target.value}}))}/>;
+ const field=(key,multiline=false)=> <TextField fullWidth size="small" key={key} name={key==='voyage'?'voyageNumber':key} label={t[key]||f[key]} value={value.data[key]||''} multiline={multiline} type={['etd','eta','issueDate'].includes(key)?'date':undefined} minRows={multiline?3:undefined} inputProps={{'aria-label':t[key]||f[key],maxLength:key==='cargo'?4000:['shipper','consignee','notify','deliveryAgent','marks'].includes(key)?2000:500}} slotProps={['etd','eta','issueDate'].includes(key)?{inputLabel:{shrink:true}}:undefined} disabled={blocked} onChange={event=>setValue(old=>({...old,data:{...old.data,[key]:event.target.value}}))}/>;
  const grid={display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:'repeat(2,minmax(0,1fr))'},gap:2};
- return <DialogDetailPanel title={value.kind+' · '+(value.number||t.title)} footer={<DialogRecordActions busy={busy} onDelete={!readOnly&&!uncertain?onDelete:undefined} deleteDisabled={disabled} deleteLabel={t.remove} onSave={!readOnly?save:undefined} saveLabel={uncertain?t.retry:t.save} saveDisabled={disabled||!uncertain&&value.version&&!dirty}/>}><InvoiceSheet sx={{p:1.5,border:0,borderRadius:0}}><Stack spacing={2}>
+ return <DialogDetailPanel sx={{maxHeight:'none'}} contentProps={{sx:{overflowY:'visible'}}} title={value.kind+' · '+(value.number||t.title)} footer={<DialogRecordActions busy={busy} onDelete={!readOnly&&!uncertain?onDelete:undefined} deleteDisabled={disabled} deleteLabel={t.remove} onSave={!readOnly?save:undefined} saveLabel={uncertain?t.retry:t.save} saveDisabled={disabled||!uncertain&&value.version&&!dirty}/>}><Stack spacing={2}>
   {error&&<AppNotice severity="error">{error}</AppNotice>}
-  <Box sx={grid}><InvoiceDocumentField appearance="form" name="billNumber" label={t.number} value={value.number} maxLength={120} disabled={blocked} onChange={event=>setValue(old=>({...old,number:event.target.value}))}/><InvoiceDocumentField appearance="form" name="companyName" label={t.issuer} value={value.issuer} maxLength={200} disabled={blocked} onChange={event=>setValue(old=>({...old,issuer:event.target.value}))}/>{value.kind==='HOUSE'&&<SearchableSelect label={t.master} languageCode={languageCode} disabled={blocked} options={rows.filter(row=>row.kind==='MASTER')} value={rows.find(row=>row.id===value.masterId)||null} getOptionLabel={row=>row.number} getLookupCode={row=>row.number} isOptionEqualToValue={(a,b)=>a.id===b.id} onChange={(_,row)=>setValue(old=>({...old,masterId:row?.id||null}))}/>}</Box>
+  <Box sx={grid}><TextField fullWidth size="small" name="billNumber" label={t.number} value={value.number} inputProps={{maxLength:120,'aria-label':t.number}} disabled={blocked} onChange={event=>setValue(old=>({...old,number:event.target.value}))}/><TextField fullWidth size="small" name="companyName" label={t.issuer} value={value.issuer} inputProps={{maxLength:200,'aria-label':t.issuer}} disabled={blocked} onChange={event=>setValue(old=>({...old,issuer:event.target.value}))}/>{value.kind==='HOUSE'&&<SearchableSelect label={t.master} languageCode={languageCode} disabled={blocked} options={rows.filter(row=>row.kind==='MASTER')} value={rows.find(row=>row.id===value.masterId)||null} getOptionLabel={row=>row.number} getLookupCode={row=>row.number} isOptionEqualToValue={(a,b)=>a.id===b.id} onChange={(_,row)=>setValue(old=>({...old,masterId:row?.id||null}))}/>}</Box>
   <Box sx={grid}>{['shipper','consignee','notify'].map(key=>field(key,true))}</Box>
   <EntityDetailSection title={f.transport}><Box sx={grid}>{[...(['SEA','AIR'].includes(job.mode)?['vessel','voyage']:[]),'origin','destination','etd','eta'].map(key=>field(key))}</Box></EntityDetailSection>
   <EntityDetailSection title={f.cargo}><Box sx={grid}>{['marks','cargo'].map(key=>field(key,true))}{['quantity','unit','weightKg','cbm','freightTerms'].map(key=>field(key))}</Box></EntityDetailSection>
- </Stack></InvoiceSheet></DialogDetailPanel>;
+ </Stack></DialogDetailPanel>;
 }
