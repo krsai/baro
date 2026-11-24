@@ -9,8 +9,10 @@ export async function loadAssignmentStyleDetails(db: any, orgId: number, input: 
   const cards = await db.assignmentCard.findMany({ where: { orgId, styleId: { in: ids } }, select: { styleId: true } });
   const allowed = new Set(cards.map((card: any) => card.styleId));
   if (ids.some(id => !allowed.has(id))) throw createHttpError(404, 'ASSIGNMENT_STYLE_NOT_FOUND');
-  return db.style.findMany({ where: { id: { in: ids } }, orderBy: { id: 'asc' }, select: {
+  const styles = await db.style.findMany({ where: { id: { in: ids }, ...(includeProcesses ? { orgId } : {}) }, orderBy: { id: 'asc' }, select: {
     id: true, orgId: true, customerOrgId: true, code: true, name: true, updatedAt: true,
-    customerOrganization: { select: { id: true, name: true, nameKo: true, nameVi: true } }, ...(includeProcesses ? { processes: true } : {}),
+    customerOrganization: { select: { id: true, name: true, nameKo: true, nameVi: true } },
   } });
+  if (styles.length !== ids.length) throw createHttpError(404, 'ASSIGNMENT_STYLE_NOT_FOUND');
+  return styles;
 }

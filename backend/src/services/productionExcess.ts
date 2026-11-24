@@ -48,7 +48,8 @@ export async function productionExcessDetail(db:any,orgId:number,actorId:number,
  if(!(await db.$queryRawUnsafe('SELECT id FROM "WorkOrder" WHERE id=$1 AND "orgId"=$2',scope.orderId,orgId)).length)fail('PRODUCTION_EXCESS_NOT_FOUND',404);
  const {page,pageSize}=pagination({...query,pageSize:query.pageSize||20}),result=await groups(db,orgId,gates,scope),group=result.groups[0]||null;
  const records=await db.$queryRawUnsafe(source+` SELECT r."recordId",r."workLogId",r.kind,r."workDate",r."coverageStartDate",r."coverageEndDate",r.quantity,r."assignmentPlanId",COALESCE(e.name,r."vendorName",'') AS name,f.name AS "factoryName",count(*) OVER()::integer AS "totalRecords" FROM scoped r LEFT JOIN "Employee" e ON e.id=r."workerId" AND e."orgId"=r."orgId" LEFT JOIN "Factory" f ON f.id=r."factoryId" AND f."orgId"=r."orgId" ORDER BY COALESCE(r."coverageEndDate",r."workDate") DESC,r."workLogId" DESC,r.quantity DESC,r.kind,r."recordId" LIMIT $5 OFFSET $6`,orgId,scope.orderId,scope.styleId,scope.processId,pageSize,page*pageSize);
- return {group,resolved:group!==null?group.excess<=0:result.unverified===0,unverified:result.unverified,records,total:records[0]?.totalRecords||0,page,pageSize};
+ const total=records[0]?.totalRecords??(await db.$queryRawUnsafe(source+' SELECT count(*)::integer AS "totalRecords" FROM scoped',orgId,scope.orderId,scope.styleId,scope.processId))[0]?.totalRecords??0;
+ return {group,resolved:group!==null?group.excess<=0:result.unverified===0,unverified:result.unverified,records,total,page,pageSize};
 }
 export function registerProductionExcessRoutes(app:any,db:any,gates:any){
  const route=(path:string,detail=false)=>app.get(path,async(req:any,res:any)=>{

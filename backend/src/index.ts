@@ -26535,7 +26535,7 @@ app.get("/assignment-cards", async (req, res) => {
   );
   if (req.query.stylesOnly === "1") {
     const styles = await loadAssignmentStyleDetails(prisma, organization.id, req.query.styleIds, includeProcesses);
-    const processMirrorMap = includeProcesses ? await ensureStyleProcessStorageForStyles(styles, { processOrgId: organization.id }) : new Map<number, any[]>();
+    const processMirrorMap = includeProcesses ? await ensureStyleProcessStorageForStyles(styles, { processOrgId: organization.id, readOnly: true }) : new Map<number, any[]>();
     return res.json({ styles: styles.map((style: any) => toStyleResponse(style, { includeProcesses, processMirrorMap })) });
   }
   const [state, cards] = await Promise.all([

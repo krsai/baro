@@ -38,7 +38,11 @@ test('dashboard queries aggregate all months, assignments, employees and outsour
   const gates={targetForProcess:target,loadQuantities:async()=>new Map((await pg.query('SELECT * FROM targets')).rows.map(row=>[row.orderId+':'+row.styleId,row]))};
   const initial=await productionExcessList(db,7,1,{pageSize:5},gates);assert.equal(initial.total,2);assert.deepEqual(initial.rows.map(r=>[r.orderNumber,r.recorded,r.target,r.excess]),[['L18-1',2224,1084,1140],['L16-1',790,440,350]]);
   const detail=await productionExcessDetail(db,7,1,{orderId:1,styleId:10,processId:100},{},gates);assert.equal(detail.total,3);assert.equal(detail.records[0].kind,'OUTSOURCING');assert.equal(detail.records[0].name,'Vendor A');assert.equal(detail.records[2].workDate,'2026-05-31');assert.equal(detail.group.recordCount,3);
-  const second=await productionExcessDetail(db,7,1,{orderId:1,styleId:10,processId:100},{page:1,pageSize:5},gates);assert.equal(second.records.length,0);
+  const second=await productionExcessDetail(db,7,1,{orderId:1,styleId:10,processId:100},{page:1,pageSize:5},gates);assert.equal(second.records.length,0);assert.equal(second.total,3);assert.equal(second.resolved,false);
+  await pg.exec('UPDATE targets SET unspecified=440 WHERE "orderId"=1; UPDATE "StyleProcess" SET "genderScope"=\'MALE_ONLY\' WHERE id=100');
+  const unverifiedPage=await productionExcessDetail(db,7,1,{orderId:1,styleId:10,processId:100},{page:1,pageSize:5},gates);
+  assert.equal(unverifiedPage.group,null);assert.equal(unverifiedPage.unverified,1);assert.equal(unverifiedPage.total,3);assert.equal(unverifiedPage.resolved,false);
+  await pg.exec('UPDATE targets SET unspecified=0 WHERE "orderId"=1; UPDATE "StyleProcess" SET "genderScope"=\'UNISEX\' WHERE id=100');
   await pg.exec('INSERT INTO "AssignmentCard" VALUES(1,7,1),(2,7,2),(3,8,1); UPDATE "AssignmentPlan" SET "workOrderId"=NULL,"assignmentCardId"=1 WHERE id=12');
   assert.deepEqual((await productionExcessList(db,7,1,{pageSize:5},gates)).rows,initial.rows,'card-only employee and outsourced records keep their order');
   const fallback=await productionExcessDetail(db,7,1,{orderId:1,styleId:10,processId:100},{},gates);

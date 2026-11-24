@@ -14,18 +14,27 @@ try{
  for(const lang of ['ko','en','vi'])for(const width of [1440,430]){
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],t=productionExcessText[lang];page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(45000);page.on('pageerror',error=>{errors.push(error.message);console.error('EXCESS_BROWSER_ERROR',error.message);});
   const group={workOrderId:1,orderNumber:'L16-1',styleId:10,styleCode:'AM01622',styleName:'Shirt',styleProcessId:100,processCode:'TS05',processName:'Sew collar',target:440,recorded:790,excess:350,excessPercent:350/440*100,lastDate:'2026-11-03',recordCount:3};
-  let resolved=false,failed=false;
+  let resolved=false,failed=false,shrinkOnNext=false;let detailRows=[{recordId:3,workLogId:3,workDate:'2026-11-03',name:'Vendor A',kind:'OUTSOURCING',factoryName:'HANOI',quantity:50},{recordId:2,workLogId:2,workDate:'2026-11-02',name:'Worker B',kind:'EMPLOYEE',factoryName:'HANOI',quantity:300},{recordId:1,workLogId:1,workDate:'2026-05-31',name:'Worker A',kind:'EMPLOYEE',factoryName:'HANOI',quantity:440}];
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*'};
   await page.route('**/work-logs/production-excess**',route=>{
    if(failed)return route.fulfill({headers,status:503,json:{error:'TEMPORARY_FAILURE'}});
    if(new URL(route.request().url()).pathname.endsWith('/production-excess'))return route.fulfill({headers,json:{rows:resolved?[]:[group],total:resolved?0:1,unverified:0,page:0,pageSize:5}});
-   return route.fulfill({headers,json:{group,records:[{recordId:3,workLogId:3,workDate:'2026-11-03',name:'Vendor A',kind:'OUTSOURCING',factoryName:'HANOI',quantity:50},{recordId:2,workLogId:2,workDate:'2026-11-02',name:'Worker B',kind:'EMPLOYEE',factoryName:'HANOI',quantity:300},{recordId:1,workLogId:1,workDate:'2026-05-31',name:'Worker A',kind:'EMPLOYEE',factoryName:'HANOI',quantity:440}],total:3,page:0,pageSize:20}});
+   const requestedPage=Number(new URL(route.request().url()).searchParams.get('page')||0);if(shrinkOnNext&&requestedPage===1){detailRows=detailRows.slice(0,3);shrinkOnNext=false;}
+   return route.fulfill({headers,json:{group,records:detailRows.slice(requestedPage*20,(requestedPage+1)*20),total:detailRows.length,page:requestedPage,pageSize:20}});
   });
   console.log('Checking production excess',lang,width);await page.goto(`http://127.0.0.1:${port}/production-excess-acceptance.html?lang=${lang}`);const card=page.getByTestId('production-excess-card');await card.getByText('L16-1',{exact:true}).waitFor();assert.equal(await card.getByText('+79.55%',{exact:true}).count(),1);
   assert.ok(await card.locator('tbody tr').first().locator('td').nth(5).evaluate(element=>getComputedStyle(element).textAlign==='right'));
   await card.getByRole('button',{name:t.review,exact:true}).click();const dialog=page.getByRole('dialog');await dialog.getByText('2026-05-31',{exact:true}).waitFor();assert.equal(await dialog.getByText('Vendor A',{exact:true}).count(),1);
   await dialog.getByRole('row').filter({hasText:'Worker B'}).getByRole('button',{name:t.open,exact:true}).click();await page.waitForFunction(()=>window.opened?.startsWith('/work-history/2?'));await dialog.waitFor({state:'hidden'});
   await card.getByRole('button',{name:t.review,exact:true}).click();await dialog.getByText('Vendor A',{exact:true}).waitFor();await dialog.getByRole('row').filter({hasText:'Vendor A'}).getByRole('button',{name:t.open,exact:true}).click();await page.waitForFunction(()=>window.opened==='/outsourcing-record/edit/legacy/3');
+  await dialog.waitFor({state:'hidden'});
+  detailRows=Array.from({length:21},(_,i)=>({recordId:i+10,workLogId:i+10,workDate:'2026-11-03',name:'Paging '+(i+1),kind:'EMPLOYEE',factoryName:'HANOI',quantity:1}));
+  await card.getByRole('button',{name:t.review,exact:true}).click();await dialog.getByText('Paging 1',{exact:true}).waitFor();
+  await dialog.getByRole('button',{name:t.next,exact:true}).click();await dialog.getByText('Paging 21',{exact:true}).waitFor();
+  await dialog.getByRole('button',{name:t.previous,exact:true}).click();await dialog.getByText('Paging 1',{exact:true}).waitFor();
+  shrinkOnNext=true;await dialog.getByRole('button',{name:t.next,exact:true}).click();await dialog.getByText('Paging 3',{exact:true}).waitFor();
+  assert.equal(await dialog.getByRole('button',{name:t.previous,exact:true}).isDisabled(),true);assert.equal(await dialog.getByRole('button',{name:t.next,exact:true}).isDisabled(),true);
+  assert.equal(await dialog.getByText('Paging 21',{exact:true}).count(),0);await dialog.getByRole('button',{name:t.close,exact:true}).click();await dialog.waitFor({state:'hidden'});
   resolved=true;const refresh=()=>page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{orgId:7,topics:['payroll-sources'],source:'test'}})));await refresh();await card.getByText(t.empty,{exact:true}).waitFor();
   failed=true;await refresh();await page.getByText(t.failed,{exact:true}).waitFor();assert.equal(await card.getByText(t.empty,{exact:true}).count(),0);failed=false;await page.getByRole('button',{name:t.retry,exact:true}).click();await card.getByText(t.empty,{exact:true}).waitFor();
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);await page.close();

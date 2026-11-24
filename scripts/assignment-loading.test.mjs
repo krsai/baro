@@ -16,7 +16,7 @@ test('completed-only styles need no initial process read; editable, split, unass
 });
 test('style details read only requested company-card FKs and do not rebuild card summaries or order readiness',async()=>{
  let styleReads=0;
- const db={assignmentCard:{findMany:async({where,select})=>{assert.equal(where.orgId,1);assert.deepEqual(select,{styleId:true});return [{styleId:2},{styleId:3}];}},style:{findMany:async({where,select})=>{styleReads++;assert.deepEqual(where.id.in,[2,3]);assert.equal(select.processes,true);return [{id:2,processes:[]},{id:3,processes:[]}];}}};
+ const db={assignmentCard:{findMany:async({where,select})=>{assert.equal(where.orgId,1);assert.deepEqual(select,{styleId:true});return [{styleId:2},{styleId:3}];}},style:{findMany:async({where,select})=>{styleReads++;assert.deepEqual(where.id.in,[2,3]);assert.equal(where.orgId,1);assert.equal(select.processes,undefined);return [{id:2},{id:3}];}}};
  assert.equal((await loadAssignmentStyleDetails(db,1,'2,3,2')).length,2);assert.equal(styleReads,1);
  await assert.rejects(loadAssignmentStyleDetails(db,1,'2,9'),/ASSIGNMENT_STYLE_NOT_FOUND/);assert.equal(styleReads,1);
  for(const value of ['', '1,x','0','-1','1.5'])await assert.rejects(loadAssignmentStyleDetails(db,1,value),/INVALID_ASSIGNMENT_STYLE_IDS/);
@@ -24,6 +24,32 @@ test('style details read only requested company-card FKs and do not rebuild card
 test('metadata-only company access does not request manufacturing processes',async()=>{
  const db={assignmentCard:{findMany:async()=>[{styleId:2}]},style:{findMany:async({select})=>{assert.equal(select.processes,undefined);return [{id:2}];}}};
  assert.deepEqual(await loadAssignmentStyleDetails(db,1,'2',false),[{id:2}]);
+});
+
+test('process detail rejects foreign or missing styles while card-authorized metadata remains available',async()=>{
+ const stored=[{id:2,orgId:1},{id:3,orgId:9}];
+ const db={assignmentCard:{findMany:async()=>stored.map(row=>({styleId:row.id}))},style:{findMany:async({where,select})=>{
+  assert.equal(select.processes,undefined);
+  return stored.filter(row=>where.id.in.includes(row.id)&&(where.orgId==null||where.orgId===row.orgId));
+ }}};
+ assert.deepEqual(await loadAssignmentStyleDetails(db,1,'2'),[stored[0]]);
+ await assert.rejects(loadAssignmentStyleDetails(db,1,'2,3'),/ASSIGNMENT_STYLE_NOT_FOUND/);
+ assert.deepEqual(await loadAssignmentStyleDetails(db,1,'3',false),[stored[1]]);
+ stored.pop();await assert.rejects(loadAssignmentStyleDetails(db,1,'3',false),/ASSIGNMENT_STYLE_NOT_FOUND/);
+});
+
+test('actual style-details route reads scoped relational processes once without legacy JSON synchronization',async()=>{
+ const source=readFileSync('backend/src/index.ts','utf8'),start=source.indexOf('app.get("/assignment-cards"');
+ const code=source.slice(start,source.indexOf('  const [state, cards]',start))+'});';
+ const ts=require('../backend/node_modules/typescript');let handler,processReads=0,response;
+ const deps={app:{get:(_path,callback)=>{handler=callback;}},getOrganizationByQuery:async()=>({id:1}),isManufacturerOrg:()=>true,
+  prisma:{},loadAssignmentStyleDetails:async(_db,orgId,ids,processes)=>{assert.equal(orgId,1);assert.equal(ids,'2');assert.equal(processes,true);return [{id:2,orgId:1}];},
+  ensureStyleProcessStorageForStyles:async(styles,options)=>{processReads++;assert.deepEqual(options,{processOrgId:1,readOnly:true});assert.equal(styles[0].processes,undefined);return new Map([[2,[{styleProcessId:7}]]]);},
+  toStyleResponse:(style,options)=>({id:style.id,processes:options.processMirrorMap.get(style.id)}),
+ };
+ new Function(...Object.keys(deps),ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)(...Object.values(deps));
+ await handler({query:{stylesOnly:'1',styleIds:'2'}},{json:value=>{response=value;}});
+ assert.deepEqual(response,{styles:[{id:2,processes:[{styleProcessId:7}]}]});assert.equal(processReads,1);
 });
 test('incomplete assignments cannot close even with a full advance invoice and skip all billing lookup work',async()=>{
  const rows=[{id:'a',workOrderId:1,styleId:7,isCompleted:false}];
