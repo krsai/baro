@@ -4,7 +4,7 @@ import PageActions from '../../components/PageActions';
 import SaveButton from '../../components/SaveButton';
 import ShippingBills from '../../components/ShippingBills';
 import {shippingBillText} from '../../constants/shippingBills';
-import {requiresBillHierarchy} from '../../utils/shippingBillData.mjs';
+import ShippingChargeDrafts from '../../components/ShippingChargeDrafts';
 import EntityDetailSection from '../../components/EntityDetailSection';
 import ShippingTradeDocuments from '../../components/ShippingTradeDocuments';
 import {shippingTradeText} from '../../constants/shippingTrade';
@@ -25,7 +25,7 @@ import {freightJobEditorText} from '../../constants/freightJobEditor';
 import FreightJobEditor from '../../components/FreightJobEditor';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {useSearchParams,Navigate} from 'react-router-dom';
-import {Box,Button,DialogTitle,DialogContent,DialogActions,FormControlLabel,Radio,RadioGroup,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TableSortLabel,Tab,Tabs,TextField,Typography} from '@mui/material';
+import {Box,Button,DialogTitle,DialogContent,DialogActions,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TableSortLabel,Tab,Tabs,TextField,Typography} from '@mui/material';
 import Alert from "../../components/AppNotice";
 import AppPageContainer from '../../components/AppPageContainer';
 import {useAuth} from '../../context/AuthContext';
@@ -45,28 +45,26 @@ function Jobs({orgId}){
  const dialogs=usePageDialogs();
  const {languageCode}=useLanguage(),t={...(jobText[languageCode]||jobText.en),...(shippingText[languageCode]||shippingText.en),assignee:(freightJobEditorText[languageCode]||freightJobEditorText.en).forwarderAssignee,plannedDate:(freightJobEditorText[languageCode]||freightJobEditorText.en).plannedDate},{showNotification}=useAppActions(),[params,setParams]=useSearchParams(),id=params.get('id');
  const [rows,setRows]=useState([]),[loading,setLoading]=useState(true),[total,setTotal]=useState(0),[offset,setOffset]=useState(0),[sort,setSort]=useState('createdAt'),[sortDirection,setSortDirection]=useState('desc'),[search,setSearch]=useState(''),[detail,setDetail]=useState(null),[options,setOptions]=useState({customers:[],employees:[]}),[edit,setEdit]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0);
- const mutationLock=useRef(false),pendingDirectJob=useRef(null);
+ const mutationLock=useRef(false);
  const trade=shippingTradeText[languageCode]||shippingTradeText.en;
  const wb=shippingWorkbenchText[languageCode]||shippingWorkbenchText.en;
  const w=freightWorkflowText[languageCode]||freightWorkflowText.en,billLabels=shippingBillText[languageCode]||shippingBillText.en,rawStage=params.get('stage'),stage=['setup','bills','charges'].includes(rawStage)?'bills':rawStage==='documents'?'documents':rawStage==='progress'?'bills':'basic';
  const [source,setSource]=useState(''),[status,setStatus]=useState('');
  const documentLabel=detail?.data.documentSetup?.documentType?w[detail.data.documentSetup.documentType]:null;
  if(documentLabel&&detail.data.documentSetup.documentType!=='BILL_OF_LADING')Object.assign(t,{bills:w.bills,MASTER:'Master '+documentLabel,HOUSE:'House '+documentLabel,billNumber:documentLabel+' #'});
- const [dirtyAreas,setDirtyAreas]=useState({basic:false,progress:false,documents:false,trade:false,charges:false});
+ const [dirtyAreas,setDirtyAreas]=useState({basic:false,progress:false,documents:false,trade:false,charges:false,copies:false});
  const workflowDirty=Object.values(dirtyAreas).some(Boolean);
  const markBasic=useCallback(value=>setDirtyAreas(old=>old.basic===value?old:{...old,basic:value}),[]);
  const markProgress=useCallback(value=>setDirtyAreas(old=>old.progress===value?old:{...old,progress:value}),[]);
  const markDocuments=useCallback(value=>setDirtyAreas(old=>old.documents===value?old:{...old,documents:value}),[]);
  const markTrade=useCallback(value=>setDirtyAreas(old=>old.trade===value?old:{...old,trade:value}),[]);
+ const markCopies=useCallback(value=>setDirtyAreas(old=>old.copies===value?old:{...old,copies:value}),[]);
  const markCharges=useCallback(value=>setDirtyAreas(old=>old.charges===value?old:{...old,charges:value}),[]);
- const [compositionOpen,setCompositionOpen]=useState(false),[composition,setComposition]=useState('MASTER_HOUSE');
- const openComposition=()=>{setComposition(detail?.data.documentSetup?.composition||(requiresBillHierarchy(detail)?'MASTER_HOUSE':'NONE'));setCompositionOpen(true);};
- const changeStage=async value=>{if(busy)return;if(workflowDirty&&!await dialogs.confirm('',{purpose:'discard'}))return;if(value==='bills'&&requiresBillHierarchy(detail)&&['basic','progress'].includes(stage)&&detail?.receiptStatus==='ACCEPTED'&&detail.status!=='CANCELLED'){openComposition();return;}setParams({id,...(value!=='basic'?{stage:value}:{})});};
- useEffect(()=>{if(stage==='bills'&&requiresBillHierarchy(detail)&&!detail.data.documentSetup&&detail.receiptStatus==='ACCEPTED'&&detail.status!=='CANCELLED')openComposition();},[id,stage,detail?.id]);
+ const changeStage=async value=>{if(busy)return;if(workflowDirty&&!await dialogs.confirm('',{purpose:'discard'}))return;setParams({id,...(value!=='basic'?{stage:value}:{})});};
  useEffect(()=>{if(detail?.receiptStatus==='PENDING'&&stage!=='basic')setParams({id});},[id,stage,detail?.receiptStatus]);
- useEffect(()=>{if(pendingDirectJob.current===id&&detail?.id===id){pendingDirectJob.current=null;if(requiresBillHierarchy(detail))openComposition();else setParams({id,stage:'bills'});}},[id,detail?.id]);
- const requestOpen=!!id&&stage==='basic'&&!compositionOpen;
- const continueRequest=()=>{if(requiresBillHierarchy(detail))openComposition();else setParams({id,stage:'bills'});};
+ useEffect(()=>{if(detail?.receiptStatus==='ACCEPTED'&&stage==='basic')setParams({id,stage:'bills'});},[id,stage,detail?.receiptStatus]);
+ const requestOpen=!!id&&stage==='basic'&&detail?.receiptStatus!=='ACCEPTED';
+ const continueRequest=()=>setParams({id,stage:'bills'});
  const form=params.get('form');
  const alive=useRef(true);useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  const api=useCallback((path='',method='GET',body,query={})=>requestJSON('/freight/transport-jobs'+path+buildQueryString({orgId,...query}),{method,skipCache:true,...(body?{body:JSON.stringify(body)}:{})}),[orgId]);
@@ -76,15 +74,14 @@ function Jobs({orgId}){
  const [detailLoading,setDetailLoading]=useState(!!id);
  useEffect(()=>{if(!listVisible)return;let live=true;setError('');setLoading(true);const timer=setTimeout(()=>{api('', 'GET',null,{search,offset,sort,sortDirection,source,status}).then(value=>{if(live){setRows(value.rows);setTotal(value.total);}}).catch(e=>live&&setError(message(e))).finally(()=>live&&setLoading(false));},150);return()=>{live=false;clearTimeout(timer);};},[api,listVisible,search,offset,sort,sortDirection,source,status,reload]);
  useEffect(()=>{let live=true;setError('');setDetail(current=>id&&current?.id===id?current:null);setDetailLoading(!!id);if(id)api('/'+id).then(value=>{if(live)setDetail(value);}).catch(e=>live&&setError(message(e))).finally(()=>live&&setDetailLoading(false));return()=>{live=false;};},[api,id,reload]);
- const go=value=>setParams(value?{id:value}:{});
- useShippingRefresh({orgId,blocked:!!edit||!!id&&stage==='basic'||busy||workflowDirty||compositionOpen,onRefresh:()=>setReload(value=>value+1)});
+ const go=value=>setParams(value?{id:value,...(rows.find(row=>row.id===value)?.receiptStatus==='ACCEPTED'?{stage:'bills'}:{})}:{});
+ useShippingRefresh({orgId,blocked:!!edit||!!id&&stage==='basic'||busy||workflowDirty,onRefresh:()=>setReload(value=>value+1)});
  useEffect(()=>{if(params.get('form')==='new')setEdit(current=>current&&!current.id?current:{clientKey:crypto.randomUUID(),mode:'SEA',service:'GENERAL',customerId:null,data:{shipmentType:'FCL',jobType:'OTHER'}});else if(params.get('form')==='edit'&&detail)setParams({id:detail.id});},[params,detail]);
 
  const mutate=async work=>{if(mutationLock.current)return;mutationLock.current=true;setBusy(true);setError('');try{await work();if(alive.current)setReload(value=>value+1);}catch(e){setError(message(e));throw e;}finally{mutationLock.current=false;setBusy(false);}};
  const receive=async()=>{if(mutationLock.current||workflowDirty||!options.forwarder)return;try{if(detail.receiptStatus==='PENDING')await mutate(async()=>{const saved=await requestJSON('/shipping-requests/'+id+buildQueryString({orgId}),{method:'POST',body:JSON.stringify({action:'ACCEPT',version:detail.version})});setDetail(current=>({...current,receiptStatus:'ACCEPTED',version:saved.version}));});continueRequest();}catch{}};
- const finishComposition=async()=>{if(mutationLock.current)return;try{if(composition!=='NONE'){const documentType=detail.data.documentSetup?.documentType||(detail.service==='EXPRESS'?'WAYBILL':detail.mode==='SEA'?'BILL_OF_LADING':detail.mode==='AIR'?'AIR_WAYBILL':'WAYBILL');if(detail.data.documentSetup?.composition!==composition||detail.data.documentSetup?.documentType!==documentType)await mutate(async()=>{const saved=await api('/'+id+'/document-setup','PUT',{version:detail.version,composition,documentType});setDetail(current=>({...current,...saved,bills:current.bills,documents:current.documents}));});}setCompositionOpen(false);setParams({id,stage:'bills'});}catch{}};
  const name=row=>row?.isShippingGeneralCustomer?(shippingEditorText[languageCode]||shippingEditorText.en).generalCustomer:row?.[languageCode==='ko'?'nameKo':languageCode==='vi'?'nameVi':'name']||row?.name||'—';
- const editorProps={t,options,busy,name,orgId,saveError:error,initial:edit,onClose:()=>{setEdit(null);go(id);},onSave:value=>mutate(async()=>{const saved=await api(value.id?'/'+value.id:'',value.id?'PUT':'POST',value);if(!alive.current)return;setEdit(null);go(saved.id);if(!value.id&&saved.receiptStatus==='ACCEPTED'){pendingDirectJob.current=saved.id;}showNotification(t.saved,'success');})};
+ const editorProps={t,options,busy,name,orgId,saveError:error,initial:edit,onClose:()=>{setEdit(null);go(id);},onSave:value=>mutate(async()=>{const saved=await api(value.id?'/'+value.id:'',value.id?'PUT':'POST',value);if(!alive.current)return;setEdit(null);setParams({id:saved.id,...(saved.receiptStatus==='ACCEPTED'?{stage:'bills'}:{})});showNotification(t.saved,'success');})};
 
 
  return <AppPageContainer title={formatPageTitle(t.title,id&&stage!=='basic'?'detail':'list',languageCode)} context={detail&&stage!=='basic'&&<Stack component="span" direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center"><Typography component="span" fontWeight={700}>{detail.number}</Typography><StatusLabel label={t[shippingState(detail,{request:stage==='basic'})]} tone={shippingStatusTone(shippingState(detail,{request:stage==='basic'}))}/></Stack>} titleActions={<Stack direction="row" spacing={1}>{(!id||stage==='basic')&&<Button variant="contained" disabled={!options.forwarder||!!id} onClick={()=>setParams({form:'new'})}>{t.new}</Button>}</Stack>}><Stack spacing={2}>
@@ -94,14 +91,16 @@ function Jobs({orgId}){
 
  <Box>{stage!=='basic'&&<Box data-shipping-tabs><Tabs value={stage} variant="scrollable" allowScrollButtonsMobile onChange={(_,value)=>changeStage(value)}>{['bills','documents'].map(key=><Tab key={key} id={'shipping-'+key+'-tab'} aria-controls={'shipping-'+key+'-panel'} value={key} label={key==='bills'?billLabels.transportDetails:billLabels.documents} disabled={detail.receiptStatus==='PENDING'}/>)}</Tabs></Box>}
  <Paper variant="outlined" role="tabpanel" id={'shipping-'+stage+'-panel'} aria-labelledby={'shipping-'+stage+'-tab'} sx={{p:{xs:1.5,sm:2},minWidth:0,borderTopLeftRadius:0}}><Stack spacing={2}>
- {stage==='bills'&&<ShippingBills key={id+':bills'} job={detail} orgId={orgId} languageCode={languageCode} onDirtyChange={markCharges} onConfigure={async()=>{if(!workflowDirty||await dialogs.confirm('',{purpose:'discard'}))openComposition();}} onChanged={()=>setReload(value=>value+1)}/>}
+ {stage==='bills'&&options.forwarder&&<FreightJobEditor key={id+':detail'} embedded t={t} options={options} busy={busy||detail.status==='CANCELLED'} name={name} orgId={orgId} saveError={error} initial={detail} onDirtyChange={markBasic} title={billLabels.transportDetails} onSave={async value=>{let saved;await mutate(async()=>{saved=await api('/'+id,'PUT',value);setDetail(current=>({...current,...saved}));showNotification(t.saved,'success');});return saved;}}/>}
+ {stage==='bills'&&detail.receiptStatus==='ACCEPTED'&&<ShippingChargeDrafts orgId={orgId} jobId={id} languageCode={languageCode} readOnly={detail.status==='CANCELLED'} onDirtyChange={markCharges} refreshKey={detail.version}/>}
+ {stage==='documents'&&<ShippingBills key={id+':attachments'} job={detail} orgId={orgId} languageCode={languageCode} onDirtyChange={markDocuments} onChanged={()=>setReload(value=>value+1)}/>}
  {stage==='bills'&&detail.receiptStatus==='ACCEPTED'&&detail.status!=='CANCELLED'&&<EntityDetailSection title={trade.progress}><ShippingProgress embedded key={id} job={detail} employees={options.employees} languageCode={languageCode} busy={busy} onDirtyChange={markProgress} onSave={value=>mutate(async()=>{await api('/'+id+'/progress','PUT',value);showNotification(t.saved,'success');})}/></EntityDetailSection>}
 
  {stage==='documents'&&detail.receiptStatus==='ACCEPTED'&&detail.status!=='CANCELLED'&&<ShippingTradeDocuments key={id+':trade'} job={detail} orgId={orgId} languageCode={languageCode} currencies={options.currencies||[]} onDirtyChange={markTrade}/>}
- {stage==='documents'&&<ShippingDocuments key={id+':documents'} job={detail} orgId={orgId} languageCode={languageCode} busy={busy} t={t} onDirtyChange={markDocuments}/>}
+ {stage==='documents'&&<ShippingDocuments key={id+':documents'} job={detail} orgId={orgId} languageCode={languageCode} busy={busy} t={t} onDirtyChange={markCopies}/>}
 
  </Stack></Paper></Box>
  </>}
 
- </Stack>{detail&&requestOpen&&(options.forwarder?<FreightJobEditor key={id} t={t} options={options} busy={busy} name={name} orgId={orgId} saveError={error} initial={detail} onDirtyChange={markBasic} title={billLabels.requestTitle+' \u00b7 '+detail.number} actions={<Button variant="contained" disabled={busy||workflowDirty||detail.status==='CANCELLED'||!['PENDING','ACCEPTED'].includes(detail.receiptStatus)} onClick={receive}>{billLabels.receiveTransport}</Button>} onClose={()=>go(null)} onSave={async value=>{let saved;await mutate(async()=>{saved=await api('/'+id,'PUT',value);setDetail(current=>({...current,...saved}));showNotification(t.saved,'success');});return saved;}}/>:<AppDialog open fullWidth maxWidth="lg" onClose={()=>go(null)}><DialogTitle>{billLabels.requestTitle}</DialogTitle><DialogContent><ShippingWaybillSummary job={detail} languageCode={languageCode} name={name}/></DialogContent><DialogActions><PageActions secondary={<Button onClick={()=>go(null)}>{t.cancel}</Button>}/></DialogActions></AppDialog>)}{compositionOpen&&detail&&<AppDialog open fullWidth maxWidth="sm" onClose={()=>{if(!busy){setCompositionOpen(false);if(stage==='bills'&&!detail.data.documentSetup&&requiresBillHierarchy(detail))setParams({id});}}}><DialogTitle>{billLabels.selectBills}</DialogTitle><DialogContent><RadioGroup value={composition} onChange={event=>setComposition(event.target.value)}>{(requiresBillHierarchy(detail)?['MASTER_ONLY','MASTER_HOUSE']:['NONE','MASTER_ONLY','MASTER_HOUSE']).map(key=><FormControlLabel key={key} value={key} control={<Radio disabled={busy||key==='NONE'&&!!detail.data.documentSetup||key==='MASTER_ONLY'&&(detail.bills.some(row=>row.kind==='HOUSE')||detail.bills.filter(row=>row.kind==='MASTER').length>1)}/>} label={billLabels[key]}/>)}</RadioGroup>{error&&<Alert severity="error">{error}</Alert>}</DialogContent><DialogActions><PageActions secondary={<Button disabled={busy} onClick={()=>{setCompositionOpen(false);if(stage==='bills'&&!detail.data.documentSetup&&requiresBillHierarchy(detail))setParams({id});}}>{t.cancel}</Button>} primary={<SaveButton loading={busy} onClick={finishComposition}>{billLabels.startBills}</SaveButton>}/></DialogActions></AppDialog>}{edit&&options.forwarder&&<FreightJobEditor key={edit.id||edit.clientKey} {...editorProps}/>}</AppPageContainer>;
+ </Stack>{detail&&requestOpen&&(options.forwarder?<FreightJobEditor key={id} t={t} options={options} busy={busy} name={name} orgId={orgId} saveError={error} initial={detail} onDirtyChange={markBasic} title={billLabels.requestTitle+' \u00b7 '+detail.number} actions={<Button variant="contained" disabled={busy||workflowDirty||detail.status==='CANCELLED'||!['PENDING','ACCEPTED'].includes(detail.receiptStatus)} onClick={receive}>{billLabels.receiveTransport}</Button>} onClose={()=>go(null)} onSave={async value=>{let saved;await mutate(async()=>{saved=await api('/'+id,'PUT',value);setDetail(current=>({...current,...saved}));showNotification(t.saved,'success');});return saved;}}/>:<AppDialog open fullWidth maxWidth="lg" onClose={()=>go(null)}><DialogTitle>{billLabels.requestTitle}</DialogTitle><DialogContent><ShippingWaybillSummary job={detail} languageCode={languageCode} name={name}/></DialogContent><DialogActions><PageActions secondary={<Button onClick={()=>go(null)}>{t.cancel}</Button>}/></DialogActions></AppDialog>)}{edit&&options.forwarder&&<FreightJobEditor key={edit.id||edit.clientKey} {...editorProps}/>}</AppPageContainer>;
 }

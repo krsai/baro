@@ -8,7 +8,7 @@ const {saveFreight,listFreight,freightForwarder,registerFreightRoutes}=require('
 const {saveDocumentSetup,saveJobBill,jobDetail}=require('../backend/dist/services/freightJobs');
 const {shippingCharges}=require('../backend/dist/services/shippingRequests');
 
-test('forwarder workflow persists setup, protects bills and versions, filters jobs and rejects customers',async()=>{
+test('legacy setup is preserved without constraining optional attachments; versions, filters and customer boundaries remain enforced',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
   const row=await saveFreight(db,org,actor,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,mode:'SEA'});
@@ -22,7 +22,7 @@ test('forwarder workflow persists setup, protects bills and versions, filters jo
   await assert.rejects(saveDocumentSetup(db,org,actor,row.id,{...setup,version:saved.version,composition:'HOUSE_ONLY'}),/FREIGHT_COMPOSITION_HAS_BILLS/);
   await assert.rejects(saveDocumentSetup(db,org,actor,row.id,{...setup,version:saved.version,documentType:'BILL_OF_LADING'}),/FREIGHT_COMPOSITION_HAS_BILLS/);
   const only=await saveDocumentSetup(db,org,actor,row.id,{...setup,version:saved.version,composition:'MASTER_ONLY'});
-  await assert.rejects(saveJobBill(db,org,actor,row.id,{id:randomUUID(),kind:'HOUSE',number:'H1'}),/FREIGHT_COMPOSITION_HAS_BILLS/);
+  await saveJobBill(db,org,actor,row.id,{id:randomUUID(),kind:'HOUSE',number:'H1'});
   const edited=await saveFreight(db,org,actor,'jobs',{...only,clientKey:randomUUID(),data:{...only.data,documentSetup:{composition:'HOUSE_ONLY'}}},row.id);
   assert.equal(edited.data.documentSetup.composition,'MASTER_ONLY','registration cannot overwrite operational setup');
   assert.equal((await jobDetail(db,org,actor,row.id)).bills[0].id,master.id);

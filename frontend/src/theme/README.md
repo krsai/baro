@@ -42,7 +42,7 @@
 
 ## 페이지·모달 작업 버튼 계약과 선택 이유
 
-- 운송 상세의 내부 탭은 기존 MUI Tabs/Tab 테마를 사용하고 탭 바로 아래의 단일 Paper 본문과 연결한다. 탭만 감싼 별도 카드·본문과의 공백을 두지 않는다. BL 구성/추가는 PageSectionHeader의 한 작업 행으로 묶고 BL 입력은 일반 TextField를 사용한다. 페이지의 DialogDetailPanel 재사용 시 모달용 maxHeight·내부 스크롤을 해제해 페이지 본문이 스크롤되도록 하며, 폼별 저장·초안/재시도는 유지한다.
+- 운송 상세의 내부 탭은 기존 MUI Tabs/Tab 테마를 사용하고 탭 바로 아래의 단일 Paper 본문과 연결한다. 탭만 감싼 별도 카드·본문과의 공백을 두지 않는다. 상세는 기존 의뢰 폼을 embedded로 사용하며 서류 탭의 MBL/HBL 추가는 PageSectionHeader의 한 작업 행으로 묶는다. BL 타입/구성 선택은 제공하지 않는다. BL 입력은 일반 TextField를 사용한다. 페이지의 DialogDetailPanel 재사용 시 모달용 maxHeight·내부 스크롤을 해제해 페이지 본문이 스크롤되도록 하며, 폼별 저장·초안/재시도는 유지한다.
 
 - 운송 SR의 최신 예외: `/shipping?id=`는 목록 위 의뢰 모달이며 접수 작업을 모달 하단에서 제공한다. `stage=bills/documents`는 운송 상세 페이지다. 기존 SR도 신규 의뢰 모달과 같은 폼·초안 보호를 사용한다.
 

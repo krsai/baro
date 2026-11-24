@@ -24,3 +24,15 @@ Object.assign(shippingBillText.ko,{receiveTransport:'운송 접수'});
 Object.assign(shippingBillText.en,{receiveTransport:'Accept Shipment'});
 
 Object.assign(shippingBillText.vi,{receiveTransport:'Tiếp Nhận Vận Chuyển'});
+
+Object.assign(shippingBillText.ko,{"newMaster":"MBL 추가","newHouse":"HBL 추가","hasDocuments":"저장된 출력본이 연결된 서류는 제거할 수 없습니다.","required":"BL 번호를 확인하세요."});
+
+Object.assign(shippingBillText.en,{"newMaster":"Add MBL","newHouse":"Add HBL","hasDocuments":"A document with saved review copies cannot be removed.","required":"Check the BL number."});
+
+Object.assign(shippingBillText.vi,{"newMaster":"Thêm MBL","newHouse":"Thêm HBL","hasDocuments":"Không Thể Gỡ Chứng Từ Có Bản In Đã Lưu.","required":"Kiểm Tra Số BL."});
+
+Object.assign(shippingBillText.ko,{"master":"MBL 연결 (선택)","unlinked":"독립 HBL"});
+
+Object.assign(shippingBillText.en,{"master":"Linked MBL (Optional)","unlinked":"Standalone HBL"});
+
+Object.assign(shippingBillText.vi,{"master":"Liên Kết MBL (Tùy Chọn)","unlinked":"HBL Độc Lập"});

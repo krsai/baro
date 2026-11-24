@@ -25,15 +25,10 @@ export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:strin
   const before=id?(await tx.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE id=$1 AND "orgId"=$2 AND "jobId"=$3 AND "deletedAt" IS NULL',id,orgId,jobId))[0]:null;
   if(id&&!before)fail('FREIGHT_NOT_FOUND',404);
   const kind=before?.kind||input.kind;if(!['MASTER','HOUSE'].includes(kind)||before&&input.kind&&input.kind!==kind||input.masterIds!==undefined)fail('FREIGHT_INVALID_INPUT');
-  const composition=current.data.documentSetup?.composition;
-  if(!remove&&composition==='MASTER_ONLY'){
-   if(kind==='HOUSE')fail('FREIGHT_COMPOSITION_HAS_BILLS',409);
-   if(!before&&(await tx.$queryRawUnsafe('SELECT id FROM "FreightBill" WHERE "orgId"=$1 AND "jobId"=$2 AND kind=\'MASTER\' AND "deletedAt" IS NULL AND id<>$3 LIMIT 1',orgId,jobId,input.id||'')).length)fail('FREIGHT_COMPOSITION_HAS_BILLS',409);
-  }
   const number=remove?before.number:text(input.number),issuer=remove?before.issuer:text(input.issuer??'',200);
   if(!number)fail('FREIGHT_REQUIRED');
   const masterId=remove?before.masterId:input.masterId==null||input.masterId===''?null:text(input.masterId,100);
-  if(!remove&&kind==='HOUSE'&&!masterId&&(!before||before.masterId))fail('FREIGHT_MASTER_REQUIRED');
+
   const data=remove?before.data:input.data===undefined?before?.data||{}:billData(input.data);
   if(before&&!remove&&before.number===number&&before.issuer===issuer&&before.masterId===masterId&&JSON.stringify(billData(before.data||{}))===JSON.stringify(data)){
    if(before.version===input.version||before.version===input.version+1)return before;
@@ -42,6 +37,7 @@ export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:strin
   if(masterId&&(kind!=='HOUSE'||!(await tx.$queryRawUnsafe('SELECT id FROM "FreightBill" WHERE id=$1 AND "orgId"=$2 AND "jobId"=$3 AND kind=\'MASTER\' AND "deletedAt" IS NULL',masterId,orgId,jobId)).length))fail('FREIGHT_MASTER_SCOPE');
   if(remove&&kind==='MASTER'&&(await tx.$queryRawUnsafe('SELECT id FROM "FreightBill" WHERE "masterId"=$1 AND "orgId"=$2 AND "deletedAt" IS NULL',id,orgId)).length)fail('FREIGHT_MASTER_HAS_HOUSES',409);
   if(remove&&(await tx.$queryRawUnsafe('SELECT id FROM "ShippingChargeDraft" WHERE "billId"=$1 AND "jobId"=$2 AND "orgId"=$3 LIMIT 1',id,jobId,orgId)).length)fail('FREIGHT_BILL_HAS_CHARGES',409);
+  if(remove&&(await tx.$queryRawUnsafe(`SELECT id FROM "FreightDocument" WHERE "orgId"=$1 AND "jobId"=$2 AND (snapshot->'source'->'bill'->>'id'=$3 OR snapshot->'source'->'master'->>'id'=$3) LIMIT 1`,orgId,jobId,id)).length)fail('FREIGHT_BILL_HAS_DOCUMENTS',409);
   // A client-generated ID makes creation safely retryable, without number merging.
   const billId=id||text(input.id,80);if(!billId)fail('FREIGHT_REQUIRED');
   let rows;
@@ -55,6 +51,7 @@ export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:strin
   return rows[0];
  });
 }
+// Legacy maintenance/test compatibility only; no public route uses composition setup.
 export async function saveDocumentSetup(db:any,orgId:number,actorId:number,jobId:string,input:any){
  await freightForwarder(db,orgId,actorId);
  if(!input||Object.keys(input).some(key=>!['version','composition','documentType'].includes(key))||!['MASTER_ONLY','MASTER_HOUSE','HOUSE_ONLY'].includes(input.composition))fail('FREIGHT_INVALID_INPUT');
@@ -94,7 +91,7 @@ export function registerJobRoutes(app:any,db:any,access:any){
   return saveFreight(db,orgId,actorId,'jobs',{...req.body,status:previous?.status??'DRAFT',masterId:previous?.masterId??null,houseStatus:previous?.houseStatus??'NONE',houseNumber:previous?.houseNumber??null},req.params.id);
  };
  route('post','',save);route('put','/:id',save);
- route('put','/:id/document-setup',({orgId,actorId}:any,req:any)=>saveDocumentSetup(db,orgId,actorId,req.params.id,req.body));
+ // Legacy documentSetup remains readable for old records; new composition writes are retired.
  route('put','/:id/progress',({orgId,actorId}:any,req:any)=>saveJobProgress(db,orgId,actorId,req.params.id,req.body));
  route('post','/:id/documents',({orgId,actorId}:any,req:any)=>createJobDocument(db,orgId,actorId,req.params.id,req.body));
  route('post','/:id/trade-documents',({orgId,actorId}:any,req:any)=>saveShippingTradeDocument(db,orgId,actorId,req.params.id,req.body));

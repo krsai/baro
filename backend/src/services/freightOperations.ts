@@ -148,8 +148,6 @@ export async function saveFreight(db:any,orgId:number,actorId:number,type:keyof 
   // Operational task history is written only by the dedicated revisioned flow.
   if(type==='jobs'&&before?.data?.operations)value.data.operations=before.data.operations;
   if(type==='jobs'&&before?.data?.documentSetup){
-   const allowed=value.service==='EXPRESS'?['WAYBILL']:value.mode==='SEA'?['BILL_OF_LADING','SEA_WAYBILL']:value.mode==='AIR'?['AIR_WAYBILL']:['WAYBILL'];
-   if(!allowed.includes(before.data.documentSetup.documentType))fail('FREIGHT_COMPOSITION_HAS_BILLS',409);
    value.data.documentSetup=before.data.documentSetup;
   }
   // A status is an operational observation, not an automatically signed POD.
