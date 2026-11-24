@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:shipping-error-retry": "node scripts/shipping-error-retry-browser.test.mjs",
     "test:text-acronyms": "npm --prefix backend run build && node --test scripts/text-acronyms.test.mjs scripts/human-text-case.test.mjs scripts/workspace-live-events.test.mjs && node scripts/text-acronyms-browser.test.mjs && node scripts/human-text-case-browser.test.mjs",
     "test:shipping-address-actions": "node scripts/shipping-address-actions-browser.test.mjs",
     "test:shipping-bill-hierarchy": "npm --prefix backend run build && node --test scripts/shipping-state.test.mjs scripts/shipping-bill-hierarchy.test.mjs scripts/freight-jobs.test.mjs scripts/shipping-workbench.test.mjs scripts/shipping-trade-documents.test.mjs scripts/shipping-requests.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/shipping-bill-hierarchy-browser.test.mjs && node scripts/shipping-bill-hierarchy-browser.test.mjs --new-direct",
