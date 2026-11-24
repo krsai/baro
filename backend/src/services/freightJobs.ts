@@ -1,3 +1,4 @@
+import {linkedJobBills,searchJobMasters,changeJobMasterLink} from './freightMasterLinks';
 import {randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -13,16 +14,18 @@ async function job(db:any,orgId:number,id:string,lock=false){
 }
 export async function jobDetail(db:any,orgId:number,actorId:number,id:string){
  await freightActor(db,orgId,actorId);const row=await job(db,orgId,id);
- const bills=await db.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE "orgId"=$1 AND "jobId"=$2 AND "deletedAt" IS NULL ORDER BY "createdAt",id',orgId,id);
+ const bills=await linkedJobBills(db,orgId,id);
  const documents=await db.$queryRawUnsafe('SELECT id,kind,number,"sourceVersion","createdAt",snapshot->\'tradeDocument\'->>\'sourceMode\' AS "sourceMode" FROM "FreightDocument" WHERE "orgId"=$1 AND "jobId"=$2 ORDER BY "createdAt" DESC,id',orgId,id);
  return {...row,bills,documents};
 }
 export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:string,input:any,id?:string,remove=false){
  await freightForwarder(db,orgId,actorId);
  return retryEditTransaction(db,async(tx:any)=>{
-  await freightForwarder(tx,orgId,actorId);const current=await job(tx,orgId,jobId,true);
+  await freightForwarder(tx,orgId,actorId);
+  if(id){const source=await tx.$queryRawUnsafe('SELECT "jobId" FROM "FreightBill" WHERE id=$1 AND "orgId"=$2',id,orgId);if(source.length)await tx.$queryRawUnsafe('SELECT id FROM "FreightJob" WHERE "orgId"=$1 AND id=ANY($2::text[]) ORDER BY id FOR UPDATE',orgId,[jobId,source[0].jobId]);}
+  const current=await job(tx,orgId,jobId,true);
   if(current.receiptStatus!=='ACCEPTED'||current.status==='CANCELLED')fail('SHIPPING_NOT_ACCEPTED',409);
-  const before=id?(await tx.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE id=$1 AND "orgId"=$2 AND "jobId"=$3 AND "deletedAt" IS NULL',id,orgId,jobId))[0]:null;
+  const before=id?(await tx.$queryRawUnsafe('SELECT b.* FROM "FreightBill" b WHERE id=$1 AND "orgId"=$2 AND ("jobId"=$3 OR kind=\'MASTER\' AND EXISTS(SELECT 1 FROM "FreightJobMaster" l WHERE l."jobId"=$3 AND l."orgId"=$2 AND l."masterBillId"=b.id AND l."deletedAt" IS NULL)) AND "deletedAt" IS NULL',id,orgId,jobId))[0]:null;
   if(id&&!before)fail('FREIGHT_NOT_FOUND',404);
   const kind=before?.kind||input.kind;if(!['MASTER','HOUSE'].includes(kind)||before&&input.kind&&input.kind!==kind||input.masterIds!==undefined)fail('FREIGHT_INVALID_INPUT');
   const number=remove?before.number:text(input.number),issuer=remove?before.issuer:text(input.issuer??'',200);
@@ -34,10 +37,14 @@ export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:strin
    if(before.version===input.version||before.version===input.version+1)return before;
   }
   if(before&&before.version!==input.version)fail('FREIGHT_CHANGED',409);
-  if(masterId&&(kind!=='HOUSE'||!(await tx.$queryRawUnsafe('SELECT id FROM "FreightBill" WHERE id=$1 AND "orgId"=$2 AND "jobId"=$3 AND kind=\'MASTER\' AND "deletedAt" IS NULL',masterId,orgId,jobId)).length))fail('FREIGHT_MASTER_SCOPE');
+  if(masterId&&(kind!=='HOUSE'||!(await tx.$queryRawUnsafe('SELECT b.id FROM "FreightBill" b WHERE id=$1 AND "orgId"=$2 AND kind=\'MASTER\' AND "deletedAt" IS NULL AND EXISTS(SELECT 1 FROM "FreightJobMaster" l WHERE l."jobId"=$3 AND l."orgId"=$2 AND l."masterBillId"=b.id AND l."deletedAt" IS NULL) FOR SHARE',masterId,orgId,jobId)).length))fail('FREIGHT_MASTER_SCOPE');
   if(remove&&kind==='MASTER'&&(await tx.$queryRawUnsafe('SELECT id FROM "FreightBill" WHERE "masterId"=$1 AND "orgId"=$2 AND "deletedAt" IS NULL',id,orgId)).length)fail('FREIGHT_MASTER_HAS_HOUSES',409);
-  if(remove&&(await tx.$queryRawUnsafe('SELECT id FROM "ShippingChargeDraft" WHERE "billId"=$1 AND "jobId"=$2 AND "orgId"=$3 LIMIT 1',id,jobId,orgId)).length)fail('FREIGHT_BILL_HAS_CHARGES',409);
-  if(remove&&(await tx.$queryRawUnsafe(`SELECT id FROM "FreightDocument" WHERE "orgId"=$1 AND "jobId"=$2 AND (snapshot->'source'->'bill'->>'id'=$3 OR snapshot->'source'->'master'->>'id'=$3) LIMIT 1`,orgId,jobId,id)).length)fail('FREIGHT_BILL_HAS_DOCUMENTS',409);
+  if(remove&&(await tx.$queryRawUnsafe('SELECT id FROM "ShippingChargeDraft" WHERE "billId"=$1 AND "orgId"=$2 LIMIT 1',id,orgId)).length)fail('FREIGHT_BILL_HAS_CHARGES',409);
+  if(remove&&(await tx.$queryRawUnsafe(`SELECT id FROM "FreightDocument" WHERE "orgId"=$1 AND (snapshot->'source'->'bill'->>'id'=$2 OR snapshot->'source'->'master'->>'id'=$2) LIMIT 1`,orgId,id)).length)fail('FREIGHT_BILL_HAS_DOCUMENTS',409);
+  if(remove&&kind==='MASTER'){
+   if((await tx.$queryRawUnsafe('SELECT "jobId" FROM "FreightJobMaster" WHERE "masterBillId"=$1 AND "orgId"=$2 AND "jobId"<>$3 AND "deletedAt" IS NULL LIMIT 1',id,orgId,jobId)).length)fail('FREIGHT_MASTER_HAS_JOBS',409);
+   await tx.$executeRawUnsafe('UPDATE "FreightJobMaster" SET "deletedAt"=CURRENT_TIMESTAMP,version=version+1,"updatedByEmployeeId"=$1,"updatedAt"=CURRENT_TIMESTAMP WHERE "masterBillId"=$2 AND "jobId"=$3 AND "orgId"=$4 AND "deletedAt" IS NULL',actorId,id,jobId,orgId);
+  }
   // A client-generated ID makes creation safely retryable, without number merging.
   const billId=id||text(input.id,80);if(!billId)fail('FREIGHT_REQUIRED');
   let rows;
@@ -77,6 +84,9 @@ export function registerJobRoutes(app:any,db:any,access:any){
  const route=(method:string,path:string,work:any)=>app[method]('/freight/transport-jobs'+path,async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await work(scope,req));});
  route('get','',({orgId,actorId}:any,req:any)=>listFreight(db,orgId,actorId,'jobs',req.query));
  route('get','/options',async({orgId}:any)=>({forwarder:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true}}),employees:await db.employee.findMany({where:{orgId,status:'ACTIVE'},select:{id:true,name:true,employeeNo:true},orderBy:{name:'asc'}}),currencies:await db.currency.findMany({select:{code:true,name:true},orderBy:{code:'asc'}})}));
+ route('get','/:id/master-bills',({orgId,actorId}:any,req:any)=>searchJobMasters(db,orgId,actorId,req.params.id,req.query.q||''));
+ route('post','/:id/master-links/:masterId',({orgId,actorId}:any,req:any)=>changeJobMasterLink(db,orgId,actorId,req.params.id,req.params.masterId,req.body));
+ route('delete','/:id/master-links/:masterId',({orgId,actorId}:any,req:any)=>changeJobMasterLink(db,orgId,actorId,req.params.id,req.params.masterId,req.body,true));
  route('get','/:id',({orgId,actorId}:any,req:any)=>jobDetail(db,orgId,actorId,req.params.id));
  const save=async({orgId,actorId}:any,req:any)=>{
   const previous=req.params.id?await job(db,orgId,req.params.id):null;

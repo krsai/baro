@@ -62,8 +62,25 @@ model FreightBill {
  createdAt DateTime @default(now())
  updatedAt DateTime @default(now())
  @@unique([id,jobId,orgId,kind])
+  @@unique([id,orgId,kind],map:"FreightBill_id_org_kind_key")
  @@index([orgId,jobId],map:"FreightBill_job_idx")
  @@index([orgId,kind,number,issuer],map:"FreightBill_number_idx")
+}
+model FreightJobMaster {
+ jobId String
+ orgId Int
+ masterBillId String
+ masterKind String @default("MASTER")
+ version Int @default(1)
+ deletedAt DateTime?
+ requestId String?
+ requestHash String?
+ createdByEmployeeId Int
+ updatedByEmployeeId Int
+ createdAt DateTime @default(now())
+ updatedAt DateTime @default(now())
+ @@id([jobId,masterBillId])
+ @@index([orgId,masterBillId],map:"FreightJobMaster_master_idx")
 }
 model FreightTransportTarget {
  id String @id

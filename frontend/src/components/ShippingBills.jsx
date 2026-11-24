@@ -20,9 +20,9 @@ import {shippingBillText} from '../constants/shippingBills';
 import {freightText} from '../constants/freight';
 import {billHierarchy,initialBillData} from '../utils/shippingBillData.mjs';
 
-export default function ShippingBills({job,orgId,languageCode,onDirtyChange,onChanged,initialBillId}){
+export default function ShippingBills({job,orgId,languageCode,onDirtyChange,onChanged,initialBillId,initialKind,initialMasterId}){
  const t=shippingBillText[languageCode]||shippingBillText.en,dialogs=usePageDialogs();
- const [rows,setRows]=useState(job.bills||[]),[selected,setSelected]=useState(()=>job.bills?.some(row=>row.id===initialBillId)?initialBillId:billHierarchy(job.bills||[])[0]?.id||null),[draft,setDraft]=useState(null),[formDirty,setFormDirty]=useState(false),[chargeDirty,setChargeDirty]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [rows,setRows]=useState(job.bills||[]),[selected,setSelected]=useState(()=>job.bills?.some(row=>row.id===initialBillId)?initialBillId:billHierarchy(job.bills||[])[0]?.id||null),[draft,setDraft]=useState(()=>['MASTER','HOUSE'].includes(initialKind)?{id:crypto.randomUUID(),kind:initialKind,number:'',issuer:'',masterId:initialKind==='HOUSE'&&job.bills.some(row=>row.id===initialMasterId&&row.kind==='MASTER')?initialMasterId:null,data:{}}:null),[formDirty,setFormDirty]=useState(false),[chargeDirty,setChargeDirty]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const dirty=formDirty||chargeDirty,blocked=dirty||busy;
  useEffect(()=>{onDirtyChange?.(blocked);return()=>onDirtyChange?.(false);},[blocked,onDirtyChange]);
  useEffect(()=>{if(!blocked)setRows(job.bills||[]);},[job.bills]);
@@ -33,7 +33,7 @@ export default function ShippingBills({job,orgId,languageCode,onDirtyChange,onCh
  const discard=async()=>!dirty||await dialogs.confirm('',{purpose:'discard'});
  const choose=async row=>{if(busy||row.id===selected&&!draft)return;if(!await discard())return;setDraft(null);setSelected(row.id);setError('');};
  const add=async kind=>{if(busy||!await discard())return;const next={id:crypto.randomUUID(),kind,number:'',issuer:'',masterId:kind==='HOUSE'&&rows.some(row=>row.id===parentId&&row.kind==='MASTER')?parentId:null,data:{}};setSelected(null);setDraft(next);setError('');};
- const saved=row=>{setRows(old=>[...old.filter(value=>value.id!==row.id),row]);setSelected(row.id);setDraft(null);onChanged?.();};
+ const saved=row=>{setRows(old=>[...old.filter(value=>value.id!==row.id),{...old.find(value=>value.id===row.id),...row}]);setSelected(row.id);setDraft(null);onChanged?.();};
  const remove=async row=>{
   if(busy||!canEdit||!await discard()||!await dialogs.confirm(t.remove+' '+row.number+'?'))return;
   setBusy(true);setError('');try{await requestJSON('/freight/transport-jobs/'+job.id+'/bills/'+row.id+buildQueryString({orgId}),{method:'DELETE',body:JSON.stringify({version:row.version})});const next=rows.filter(value=>value.id!==row.id);setRows(next);setSelected(billHierarchy(next)[0]?.id||null);setDraft(null);onChanged?.();}
@@ -45,8 +45,9 @@ export default function ShippingBills({job,orgId,languageCode,onDirtyChange,onCh
   {error&&<AppNotice severity="error">{error}</AppNotice>}
   <ListDetailLayout listWidth="minmax(220px,280px)" detailWidth="minmax(0,1fr)" list={<DialogRecordList rows={billHierarchy(rows)} selectedKey={selected} onSelect={choose} onPreview={row=>{if(!blocked&&!draft){setSelected(row.id);setError('');}}} previewDisabled={blocked||!!draft} disabled={busy} languageCode={languageCode} columns={[{key:'number',label:t.number,value:row=><Box component="span" sx={{pl:row.depth?2:0}}>{row.kind==='MASTER'?'MBL':'HBL'} · {row.number}{row.unlinked&&<Typography variant="caption" display="block">{t.unlinked}</Typography>}</Box>}]}/>}
    detail={current?<Stack spacing={2}>
-    <BillForm key={current.id+':'+(current.version?'saved':'new')} initial={current} rows={rows} job={job} orgId={orgId} languageCode={languageCode} readOnly={!canEdit} disabled={busy} onBusyChange={setBusy} onDirtyChange={markForm} onSaved={saved} onDelete={current.version?()=>remove(current):undefined}/>
-    {current.version&&canEdit&&<ShippingChargeDrafts key={current.id} billId={current.id} orgId={orgId} jobId={job.id} languageCode={languageCode} readOnly={false} onDirtyChange={markCharges} refreshKey={job.version+':'+chargeRevision} onSaved={chargesSaved}/>}
+    <BillForm key={current.id+':'+(current.version?'saved':'new')} initial={current} rows={rows} job={job} orgId={orgId} languageCode={languageCode} readOnly={!canEdit} disabled={busy} onBusyChange={setBusy} onDirtyChange={markForm} onSaved={saved} onDelete={current.version&&(current.kind!=='MASTER'||current.jobId===job.id&&!(current.linkedJobCount>1))?()=>remove(current):undefined}/>
+    {current.version&&canEdit&&current.jobId!==job.id&&current.kind==='MASTER'&&<Typography variant="caption" color="text.secondary">{({ko:'MBL 금액은 등록 업무에서 관리합니다.',en:'MBL charges are managed in its source job.',vi:'Chi Phí MBL Được Quản Lý Trong Công Việc Gốc.'})[languageCode]}</Typography>}
+    {current.version&&canEdit&&current.jobId===job.id&&<ShippingChargeDrafts key={current.id} billId={current.id} orgId={orgId} jobId={job.id} languageCode={languageCode} readOnly={false} onDirtyChange={markCharges} refreshKey={job.version+':'+chargeRevision} onSaved={chargesSaved}/>}
    </Stack>:null}/>
 
  </Stack>;
@@ -70,7 +71,7 @@ function BillForm({initial,rows,job,orgId,languageCode,readOnly,disabled,onBusyC
  };
  const field=(key,multiline=false)=> <TextField fullWidth size="small" key={key} name={key==='voyage'?'voyageNumber':key} label={t[key]||f[key]} value={value.data[key]||''} multiline={multiline} type={['etd','eta','issueDate'].includes(key)?'date':undefined} minRows={multiline?3:undefined} inputProps={{'aria-label':t[key]||f[key],maxLength:key==='cargo'?4000:['shipper','consignee','notify','deliveryAgent','marks'].includes(key)?2000:500}} slotProps={['etd','eta','issueDate'].includes(key)?{inputLabel:{shrink:true}}:undefined} disabled={blocked} onChange={event=>setValue(old=>({...old,data:{...old.data,[key]:event.target.value}}))}/>;
  const grid={display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:'repeat(2,minmax(0,1fr))'},gap:2};
- return <DialogDetailPanel sx={{maxHeight:'none'}} contentProps={{sx:{overflowY:'visible'}}} title={(value.kind==='MASTER'?'MBL':'HBL')+' · '+(value.number||t.title)} footer={<DialogRecordActions busy={busy} onDelete={!readOnly&&!uncertain?onDelete:undefined} deleteDisabled={disabled} deleteLabel={t.remove} onSave={!readOnly?save:undefined} saveLabel={uncertain?t.retry:t.save} saveDisabled={disabled||!uncertain&&value.version&&!dirty}/>}><Stack spacing={2}>
+ return <DialogDetailPanel sx={{maxHeight:'none'}} contentProps={{sx:{overflowY:'visible'}}} title={(value.kind==='MASTER'?'MBL':'HBL')+' · '+(value.number||t.title)+(value.kind==='MASTER'&&initial.linkedJobCount>1?' · '+initial.linkedJobCount+' '+({ko:'연결 업무',en:'Linked Jobs',vi:'Công Việc Liên Kết'})[languageCode]:'')} footer={<DialogRecordActions busy={busy} onDelete={!readOnly&&!uncertain?onDelete:undefined} deleteDisabled={disabled} deleteLabel={t.remove} onSave={!readOnly?save:undefined} saveLabel={uncertain?t.retry:t.save} saveDisabled={disabled||!uncertain&&value.version&&!dirty}/>}><Stack spacing={2}>
   {error&&<AppNotice severity="error">{error}</AppNotice>}
   <Box sx={grid}><TextField fullWidth size="small" name="billNumber" label={t.number} value={value.number} inputProps={{maxLength:120,'aria-label':t.number}} disabled={blocked} onChange={event=>setValue(old=>({...old,number:event.target.value}))}/><TextField fullWidth size="small" name="companyName" label={t.issuer} value={value.issuer} inputProps={{maxLength:200,'aria-label':t.issuer}} disabled={blocked} onChange={event=>setValue(old=>({...old,issuer:event.target.value}))}/>{value.kind==='HOUSE'&&<SearchableSelect label={t.master} languageCode={languageCode} disabled={blocked} options={rows.filter(row=>row.kind==='MASTER')} value={rows.find(row=>row.id===value.masterId)||null} getOptionLabel={row=>row.number} getLookupCode={row=>row.number} isOptionEqualToValue={(a,b)=>a.id===b.id} onChange={(_,row)=>setValue(old=>({...old,masterId:row?.id||null}))}/>}</Box>
   <Box sx={grid}>{['shipper','consignee','notify'].map(key=>field(key,true))}</Box>

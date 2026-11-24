@@ -1,3 +1,4 @@
+import {linkedJobBills} from './freightMasterLinks';
 import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -82,7 +83,7 @@ export async function createJobDocument(db:any,orgId:number,actorId:number,id:st
   const previous=(await tx.$queryRawUnsafe('SELECT * FROM "FreightDocument" WHERE "orgId"=$1 AND "clientKey"=$2',orgId,input.clientKey))[0];
   if(previous){if(previous.jobId!==id||previous.snapshot.requestHash!==requestHash)fail('FREIGHT_KEY_CONFLICT',409);return previous;}
   if(row.version!==input.version)fail('FREIGHT_CHANGED',409);
-  const bills=await tx.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE "orgId"=$1 AND "jobId"=$2 AND "deletedAt" IS NULL ORDER BY "createdAt",id',orgId,id),bill=input.billId?bills.find((b:any)=>b.id===input.billId):null;
+  const bills=await linkedJobBills(tx,orgId,id),bill=input.billId?bills.find((b:any)=>b.id===input.billId):null;
   if(input.billId&&!bill)fail('FREIGHT_MASTER_SCOPE');
   if((input.kind==='HOUSE_DRAFT'&&(!bill||bill.kind!=='HOUSE'))||(input.kind==='MASTER_DRAFT'&&(!bill||bill.kind!=='MASTER')))fail('FREIGHT_DOCUMENT_REQUIRED');
   if(!row.data.origin||!row.data.destination)fail('FREIGHT_DOCUMENT_REQUIRED');

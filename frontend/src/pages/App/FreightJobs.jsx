@@ -2,6 +2,7 @@ import {shippingState} from '../../utils/shippingState.mjs';
 import AppDialog from '../../components/AppDialog';
 import PageActions from '../../components/PageActions';
 import SaveButton from '../../components/SaveButton';
+import ShippingWorkDocuments from '../../components/ShippingWorkDocuments';
 import ShippingOperations from '../../components/ShippingOperations';
 import {shippingOperationText} from '../../constants/shippingOperations';
 import ShippingBills from '../../components/ShippingBills';
@@ -59,15 +60,16 @@ function Jobs({orgId}){
  const [source,setSource]=useState(''),[status,setStatus]=useState('');
  const documentLabel=detail?.data.documentSetup?.documentType?w[detail.data.documentSetup.documentType]:null;
  if(documentLabel&&detail.data.documentSetup.documentType!=='BILL_OF_LADING')Object.assign(t,{bills:w.bills,MASTER:'Master '+documentLabel,HOUSE:'House '+documentLabel,billNumber:documentLabel+' #'});
- const [dirtyAreas,setDirtyAreas]=useState({basic:false,progress:false,documents:false,trade:false,charges:false,copies:false});
+ const [dirtyAreas,setDirtyAreas]=useState({basic:false,progress:false,documents:false,trade:false,charges:false,copies:false,masterLink:false});
  const workflowDirty=Object.values(dirtyAreas).some(Boolean);
+ const markMasterLink=useCallback(value=>setDirtyAreas(old=>old.masterLink===value?old:{...old,masterLink:value}),[]);
  const markBasic=useCallback(value=>setDirtyAreas(old=>old.basic===value?old:{...old,basic:value}),[]);
  const markProgress=useCallback(value=>setDirtyAreas(old=>old.progress===value?old:{...old,progress:value}),[]);
  const markDocuments=useCallback(value=>setDirtyAreas(old=>old.documents===value?old:{...old,documents:value}),[]);
  const markTrade=useCallback(value=>setDirtyAreas(old=>old.trade===value?old:{...old,trade:value}),[]);
  const markCopies=useCallback(value=>setDirtyAreas(old=>old.copies===value?old:{...old,copies:value}),[]);
  const markCharges=useCallback(value=>setDirtyAreas(old=>old.charges===value?old:{...old,charges:value}),[]);
- const changeStage=async (value,billId)=>{if(busy)return;if(workflowDirty&&!await dialogs.confirm('',{purpose:'discard'}))return;setParams({...(!jobId?{id}:{}),...(value!=='basic'?{stage:value}:{}),...(billId?{billId}:{})});};
+ const changeStage=async (value,billId,newBill,masterId)=>{if(busy)return;if(workflowDirty&&!await dialogs.confirm('',{purpose:'discard'}))return;setParams({...(!jobId?{id}:{}),...(value!=='basic'?{stage:value}:{}),...(billId?{billId}:{}),...(newBill?{newBill}:{}),...(masterId?{masterId}:{})});};
  useEffect(()=>{if(active&&detail?.receiptStatus==='PENDING'&&stage!=='basic')setParams({...(!jobId?{id}:{}),stage:'basic'});},[active,id,stage,detail?.receiptStatus]);
  useEffect(()=>{if(active&&detail?.receiptStatus==='ACCEPTED'&&!jobId)continueRequest();},[active,id,jobId,detail?.receiptStatus]);
  const requestOpen=!!id&&stage==='basic'&&detail?.receiptStatus!=='ACCEPTED';
@@ -99,9 +101,9 @@ function Jobs({orgId}){
 
  <Box>{stage!=='basic'&&<Box data-shipping-tabs><Tabs value={stage} variant="scrollable" allowScrollButtonsMobile onChange={(_,value)=>changeStage(value)}>{['bills','progress','documents','charges'].map(key=><Tab key={key} id={'shipping-'+key+'-tab'} aria-controls={'shipping-'+key+'-panel'} value={key} label={key==='bills'?op.overview:key==='documents'?billLabels.documents:op[key]} disabled={detail.receiptStatus==='PENDING'}/>)}</Tabs></Box>}
  <Paper variant="outlined" role="tabpanel" id={'shipping-'+stage+'-panel'} aria-labelledby={'shipping-'+stage+'-tab'} sx={{p:{xs:1.5,sm:2},minWidth:0,borderTopLeftRadius:0}}><Stack spacing={2}>
- {stage==='bills'&&<ShippingOperations key={id+':work'} job={detail} employees={options.employees} languageCode={languageCode} busy={busy} formId={'shipping-operation-'+id} onDirtyChange={markBasic} onStateChange={markWorkState} onRequest={()=>setRequestPreview(true)} onReload={async()=>{const latest=await api('/'+id);setDetail(latest);return latest;}} onDocument={billId=>changeStage('documents',billId)} onSave={async value=>{let saved;await mutate(async()=>{saved=await api('/'+id+'/operation-details','PUT',value);setDetail(current=>({...current,...saved}));showNotification(op.saved,'success');},false);return saved;}}/>}
+ {stage==='bills'&&<ShippingOperations key={id+':work'} job={detail} employees={options.employees} languageCode={languageCode} busy={busy} formId={'shipping-operation-'+id} onDirtyChange={markBasic} onStateChange={markWorkState} onRequest={()=>setRequestPreview(true)} onReload={async()=>{const latest=await api('/'+id);setDetail(latest);return latest;}} documents={(detail.service!=='EXPRESS'&&['SEA','AIR'].includes(detail.mode)||detail.bills.length>0)&&<ShippingWorkDocuments job={detail} orgId={orgId} languageCode={languageCode} busy={busy} onDirtyChange={markMasterLink} onOpen={billId=>changeStage('documents',billId)} onCreate={(kind,masterId)=>changeStage('documents',null,kind,masterId)} onChanged={()=>setReload(n=>n+1)}/>} onSave={async value=>{let saved;await mutate(async()=>{saved=await api('/'+id+'/operation-details','PUT',value);setDetail(current=>({...current,...saved}));showNotification(op.saved,'success');},false);return saved;}}/>}
  {stage==='charges'&&detail.receiptStatus==='ACCEPTED'&&<ShippingChargeDrafts orgId={orgId} jobId={id} languageCode={languageCode} readOnly={detail.status==='CANCELLED'} onDirtyChange={markCharges} refreshKey={detail.version}/>}
- {stage==='documents'&&<ShippingBills key={id+':attachments'} job={detail} initialBillId={params.get('billId')} orgId={orgId} languageCode={languageCode} onDirtyChange={markDocuments} onChanged={()=>setReload(value=>value+1)}/>}
+ {stage==='documents'&&<ShippingBills key={id+':attachments'} job={detail} initialBillId={params.get('billId')} initialKind={params.get('newBill')} initialMasterId={params.get('masterId')} orgId={orgId} languageCode={languageCode} onDirtyChange={markDocuments} onChanged={()=>setReload(value=>value+1)}/>}
  {stage==='progress'&&detail.receiptStatus==='ACCEPTED'&&detail.status!=='CANCELLED'&&<EntityDetailSection title={trade.progress}><ShippingProgress embedded key={id} job={detail} employees={options.employees} languageCode={languageCode} busy={busy} onDirtyChange={markProgress} onSave={value=>mutate(async()=>{await api('/'+id+'/progress','PUT',value);showNotification(t.saved,'success');})}/></EntityDetailSection>}
 
  {stage==='documents'&&detail.receiptStatus==='ACCEPTED'&&detail.status!=='CANCELLED'&&<ShippingTradeDocuments key={id+':trade'} job={detail} orgId={orgId} languageCode={languageCode} currencies={options.currencies||[]} onDirtyChange={markTrade}/>}
