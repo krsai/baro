@@ -20,6 +20,18 @@ test('shipping query detail follows the shared list/detail naming without renami
  }
 });
 
+test('shipping record paths give each detail its own workspace identity and keep document tabs in that detail',()=>{
+ for(const lang of ['ko','en','vi']){
+  const resolve=path=>resolvePageNaming(path,lang,()=> 'Transport');
+  assert.equal(resolve('/shipping').mode,'list');
+  assert.equal(resolve('/shipping/job1').mode,'detail');
+  assert.equal(resolve('/shipping/job1').key,'transportList');
+  assert.notEqual(resolve('/shipping/job1').path,resolve('/shipping').path);
+  assert.notEqual(resolve('/shipping/job1').path,resolve('/shipping/job2').path);
+  assert.equal(resolve('/shipping/job1?stage=documents').path,resolve('/shipping/job1').path);
+ }
+});
+
 test('retired industry menu link inherits the unified access policy identity',()=>{
  const page=resolvePageNaming('/system-setting/industry-menus','ko',key=>key==='menu.accessPolicy'?'접근 권한':key);
  assert.equal(page.key,'accessPolicy');assert.equal(page.title,'접근 권한');assert.equal(page.mode,'page');

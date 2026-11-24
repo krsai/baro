@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:shipping-workspace-tabs": "node --test scripts/page-naming.test.mjs scripts/workspace-navigation-regression.test.mjs scripts/workspace-tab-keep-alive-regression.test.mjs && node scripts/shipping-workspace-tabs-browser.test.mjs",
     "test:shipping-error-retry": "node scripts/shipping-error-retry-browser.test.mjs",
     "test:text-acronyms": "npm --prefix backend run build && node --test scripts/text-acronyms.test.mjs scripts/human-text-case.test.mjs scripts/workspace-live-events.test.mjs && node scripts/text-acronyms-browser.test.mjs && node scripts/human-text-case-browser.test.mjs",
     "test:shipping-address-actions": "node scripts/shipping-address-actions-browser.test.mjs",

@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict';
+import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
+import {spawn} from 'node:child_process';
+import {chromium} from 'playwright-core';
+import {shippingBillText} from '../frontend/src/constants/shippingBills.js';
+import {jobText} from '../frontend/src/constants/freightJobs.js';
+import {shippingText} from '../frontend/src/constants/shippingRequests.js';
+
+const fixture='frontend/shipping-workspace-tabs-test.html',modulePath='frontend/shipping-workspace-tabs-test.jsx',port=43559;
+assert.ok(!existsSync(fixture));
+// Exercise the actual page, tab state, naming and request scopes. Route locations
+// are frozen per preserved page, as opposed to remounting it on each tab click.
+writeFileSync(fixture,'<html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="/shipping-workspace-tabs-test.jsx"></script></html>');
+assert.ok(!existsSync(modulePath));writeFileSync(modulePath,`
+import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter,Routes,Route,useNavigate,useLocation} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Page from '/src/pages/App/FreightJobs';import {AppProvider,useAppState,useAppActions} from '/src/context/AppContext';import {RequestScopeBoundary} from '/src/context/RequestScopeContext';import {PageNamingProvider} from '/src/context/PageNamingContext';import {resolvePageNaming} from '/src/utils/pageNaming.mjs';import {getUiMessage} from '/src/constants/uiMessages';import {useLanguage} from '/src/context/LanguageContext';
+function Workspace(){const location=useLocation(),navigate=useNavigate(),actions=useAppActions(),{openTabs}=useAppState(),{languageCode}=useLanguage();const remembered=React.useRef(new Map());remembered.current.set(location.pathname,location.pathname+location.search);window.shippingPath=location.pathname;React.useEffect(()=>actions.setNavigateToPath(navigate),[navigate]);React.useEffect(()=>{const naming=resolvePageNaming(location.pathname,languageCode,key=>getUiMessage(key,key,languageCode));actions.openTab({id:location.pathname,path:location.pathname+location.search,label:naming.title});},[location.pathname,location.search]);return <><nav>{openTabs.map(tab=><button key={tab.id} data-workspace-tab={tab.id} onClick={()=>navigate(remembered.current.get(tab.id)||tab.path)}>{tab.label}</button>)}</nav>{openTabs.map(tab=><section key={tab.id} data-workspace-page={tab.id} style={{display:location.pathname===tab.id?'block':'none'}}><RequestScopeBoundary scopeId={tab.id} active={location.pathname===tab.id}><PageNamingProvider path={remembered.current.get(tab.id)||tab.path}><Routes location={remembered.current.get(tab.id)||tab.path}><Route path="/shipping" element={<Page/>}/><Route path="/shipping/:jobId" element={<Page/>}/></Routes></PageNamingProvider></RequestScopeBoundary></section>)}</>}
+createRoot(document.getElementById('root')).render(<ThemeProvider theme={theme}><CssBaseline/><MemoryRouter initialEntries={['/shipping']}><AppProvider><Workspace/></AppProvider></MemoryRouter></ThemeProvider>);
+`);
+const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:'frontend',stdio:'ignore',windowsHide:true});let browser;
+try{
+ for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/shipping-workspace-tabs-test.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
+ browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+ for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
+  const page=await browser.newPage({viewport:{width,height:1000}}),errors=[];page.setDefaultTimeout(15000);page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
+  await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:7,activeOrgType:"SERVICE"});'}));
+  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
+  const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'},customer={id:11,name:'CUSTOMER',code:'CUS'};
+  const jobs=['job1','job2'].map(id=>({id,number:id.toUpperCase(),orgId:7,customerId:11,mode:'SEA',service:'GENERAL',status:'DRAFT',receiptStatus:'ACCEPTED',version:1,data:{customer,origin:'HANOI',destination:'BUSAN',shipper:'SENDER',consignee:'BUYER',cargo:'CARGO'},bills:[],documents:[]}));
+  await page.route('**/text-acronyms',r=>r.fulfill({json:{revision:0,entries:[{acronym:'BL'},{acronym:'MBL'},{acronym:'HBL'}]}}));
+  await page.route('**/freight/**',route=>{const request=route.request();if(request.method()==='OPTIONS')return route.fulfill({headers});const key=new URL(request.url()).pathname.split('/freight/')[1];const json=key==='options'?[customer]:key==='transport-jobs/options'?{forwarder:{id:7,name:'FORWARDER'},employees:[],currencies:[]}:key==='transport-jobs'?{rows:jobs,total:2}:jobs.find(job=>key==='transport-jobs/'+job.id);assert.ok(json,'Unexpected API '+key);return route.fulfill({headers,json});});
+  await page.route('**/shipping-requests/**',route=>{const key=new URL(route.request().url()).pathname.split('/shipping-requests/')[1];return route.fulfill({headers,json:['presets','parties'].includes(key)?[]:{rows:[],currencies:[],parties:[]}});});
+  await page.goto(`http://127.0.0.1:${port}/shipping-workspace-tabs-test.html`);
+  const list=page.locator('[data-workspace-page="/shipping"]'),labels={...jobText[lang],...shippingText[lang]},b=shippingBillText[lang];
+  await list.locator('[data-shipping-row="job1"]').waitFor();await list.getByRole('textbox',{name:labels.search,exact:true}).fill('keep filter');await list.locator('[data-table-status=loading]').waitFor({state:'hidden'});
+  await list.locator('[data-shipping-row="job1"]').dblclick();await page.waitForFunction(()=>window.shippingPath==='/shipping/job1');
+  const first=page.locator('[data-workspace-page="/shipping/job1"]');await first.getByTestId('shipping-detail-form').waitFor();assert.equal(await page.locator('[data-workspace-tab]').count(),2);
+  assert.equal(await page.locator('[data-workspace-tab="/shipping/job1"]').textContent(),await first.locator('h1').textContent());
+  const draft=first.getByTestId('shipping-detail-form').locator('textarea:not([aria-hidden=true])').last();await draft.fill('Keep Detail Draft');
+  await page.locator('[data-workspace-tab="/shipping"]').click();assert.equal(await list.getByRole('textbox',{name:labels.search,exact:true}).inputValue(),'keep filter');
+  await list.locator('[data-shipping-row="job1"]').dblclick();await first.waitFor({state:'visible'});assert.equal(await page.locator('[data-workspace-tab]').count(),2);assert.equal(await draft.inputValue(),'Keep Detail Draft');
+  await page.locator('[data-workspace-tab="/shipping"]').click();await list.locator('[data-shipping-row="job2"]').dblclick();await page.waitForFunction(()=>window.shippingPath==='/shipping/job2');
+  const second=page.locator('[data-workspace-page="/shipping/job2"]');await second.getByTestId('shipping-detail-form').waitFor();assert.equal(await page.locator('[data-workspace-tab]').count(),3);await second.getByRole('tab',{name:b.documents,exact:true}).click();await second.locator('[data-shipping-bills]').waitFor();
+  await page.locator('[data-workspace-tab="/shipping/job1"]').click();assert.equal(await draft.inputValue(),'Keep Detail Draft');assert.equal(await first.getByRole('tab',{name:b.transportDetails,exact:true}).getAttribute('aria-selected'),'true');assert.deepEqual(errors,[]);
+  await page.close();console.log('PASS shipping list preserved, detail tabs distinct/deduplicated, independent tab/draft state',lang,width);
+ }
+}finally{await browser?.close();server.kill();if(existsSync(fixture))unlinkSync(fixture);if(existsSync(modulePath))unlinkSync(modulePath);}

@@ -1,5 +1,6 @@
 import SystemShippingLocations from './pages/App/system/SystemShippingLocations';
 import ShippingRequests from './pages/App/ShippingRequests';
+import FreightJobs from './pages/App/FreightJobs';
 import React from 'react';
 import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
@@ -228,6 +229,7 @@ const router = createBrowserRouter([
           {path:'account-overview',element:<AccountOverview/>},
           {path:'transport-exchange',element:<Navigate to="/shipping" replace/>},
           {path:'shipping',element:<ShippingRequests/>},
+          {path:'shipping/:jobId',element:<FreightJobs/>},
           {path:'freight',element:<FreightWorkspace/>},
           {path:'bank-ledger',element:<BankLedger/>},
           {path:'bank-ledger/new',element:<BankLedgerEntry/>},

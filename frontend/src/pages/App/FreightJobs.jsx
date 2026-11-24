@@ -24,13 +24,14 @@ import {usePageDialogs} from '../../components/PageDialogProvider';
 import {freightJobEditorText} from '../../constants/freightJobEditor';
 import FreightJobEditor from '../../components/FreightJobEditor';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
-import {useSearchParams,Navigate} from 'react-router-dom';
+import {useSearchParams,useParams,Navigate} from 'react-router-dom';
 import {Box,Button,DialogTitle,DialogContent,DialogActions,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TableSortLabel,Tab,Tabs,TextField,Typography} from '@mui/material';
 import Alert from "../../components/AppNotice";
 import AppPageContainer from '../../components/AppPageContainer';
 import {useAuth} from '../../context/AuthContext';
 import {useLanguage} from '../../context/LanguageContext';
 import {useAppActions} from '../../context/AppContext';
+import {useRequestScopeContext} from '../../context/RequestScopeContext';
 import useShippingRefresh from '../../hooks/useShippingRefresh';
 import {requestJSON,buildQueryString} from '../../utils/apiClient';
 import {freightText} from '../../constants/freight';
@@ -43,12 +44,13 @@ const statuses=['DRAFT','BOOKED','IN_TRANSIT','ARRIVED','DELIVERED','CANCELLED']
 export default function FreightJobs(){const {activeOrgId,activeOrgType}=useAuth();if(activeOrgType!=='SERVICE')return <Navigate to="/shipping" replace/>;return <Jobs key={activeOrgId} orgId={activeOrgId}/>;}
 function Jobs({orgId}){
  const dialogs=usePageDialogs();
- const {languageCode}=useLanguage(),t={...(jobText[languageCode]||jobText.en),...(shippingText[languageCode]||shippingText.en),assignee:(freightJobEditorText[languageCode]||freightJobEditorText.en).forwarderAssignee,plannedDate:(freightJobEditorText[languageCode]||freightJobEditorText.en).plannedDate},{showNotification}=useAppActions(),[params,setParams]=useSearchParams(),id=params.get('id');
+ const {languageCode}=useLanguage(),t={...(jobText[languageCode]||jobText.en),...(shippingText[languageCode]||shippingText.en),assignee:(freightJobEditorText[languageCode]||freightJobEditorText.en).forwarderAssignee,plannedDate:(freightJobEditorText[languageCode]||freightJobEditorText.en).plannedDate},{showNotification,navigateToPath,openTab}=useAppActions(),[routeParams,setParams]=useSearchParams(),{jobId}=useParams(),{active}=useRequestScopeContext();
+ const paramsRef=useRef(routeParams);if(active)paramsRef.current=routeParams;const params=paramsRef.current,id=jobId||params.get('id');
  const [rows,setRows]=useState([]),[loading,setLoading]=useState(true),[total,setTotal]=useState(0),[offset,setOffset]=useState(0),[sort,setSort]=useState('createdAt'),[sortDirection,setSortDirection]=useState('desc'),[search,setSearch]=useState(''),[detail,setDetail]=useState(null),[options,setOptions]=useState({customers:[],employees:[]}),[edit,setEdit]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0);
  const mutationLock=useRef(false);
  const trade=shippingTradeText[languageCode]||shippingTradeText.en;
  const wb=shippingWorkbenchText[languageCode]||shippingWorkbenchText.en;
- const w=freightWorkflowText[languageCode]||freightWorkflowText.en,billLabels=shippingBillText[languageCode]||shippingBillText.en,rawStage=params.get('stage'),stage=['setup','bills','charges'].includes(rawStage)?'bills':rawStage==='documents'?'documents':rawStage==='progress'?'bills':'basic';
+ const w=freightWorkflowText[languageCode]||freightWorkflowText.en,billLabels=shippingBillText[languageCode]||shippingBillText.en,rawStage=params.get('stage'),stage=['setup','bills','charges'].includes(rawStage)?'bills':rawStage==='documents'?'documents':rawStage==='progress'?'bills':rawStage==='basic'?'basic':jobId?'bills':'basic';
  const [source,setSource]=useState(''),[status,setStatus]=useState('');
  const documentLabel=detail?.data.documentSetup?.documentType?w[detail.data.documentSetup.documentType]:null;
  if(documentLabel&&detail.data.documentSetup.documentType!=='BILL_OF_LADING')Object.assign(t,{bills:w.bills,MASTER:'Master '+documentLabel,HOUSE:'House '+documentLabel,billNumber:documentLabel+' #'});
@@ -60,11 +62,12 @@ function Jobs({orgId}){
  const markTrade=useCallback(value=>setDirtyAreas(old=>old.trade===value?old:{...old,trade:value}),[]);
  const markCopies=useCallback(value=>setDirtyAreas(old=>old.copies===value?old:{...old,copies:value}),[]);
  const markCharges=useCallback(value=>setDirtyAreas(old=>old.charges===value?old:{...old,charges:value}),[]);
- const changeStage=async value=>{if(busy)return;if(workflowDirty&&!await dialogs.confirm('',{purpose:'discard'}))return;setParams({id,...(value!=='basic'?{stage:value}:{})});};
- useEffect(()=>{if(detail?.receiptStatus==='PENDING'&&stage!=='basic')setParams({id});},[id,stage,detail?.receiptStatus]);
- useEffect(()=>{if(detail?.receiptStatus==='ACCEPTED'&&stage==='basic')setParams({id,stage:'bills'});},[id,stage,detail?.receiptStatus]);
+ const changeStage=async value=>{if(busy)return;if(workflowDirty&&!await dialogs.confirm('',{purpose:'discard'}))return;setParams({...(!jobId?{id}:{}),...(value!=='basic'?{stage:value}:{})});};
+ useEffect(()=>{if(active&&detail?.receiptStatus==='PENDING'&&stage!=='basic')setParams({...(!jobId?{id}:{}),stage:'basic'});},[active,id,stage,detail?.receiptStatus]);
+ useEffect(()=>{if(active&&detail?.receiptStatus==='ACCEPTED'&&!jobId)continueRequest();},[active,id,jobId,detail?.receiptStatus]);
  const requestOpen=!!id&&stage==='basic'&&detail?.receiptStatus!=='ACCEPTED';
- const continueRequest=()=>setParams({id,stage:'bills'});
+ const openDetailTab=value=>{if(!jobId){paramsRef.current=new URLSearchParams();setDetail(null);setParams({},{replace:true});openTab?.({id:'/shipping',path:'/shipping',label:formatPageTitle(t.title,'list',languageCode)},{updateOnly:true});}navigateToPath('/shipping/'+encodeURIComponent(value));};
+ const continueRequest=()=>{if(jobId){setParams({stage:'bills'});return;}openDetailTab(id);};
  const form=params.get('form');
  const alive=useRef(true);useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  const api=useCallback((path='',method='GET',body,query={})=>requestJSON('/freight/transport-jobs'+path+buildQueryString({orgId,...query}),{method,skipCache:true,...(body?{body:JSON.stringify(body)}:{})}),[orgId]);
@@ -74,14 +77,14 @@ function Jobs({orgId}){
  const [detailLoading,setDetailLoading]=useState(!!id);
  useEffect(()=>{if(!listVisible)return;let live=true;setError('');setLoading(true);const timer=setTimeout(()=>{api('', 'GET',null,{search,offset,sort,sortDirection,source,status}).then(value=>{if(live){setRows(value.rows);setTotal(value.total);}}).catch(e=>live&&setError(message(e))).finally(()=>live&&setLoading(false));},150);return()=>{live=false;clearTimeout(timer);};},[api,listVisible,search,offset,sort,sortDirection,source,status,reload]);
  useEffect(()=>{let live=true;setError('');setDetail(current=>id&&current?.id===id?current:null);setDetailLoading(!!id);if(id)api('/'+id).then(value=>{if(live)setDetail(value);}).catch(e=>live&&setError(message(e))).finally(()=>live&&setDetailLoading(false));return()=>{live=false;};},[api,id,reload]);
- const go=value=>setParams(value?{id:value,...(rows.find(row=>row.id===value)?.receiptStatus==='ACCEPTED'?{stage:'bills'}:{})}:{});
+ const go=value=>{if(value&&rows.find(row=>row.id===value)?.receiptStatus==='ACCEPTED'){openDetailTab(value);return;}if(jobId&&!value){navigateToPath('/shipping');return;}setParams(value?{id:value}:{});};
  useShippingRefresh({orgId,blocked:!!edit||!!id&&stage==='basic'||busy||workflowDirty,onRefresh:()=>setReload(value=>value+1)});
  useEffect(()=>{if(params.get('form')==='new')setEdit(current=>current&&!current.id?current:{clientKey:crypto.randomUUID(),mode:'SEA',service:'GENERAL',customerId:null,data:{shipmentType:'FCL',jobType:'OTHER'}});else if(params.get('form')==='edit'&&detail)setParams({id:detail.id});},[params,detail]);
 
  const mutate=async work=>{if(mutationLock.current)return;mutationLock.current=true;setBusy(true);setError('');try{await work();if(alive.current)setReload(value=>value+1);}catch(e){setError(message(e));throw e;}finally{mutationLock.current=false;setBusy(false);}};
  const receive=async()=>{if(mutationLock.current||workflowDirty||!options.forwarder)return;try{if(detail.receiptStatus==='PENDING')await mutate(async()=>{const saved=await requestJSON('/shipping-requests/'+id+buildQueryString({orgId}),{method:'POST',body:JSON.stringify({action:'ACCEPT',version:detail.version})});setDetail(current=>({...current,receiptStatus:'ACCEPTED',version:saved.version}));});continueRequest();}catch{}};
  const name=row=>row?.isShippingGeneralCustomer?(shippingEditorText[languageCode]||shippingEditorText.en).generalCustomer:row?.[languageCode==='ko'?'nameKo':languageCode==='vi'?'nameVi':'name']||row?.name||'—';
- const editorProps={t,options,busy,name,orgId,saveError:error,initial:edit,onClose:()=>{setEdit(null);go(id);},onSave:value=>mutate(async()=>{const saved=await api(value.id?'/'+value.id:'',value.id?'PUT':'POST',value);if(!alive.current)return;setEdit(null);setParams({id:saved.id,...(saved.receiptStatus==='ACCEPTED'?{stage:'bills'}:{})});showNotification(t.saved,'success');})};
+ const editorProps={t,options,busy,name,orgId,saveError:error,initial:edit,onClose:()=>{setEdit(null);go(id);},onSave:value=>mutate(async()=>{const saved=await api(value.id?'/'+value.id:'',value.id?'PUT':'POST',value);if(!alive.current)return;setEdit(null);if(saved.receiptStatus==='ACCEPTED')openDetailTab(saved.id);else go(saved.id);showNotification(t.saved,'success');})};
 
 
  return <AppPageContainer title={formatPageTitle(t.title,id&&stage!=='basic'?'detail':'list',languageCode)} context={detail&&stage!=='basic'&&<Stack component="span" direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center"><Typography component="span" fontWeight={700}>{detail.number}</Typography><StatusLabel label={t[shippingState(detail,{request:stage==='basic'})]} tone={shippingStatusTone(shippingState(detail,{request:stage==='basic'}))}/></Stack>} titleActions={<Stack direction="row" spacing={1}>{(!id||stage==='basic')&&<Button variant="contained" disabled={!options.forwarder||!!id} onClick={()=>setParams({form:'new'})}>{t.new}</Button>}</Stack>}><Stack spacing={2}>
