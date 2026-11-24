@@ -18,13 +18,14 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/${path.basename(fixture)}`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const lang of ['ko','en','vi'])for(const width of [1440,390])for(const mode of ['SEA','AIR','ROAD','EXPRESS'])for(const composition of mode==='EXPRESS'?['DIRECT']:['MASTER_ONLY','MASTER_HOUSE']){
-  if(newDirect&&(mode!=='SEA'||composition!=='MASTER_ONLY'))continue;
+  if(newDirect&&!['MASTER_ONLY','DIRECT'].includes(composition))continue;
   if(!filter('lang',lang)||!filter('width',width)||!filter('mode',mode))continue;
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],t=shippingBillText[lang],f=freightText[lang],w=shippingWorkbenchText[lang];page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));page.on('dialog',dialog=>dialog.dismiss());
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:7,activeOrgType:"SERVICE"});'}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={showNotification(){},setUnsavedChangesGuard(){},clearUnsavedChangesGuard(){},markTabChanged(){},clearTabChanged(){}};export const useAppActions=()=>a;'}));
   if(newDirect)await page.route('**/src/components/FreightJobEditor*',r=>r.fulfill({contentType:'application/javascript',body:'import React from "/node_modules/.vite/deps/react.js";export default function Editor({onSave}){return React.createElement("button",{onClick:()=>onSave({clientKey:"direct-new"})},"Register Direct SR");}'}));
+  await page.route('**/text-acronyms',r=>r.fulfill({json:{revision:0,entries:[{acronym:'SR'}]}}));
   const customer={id:11,code:'CUS',name:'CUSTOMER'},supplier={id:12,code:'SUP',name:'SUPPLIER'},headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   const job={id:'job1',number:'SR-001',orgId:7,customerId:11,mode:mode==='EXPRESS'?'AIR':mode,service:mode==='EXPRESS'?'EXPRESS':'GENERAL',status:'DRAFT',receiptStatus:composition==='MASTER_HOUSE'?'PENDING':'ACCEPTED',version:1,data:{shipper:'SR SENDER',consignee:'SR BUYER',cargo:'SR CARGO',origin:'HANOI',destination:'BUSAN',customer:customer},bills:[],documents:[]};
   const original=structuredClone(job.data),charges=[{id:'legacy-charge',billId:null,direction:'SALES',description:'EXISTING UNASSIGNED',currencyCode:'USD',amount:'999',version:1,sourceKind:'MANUAL',quantity:null,unitPrice:null}],billWrites=[],chargeWrites=[];let failHouse=true,failCharge=true,accepts=0;
@@ -57,11 +58,11 @@ try{
   });
   await page.goto(`http://127.0.0.1:${port}/${path.basename(fixture)}${newDirect?'?newDirect':''}`);
   if(newDirect){await page.getByRole('button',{name:'Register Direct SR',exact:true}).click();assert.equal(accepts,0);}
-  else{const listRow=page.locator('[data-shipping-row="job1"]');await listRow.waitFor();await page.locator('[data-table-status=loading]').waitFor({state:'hidden'});await listRow.click();assert.equal(await listRow.count(),1);await listRow.dblclick();await page.getByRole('button',{name:composition==='MASTER_HOUSE'?shippingText[lang].accept:t.selectBills,exact:true}).click();assert.equal(accepts,composition==='MASTER_HOUSE'?1:0);}
+  else{const listRow=page.locator('[data-shipping-row="job1"]');await listRow.waitFor();await page.locator('[data-table-status=loading]').waitFor({state:'hidden'});await listRow.click();assert.equal(await listRow.count(),1);await listRow.dblclick();await page.getByRole('dialog').getByText(t.requestTitle+' \u00b7 '+job.number,{exact:true}).waitFor();assert.equal(await listRow.count(),1);await page.getByRole('button',{name:composition==='MASTER_HOUSE'?shippingText[lang].accept:['ROAD','EXPRESS'].includes(mode)?t.transportDetails:t.selectBills,exact:true}).click();if(composition==='MASTER_HOUSE')for(let i=0;i<100&&accepts===0;i++)await new Promise(r=>setTimeout(r,20));assert.equal(accepts,composition==='MASTER_HOUSE'?1:0);}
   assert.equal(await page.locator('.app-page-header').getByRole('button',{name:shippingText[lang].share,exact:true}).count(),0);
   const optional=['ROAD','EXPRESS'].includes(mode),compositionDialog=page.getByRole('dialog');
   if(optional){
-   await compositionDialog.getByRole('radio',{name:t.NONE,exact:true}).check();await compositionDialog.getByRole('button',{name:t.startBills,exact:true}).click();await compositionDialog.waitFor({state:'hidden'});
+   await compositionDialog.waitFor({state:'hidden'});assert.equal(await compositionDialog.count(),0);
    const direct=page.locator('[data-shipping-charges="shipment"]');await direct.getByRole('button',{name:w.addCharge,exact:true}).waitFor();assert.equal(await compositionDialog.count(),0);assert.equal(await page.getByRole('button',{name:t.newMaster,exact:true}).count(),0);failCharge=false;
    await direct.getByRole('button',{name:w.addCharge,exact:true}).click();
    await direct.getByRole('textbox',{name:titleCaseWords(w.description),exact:true}).fill('DELIVERY');await direct.getByRole('textbox',{name:titleCaseWords(t.unitPrice),exact:true}).fill('20');await direct.getByRole('button',{name:w.save,exact:true}).click();await direct.getByRole('cell',{name:'Delivery',exact:true}).waitFor();
