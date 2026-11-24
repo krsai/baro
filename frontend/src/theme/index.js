@@ -1,4 +1,4 @@
-import { ui } from './ui';
+import { standardUi, compactUi } from './ui';
 import FieldFeedback from '../components/FieldFeedback';
 import BusinessTextInput,{BusinessInputLabel} from '../components/BusinessTextInput';
 import {responsiveTableStyles} from './tableLayout';
@@ -6,6 +6,8 @@ import { getLabelPalette, LABEL_PALETTE } from './labelPalette';
 import { createTheme } from '@mui/material/styles';
 import { createAutocompleteFilterOptions } from '../utils/autocompleteSearch';
 
+export function createAppTheme(variant='standard'){
+const ui=variant==='compact'?compactUi:standardUi;
 const baseTheme = createTheme({
   palette: {
     mode: 'light',
@@ -411,10 +413,18 @@ const theme = createTheme(baseTheme, {
         '--ui-panel-radius': `${ui.radius.panel}px`,
         '--ui-control-radius': `${ui.radius.control}px`,
         '--ui-control-height': `${ui.control.height}px`,
+        '--ui-navigation-height': variant==='compact'?'34px':'42px',
+        '--ui-tab-height':variant==='compact'?'34px':'40px',
         '--ui-body-font-size': ui.typography.bodyFontSize,
         '--ui-caption-font-size': ui.typography.captionFontSize,
         '--ui-title-font-size': ui.typography.titleFontSize,
         '--ui-section-gap': ui.layout.sectionGap,
+        '--ui-page-padding-xs': ui.layout.pagePadding.xs,
+        '--ui-page-padding-sm': ui.layout.pagePadding.sm,
+        '--ui-page-gap': ui.layout.pageGap,
+        '--ui-header-gap': ui.layout.headerGap,
+        '--ui-search-padding':ui.search.padding,
+        '--ui-search-header-height':ui.search.headerHeight+'px',
         '--ui-panel-padding': ui.layout.panelPadding,
         '--ui-total-font-size': ui.typography.totalFontSize,
         '--ui-control-font-size': ui.control.fontSize,
@@ -553,4 +563,19 @@ const theme = createTheme(baseTheme, {
   },
 });
 
-export default theme;
+if(variant!=='compact')return theme;
+return createTheme(theme,{components:{
+ MuiCssBaseline:{styleOverrides:{'@media (pointer:coarse)':{':root':{'--ui-control-height':'36px','--ui-navigation-height':'42px','--ui-tab-height':'40px'}}}},
+ MuiOutlinedInput:{styleOverrides:{root:{'@media (pointer:coarse)':{minHeight:36,'&:not(.MuiInputBase-multiline):not(.MuiAutocomplete-inputRoot)':{height:36}}}}},
+ MuiPickersOutlinedInput:{styleOverrides:{root:{'@media (pointer:coarse)':{height:36}}}},
+ MuiPickersSectionList:{styleOverrides:{root:{padding:'6px 0'}}},
+ MuiTab:{styleOverrides:{root:{borderRadius:'3px 3px 0 0',minHeight:32,padding:'3px 10px 5px'}}},
+ MuiToggleButtonGroup:{styleOverrides:{root:{padding:2,borderRadius:3},grouped:{'&:first-of-type,&:not(:first-of-type)':{borderRadius:2}}}},
+ MuiToggleButton:{styleOverrides:{root:{minWidth:80,padding:'4px 12px',borderRadius:2}}},
+ MuiAccordionSummary:{styleOverrides:{root:{minHeight:36,'&.Mui-expanded':{minHeight:36}},content:{margin:'8px 0','&.Mui-expanded':{margin:'8px 0'}}}},
+ MuiButton:{styleOverrides:{root:{padding:'0 12px','@media (pointer:coarse)':{minHeight:40,height:'auto'}}}},
+ MuiIconButton:{styleOverrides:{root:{'@media (pointer:coarse)':{minHeight:36,minWidth:36}}}},
+}});
+}
+export const appThemes={standard:createAppTheme('standard'),compact:createAppTheme('compact')};
+export default appThemes.standard;

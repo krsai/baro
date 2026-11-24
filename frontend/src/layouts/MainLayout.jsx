@@ -260,7 +260,7 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
         sx={{
           flex: 1,
           minWidth: 0,
-          minHeight: '40px',
+          minHeight: 'var(--ui-tab-height, 40px)',
           '& .MuiTabs-indicator': {
             height: '2px',
           },
@@ -283,7 +283,7 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
               }}}
               component="div"
               sx={{
-                minHeight: '40px',
+                minHeight: 'var(--ui-tab-height, 40px)',
                 textTransform: 'none',
                 borderRight: 1,
                 borderColor: 'divider',
@@ -1621,7 +1621,7 @@ const MainLayout = () => {
   const getMenuItemSx = React.useCallback(
     ({ selected = false, nestedLevel = 0, disabled = false } = {}) => {
       const baseSx = {
-        mx: 1.25, my: 0.35, width: 'auto', borderRadius: '8px', minHeight: 42,
+        mx: 1.25, my: 0.35, width: 'auto', borderRadius: 'var(--ui-control-radius, 8px)', minHeight: 'var(--ui-navigation-height, 42px)',
         cursor: disabled ? 'default' : 'pointer', color: 'text.secondary',
         '& .MuiListItemText-primary': { fontSize: '0.8125rem', fontWeight: selected ? 650 : 500 },
         '& .MuiSvgIcon-root': { fontSize: 20 },
