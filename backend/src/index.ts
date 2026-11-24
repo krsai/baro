@@ -27908,7 +27908,7 @@ app.get("/business-partners/:id/history", async (req, res) => {
   });
   res.json({
     partner: (await attachPartnerClassifications(prisma,organization.id,[toBusinessPartnerResponse(partner)]))[0],
-    costs: await prisma.partnerTransactionCost.findMany({ where: { orgId: organization.id, partnerOrgId: id,OR:[{expenseRequestId:null},{expenseRequest:{deletedAt:null}}], transactionDate: { gte: period.startDate } }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }] }),
+    costs: await prisma.partnerTransactionCost.findMany({ where: { orgId: organization.id, partnerOrgId: id,OR:[{expenseRequestId:null},{expenseRequest:{deletedAt:null}}], transactionDate: { gte: period.startDate } }, include: { ...costInclude, transactionCode: { include: { base: { include: { industryLinks: { include: { industry: true } } } } } } }, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }] }),
     records: records.map((record) => ({
       id: record.id,
       workDate: record.workLog?.displayDate || null,
