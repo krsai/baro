@@ -1,10 +1,12 @@
+import {shippingWorkData} from './shippingWorkData.mjs';
 export const billFields=['shipper','consignee','notify','deliveryAgent','vessel','voyage','origin','destination','placeOfReceipt','placeOfDelivery','etd','eta','issueDate','issuePlace','marks','cargo','quantity','unit','weightKg','cbm','freightTerms'];
 export const requiresBillHierarchy=job=>job?.service!=='EXPRESS'&&['SEA','AIR'].includes(job?.mode);
 const routeFields=['vessel','voyage','origin','destination','placeOfReceipt','placeOfDelivery','etd','eta'];
 export function initialBillData(job,bill,parent){
- const source=job.data||{},result=Object.fromEntries(billFields.map(key=>[key,String(source[key]??'')]));
+ const source=shippingWorkData(job.data||{}),result=Object.fromEntries(billFields.map(key=>[key,String(source[key]??'')]));
  for(const role of ['shipper','consignee','notify']){
   const party=source[(role==='notify'&&source.notifySameAsConsignee?'consignee':role)+'Party'];
+  if(Object.hasOwn(job.data.workDetails||{},role))continue;
   if(party)result[role]=[party.name,party.address,[party.contactName,party.phone,party.email].filter(Boolean).join(' / ')].filter(Boolean).join('\n');
   else if(role==='notify'&&source.notifySameAsConsignee)result.notify=String(source.consignee||'');
  }

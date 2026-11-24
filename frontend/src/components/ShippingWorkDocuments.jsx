@@ -11,7 +11,7 @@ import {usePageDialogs} from './PageDialogProvider';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {shippingOperationText} from '../constants/shippingOperations';
 
-export default function ShippingWorkDocuments({job,orgId,languageCode,onOpen,onCreate,onChanged,onDirtyChange,busy=false}){
+export default function ShippingWorkDocuments({job,orgId,languageCode,compact=false,onOpen,onCreate,onChanged,onDirtyChange,busy=false}){
  const labels=shippingOperationText[languageCode]||shippingOperationText.en,t=job.mode==='AIR'&&job.service!=='EXPRESS'?Object.fromEntries(Object.entries(labels).map(([key,value])=>[key,value.replaceAll('MBL','MAWB').replaceAll('HBL','HAWB')])):labels,dialogs=usePageDialogs();
  const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[rows,setRows]=useState([]),[selected,setSelected]=useState(null),[loading,setLoading]=useState(false),[loadError,setLoadError]=useState(false),[reload,setReload]=useState(0),[working,setWorking]=useState(false),[uncertain,setUncertain]=useState(false),[error,setError]=useState('');
  const pending=useRef(null),lock=useRef(false),canEdit=job.receiptStatus==='ACCEPTED'&&job.status!=='CANCELLED',masters=job.bills.filter(row=>row.kind==='MASTER'),houses=job.bills.filter(row=>row.kind==='HOUSE');
@@ -34,7 +34,7 @@ export default function ShippingWorkDocuments({job,orgId,languageCode,onOpen,onC
  </Stack>;
  return <Stack spacing={1.5} data-shipping-work-documents>
   {error&&!open&&<AppNotice severity="error" action={uncertain?<Button onClick={()=>act({id:pending.current.masterId})}>{t.retry}</Button>:undefined}>{error}</AppNotice>}
-  <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:'repeat(2,minmax(0,1fr))'},gap:2}}>
+  <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:compact?'minmax(0,1fr)':'repeat(2,minmax(0,1fr))'},gap:2}}>
    <EntityDetailSection title={t.masterSection} actions={canEdit&&<Stack direction="row" useFlexGap flexWrap="wrap" gap={1}><Button type="button" disabled={blocked} onClick={()=>{setError('');setOpen(true);}}>{t.linkMaster}</Button><Button type="button" disabled={blocked} onClick={()=>onCreate('MASTER')}>{t.newMaster}</Button></Stack>}>{masters.length?masters.map(row=>entry(row,'MASTER')):<Typography variant="body2" color="text.secondary">{t.noMaster}</Typography>}</EntityDetailSection>
    <EntityDetailSection title={t.houseSection} actions={canEdit&&<Button type="button" disabled={blocked} onClick={()=>onCreate('HOUSE',masters.length===1?masters[0].id:null)}>{t.newHouse}</Button>}>{houses.length?houses.map(row=>entry(row,'HOUSE')):<Typography variant="body2" color="text.secondary">{t.noHouse}</Typography>}</EntityDetailSection>
   </Box>

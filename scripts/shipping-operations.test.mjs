@@ -4,10 +4,20 @@ import {createRequire} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
+import {initialBillData} from '../frontend/src/utils/shippingBillData.mjs';
+import {shippingWorkValues} from '../frontend/src/utils/shippingWorkData.mjs';
 const require=createRequire(import.meta.url);
 const {saveFreight}=require('../backend/dist/services/freightOperations');
+const {saveJobBill}=require('../backend/dist/services/freightJobs');
 const {saveJobOperationDetails,saveJobProgress,createJobDocument}=require('../backend/dist/services/freightJobWorkflow');
 const {transportSnapshot}=require('../backend/dist/services/transportExchange');
+
+test('new bills start from editable working values and saved bill values remain independent',()=>{
+ const job={data:{cargo:'Original',shipperParty:{name:'ORIGINAL'},workDetails:{shipper:'WORK SENDER\nNew Address',cargo:'Working Cargo'}}};
+ assert.equal(shippingWorkValues(job).shipper,'WORK SENDER\nNew Address');
+ assert.equal(initialBillData(job,{data:{}}).cargo,'Working Cargo');assert.equal(initialBillData(job,{data:{}}).shipper,'WORK SENDER\nNew Address');
+ assert.equal(initialBillData(job,{data:{cargo:'Saved Bill Cargo'}}).cargo,'Saved Bill Cargo');
+});
 
 test('operational patch changes only selected fields and preserves request, progress, documents and financial records',async()=>{
  const f=await changeApprovalFixture();try{
@@ -40,11 +50,29 @@ test('operational patch validates exact fields, dates, company employees and wri
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
   const job=await saveFreight(db,org,actor,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,mode:'ROAD'});
   const input=fields=>({version:job.version,requestId:randomUUID(),fields});
-  for(const fields of [{customerId:s.other.id},{origin:'Changed'},{operations:{}},{etd:'2026-02-30'},{eta:''},{assigneeId:'1'},{}])await assert.rejects(saveJobOperationDetails(db,org,actor,job.id,input(fields)),/FREIGHT_INVALID_INPUT/);
+  for(const fields of [{customerId:s.other.id},{origin:{}},{operations:{}},{etd:'2026-02-30'},{eta:''},{assigneeId:'1'},{weightKg:'-1'},{plannedDate:'2026-02-30'},{containers:[{size:'20',type:'DC',count:0}]},{}])await assert.rejects(saveJobOperationDetails(db,org,actor,job.id,input(fields)),/FREIGHT_INVALID_INPUT/);
   await assert.rejects(saveJobOperationDetails(db,org,actor,job.id,input({assigneeId:999999})),/FREIGHT_ASSIGNEE_SCOPE/);
   await assert.rejects(saveJobOperationDetails(db,s.other.id,actor,job.id,input({etd:null})),/ACTIVE_EMPLOYEE_REQUIRED/);
   const saved=await saveJobOperationDetails(db,org,actor,job.id,input({etd:null,assigneeId:null}));
   await db.$executeRawUnsafe('UPDATE "FreightJob" SET status=\'CANCELLED\',version=version+1 WHERE id=$1',job.id);
   await assert.rejects(saveJobOperationDetails(db,org,actor,job.id,{...input({eta:null}),version:saved.version+1}),/SHIPPING_NOT_ACCEPTED/);
+ }finally{await f.close();}
+});
+
+test('editable BL-like work values preserve SR, saved bills and snapshots while new documents use the working copy',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
+  const job=await saveFreight(db,org,actor,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,mode:'SEA',data:{origin:'Original Factory',destination:'Original Buyer',shipper:'ORIGINAL SENDER',consignee:'ORIGINAL BUYER',cargo:'Original Cargo'}});
+  const bill=await saveJobBill(db,org,actor,job.id,{id:randomUUID(),kind:'MASTER',number:'PRESERVE',data:{cargo:'Existing BL Cargo'}});
+  const old=await createJobDocument(db,org,actor,job.id,{clientKey:randomUUID(),version:job.version,kind:'AN'});
+  const fields={shipper:'WORK SENDER\nWorking Address',consignee:'WORK BUYER',notify:'WORK NOTIFY',cargo:'Working Cargo',origin:'Working Factory',destination:'Working Buyer',quantity:'12',weightKg:'120.25',freightTerms:'Prepaid',incoterms:'CIF',remark:'Internal Working Remark',containers:[{size:'20',type:'DC',count:'2'}]};
+  const input={version:job.version,requestId:randomUUID(),fields},saved=await saveJobOperationDetails(db,org,actor,job.id,input);
+  assert.deepEqual(saved.data.workDetails,fields);assert.equal(saved.data.cargo,'Original Cargo');assert.equal(saved.data.shipper,'ORIGINAL SENDER');assert.deepEqual(saved.requestSnapshot,job.requestSnapshot);
+  assert.equal((await saveJobOperationDetails(db,org,actor,job.id,input)).version,saved.version);
+  const next=await createJobDocument(db,org,actor,job.id,{clientKey:randomUUID(),version:saved.version,kind:'AN'});
+  assert.equal(next.snapshot.source.data.cargo,'Working Cargo');assert.equal(next.snapshot.source.data.shipper,fields.shipper);
+  assert.deepEqual((await db.$queryRawUnsafe('SELECT snapshot FROM "FreightDocument" WHERE id=$1',old.id))[0].snapshot,old.snapshot);
+  assert.deepEqual((await db.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE id=$1',bill.id))[0],bill);
+  assert.equal(transportSnapshot(saved).data.workDetails,undefined);assert.equal(transportSnapshot(saved).data.cargo,'Original Cargo');
  }finally{await f.close();}
 });
