@@ -106,6 +106,53 @@ test('historical credit does not turn unfinished allocations into approved compl
   assert.equal(summarizeStyleProduction(100, [], [{ quantity: 100 }]).isCompleted, true);
 });
 
+test('historical overlap is independent of allocation order and preserves actual excess', () => {
+  const completed = row({ plannedQuantity: 50, producedQuantity: 0, completionTargetQuantity: 50, isCompleted: true, operationalProgressRatio: 1 });
+  const open = row({ plannedQuantity: 50, producedQuantity: 10, operationalProgressRatio: .2 });
+  for (const actual of [0, 30, 55]) {
+    const closed = { ...completed, producedQuantity: actual };
+    const forward = summarizeStyleProduction(100, [closed, open], [{ quantity: 20 }]);
+    assert.deepEqual(forward, summarizeStyleProduction(100, [open, closed], [{ quantity: 20 }]));
+    assert.equal(forward.producedQuantity, 20 + actual + 10 + Math.max(0, 50 - actual - 20));
+    assert.equal(forward.progressPercent, 60);
+  }
+  const creditedOrder = { ...order, priorCompletions: [{ styleId: 7, quantity: 20 }] };
+  const plans = [plan, { ...plan, externalId: 'b' }];
+  const rows = [{ ...completed, id: 'a' }, { ...open, id: 'b' }];
+  const forward = invoiceOrderProgress(creditedOrder, plans, rows);
+  const reversed = invoiceOrderProgress(creditedOrder, [...plans].reverse(), [...rows].reverse());
+  assert.equal(forward.producedQuantity, 60);
+  assert.equal(reversed.producedQuantity, forward.producedQuantity);
+  assert.equal(reversed.progressPercent, forward.progressPercent);
+  const anotherCompleted = { ...completed, producedQuantity: 50 };
+  const closed = summarizeStyleProduction(100, [completed, anotherCompleted], [{ quantity: 20 }]);
+  assert.deepEqual(closed, summarizeStyleProduction(100, [anotherCompleted, completed], [{ quantity: 20 }]));
+  assert.equal(closed.producedQuantity, 100);
+  assert.equal(closed.isCompleted, true);
+});
+
+test('full historical credit cannot certify unknown current production or missing sources', () => {
+  const prior = [{ quantity: 100 }];
+  for (const current of [
+    row({ producedQuantity: 40, isProgressUnknown: true }),
+    row({ producedQuantity: 0, hasInvalidProcessReferences: true }),
+    row({ producedQuantity: 40, hasInvalidProductionProcessReferences: true }),
+    row({ plannedQuantity: null, producedQuantity: 0 }),
+  ]) {
+    const result = summarizeStyleProduction(100, [current], prior);
+    assert.equal(result.producedQuantity, null);
+    assert.equal(result.isProgressUnknown, true);
+    assert.equal(result.isCompleted, true); // The historical declaration remains valid.
+  }
+  assert.equal(summarizeStyleProduction(100, [], prior, 1).isProgressUnknown, true);
+  const historicalOnly = summarizeStyleProduction(100, [row({ producedQuantity: 0, isProgressUnknown: true })], prior);
+  assert.equal(historicalOnly.producedQuantity, 100);
+  assert.equal(historicalOnly.isProgressUnknown, false);
+  const summary = invoiceOrderProgress({ ...order, priorCompletions: [{ styleId: 7, quantity: 100 }] }, [plan], [row({ producedQuantity: 40, isProgressUnknown: true })]);
+  assert.equal(summary.producedQuantity, null);
+  assert.equal(summary.isProgressUnknown, true);
+});
+
 test('direct order FK prevents card fallback from attributing another order to this order', () => {
   const conflicting = { ...plan, workOrderId: 2, assignmentCard: { workOrderId: 1 }, isCompleted: true };
   assert.equal(orderWorkflowStatus(order, [conflicting]), 'RECEIVED');

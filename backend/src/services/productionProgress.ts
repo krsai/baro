@@ -32,31 +32,38 @@ export function assignmentProgressRatio(row: any): number | null {
 
 export function summarizeStyleProduction(ordered: number, progress: any[], prior: any[] = [], expectedPlanCount = progress.length) {
   const priorQuantity = prior.filter(row => !row.canceledAt).reduce((sum, row) => sum + Math.max(0, Number(row.quantity) || 0), 0);
-  let unallocated = priorQuantity;
-  let produced = priorQuantity, work = 0, planned = 0;
+  let recorded = 0, inferredCompletion = 0, completedBaseline = 0;
+  let work = 0, planned = 0;
   let known = progress.length === expectedPlanCount;
   let allComplete = progress.length > 0 && known;
   for (const row of progress) {
     const quantity = Math.max(0, Number(row.plannedQuantity) || 0);
-    const credit = Math.min(unallocated, quantity);
-    unallocated -= credit;
-    const recorded = Math.max(0, Number(row.producedQuantity) || 0);
-    const recognized = row.isCompleted === true && priorQuantity > 0
-      ? Math.max(recorded, Math.max(0, Number(row.completionTargetQuantity ?? quantity) - credit))
-      : productionProducedQuantity(row) ?? recorded;
-    produced += recognized;
+    const actual = Math.max(0, Number(row.producedQuantity) || 0);
+    recorded += actual;
+    if (row.isCompleted === true) {
+      const recognized = priorQuantity > 0
+        ? Math.max(actual, Math.max(0, Number(row.completionTargetQuantity ?? quantity)))
+        : productionProducedQuantity(row) ?? actual;
+      inferredCompletion += Math.max(0, recognized - actual);
+      completedBaseline += quantity;
+    }
     const ratio = assignmentProgressRatio(row);
-    if ((row.plannedQuantity == null || !Number.isFinite(Number(row.plannedQuantity)) || Number(row.plannedQuantity) < 0) && priorQuantity < ordered) known = false;
-    if (ratio == null && credit < quantity) known = false;
-    // Historical credit overlaps an approved baseline, never actual excess.
+    if (row.plannedQuantity == null || !Number.isFinite(Number(row.plannedQuantity)) || Number(row.plannedQuantity) < 0) known = false;
+    // Historical-only completion needs no invented observations. It cannot
+    // certify unknown actuals, broken process FKs or missing plans.
+    const historicalOnly = priorQuantity >= ordered && ordered > 0 && actual === 0 &&
+      !(row.hasInvalidProductionProcessReferences ?? row.hasInvalidProcessReferences);
+    if (ratio == null && !historicalOnly) known = false;
     work += row.isCompleted === true ? Math.max(quantity, (ratio ?? 1) * quantity)
-      : Math.max(0, (ratio ?? 0) * quantity) + credit;
+      : Math.max(0, (ratio ?? 0) * quantity);
     planned += quantity;
     allComplete &&= row.isCompleted === true;
   }
-  work += unallocated;
-  if (priorQuantity >= ordered && ordered > 0) known = true;
-  const isCompleted = ordered > 0 && (priorQuantity >= ordered || (allComplete && planned + unallocated >= ordered));
+  // Resolve overlap at style level: array order is not a garment FK.
+  // Preserve actual records and offset only inferred completion credit.
+  const produced = priorQuantity + recorded + Math.max(0, inferredCompletion - priorQuantity);
+  work += Math.max(0, priorQuantity - completedBaseline);
+  const isCompleted = ordered > 0 && (priorQuantity >= ordered || (allComplete && Math.max(planned, priorQuantity) >= ordered));
   const denominator = Math.max(ordered, planned);
   const rawProgressPercent = known && denominator > 0 ? work / denominator * 100 : null;
   return { priorQuantity, producedQuantity: known ? produced : null,
