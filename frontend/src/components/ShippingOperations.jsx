@@ -48,7 +48,13 @@ export default function ShippingOperations({job,employees,languageCode,busy,form
  const date=key=><TextField fullWidth size="small" key={key} name={key} type="date" label={key==='plannedDate'?e.plannedDate:t[key]} value={value[key]||''} disabled={blocked} slotProps={{inputLabel:{shrink:true}}} onChange={ev=>patch(key,ev.target.value)}/>;
  return <Box component="form" id={formId} onSubmit={save} data-testid="shipping-operations-form">
   {error&&<AppNotice severity={error===t.review?'info':'error'} action={conflict&&onReload?<Button disabled={reloading} onClick={reload}>{t.refresh}</Button>:undefined}>{error}</AppNotice>}
-  <Box data-shipping-work-columns sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:'minmax(0,2fr) minmax(300px,1fr)'},gap:2,alignItems:'start'}}>
+  <Box data-shipping-work-columns sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:'minmax(300px,1fr) minmax(0,2fr)'},gap:2,alignItems:'start'}}>
+   <Stack spacing={2} data-shipping-work-side>
+    <EntityDetailSection title={t.overview}><Stack spacing={2}><Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>{detail(t.customer,customer)}<Chip size="small" label={shippingModeLabel(job,languageCode)}/></Stack>{detail(w.summaryDate,shippingRequestDate(job))}<SearchableSelect label={t.assignee} languageCode={languageCode} options={employees} value={employees.find(row=>row.id===value.assigneeId)||null} getOptionLabel={row=>row.name} getLookupCode={row=>row.employeeNo||''} isOptionEqualToValue={(a,b)=>a.id===b.id} disabled={blocked} onChange={(_,row)=>patch('assigneeId',row?.id??null)}/>{date('plannedDate')}</Stack></EntityDetailSection>
+    {!hasMaster&&<EntityDetailSection title={t.schedule}><Stack spacing={2}>{job.service!=='EXPRESS'&&['SEA','AIR'].includes(job.mode)&&<>{field('vessel',job.mode==='AIR'?t.flight:t.vessel)}{field('voyage',job.mode==='AIR'?t.flightNumber:t.voyage)}</>}<Box sx={grid}>{date('etd')}{date('eta')}</Box></Stack></EntityDetailSection>}
+    {documents}
+    <EntityDetailSection title={f.remark}>{field('remark',f.remark,true)}</EntityDetailSection>
+   </Stack>
    <Stack spacing={0} data-shipping-work-main sx={{border:1,borderColor:'divider',borderRadius:2,overflow:'hidden',bgcolor:'background.paper','& > section':{border:0,borderBottom:1,borderColor:'divider',borderRadius:0}}}>
     <EntityDetailSection title={t.parties}><Box sx={grid}><Stack spacing={2}>{field('shipper',t.shipper,true)}{field('consignee',t.consignee,true)}</Stack><Stack spacing={2}>{field('notify',t.notify,true)}<Box sx={grid}>{field('freightTerms',f.freightTerms)}{field('incoterms',e.incoterms)}</Box></Stack></Box></EntityDetailSection>
     <EntityDetailSection title={t.route}><Box sx={grid}>{field('origin',t.pickup,true)}{field('destination',t.delivery,true)}{job.service!=='EXPRESS'&&['SEA','AIR'].includes(job.mode)&&<>{detail(t[route.from.label],route.from.value||t.notSpecified)}{detail(t[route.to.label],route.to.value||t.notSpecified)}</>}{field('placeOfReceipt',t.placeOfReceipt)}{field('placeOfDelivery',t.placeOfDelivery)}</Box></EntityDetailSection>
@@ -58,12 +64,6 @@ export default function ShippingOperations({job,employees,languageCode,busy,form
      {source.hsCode&&detail(x.hsCode,source.hsCode)}{source.dangerousGoods&&detail(e.dangerousGoods,[source.dgClass,source.unNumber,source.dangerousGoodsDetails].filter(Boolean).join(' · '))}
      {(source.packages||[]).map((row,index)=><Box key={index}>{detail(x.packages,`${row.quantity} × ${row.lengthM} × ${row.widthM} × ${row.heightM} m`)}</Box>)}
     </Stack></EntityDetailSection>
-   </Stack>
-   <Stack spacing={2} data-shipping-work-side>
-    <EntityDetailSection title={t.overview}><Stack spacing={2}><Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>{detail(t.customer,customer)}<Chip size="small" label={shippingModeLabel(job,languageCode)}/></Stack>{detail(w.summaryDate,shippingRequestDate(job))}<SearchableSelect label={t.assignee} languageCode={languageCode} options={employees} value={employees.find(row=>row.id===value.assigneeId)||null} getOptionLabel={row=>row.name} getLookupCode={row=>row.employeeNo||''} isOptionEqualToValue={(a,b)=>a.id===b.id} disabled={blocked} onChange={(_,row)=>patch('assigneeId',row?.id??null)}/>{date('plannedDate')}</Stack></EntityDetailSection>
-    {!hasMaster&&<EntityDetailSection title={t.schedule}><Stack spacing={2}>{job.service!=='EXPRESS'&&['SEA','AIR'].includes(job.mode)&&<>{field('vessel',job.mode==='AIR'?t.flight:t.vessel)}{field('voyage',job.mode==='AIR'?t.flightNumber:t.voyage)}</>}<Box sx={grid}>{date('etd')}{date('eta')}</Box></Stack></EntityDetailSection>}
-    {documents}
-    <EntityDetailSection title={f.remark}>{field('remark',f.remark,true)}</EntityDetailSection>
    </Stack>
   </Box>
  </Box>;

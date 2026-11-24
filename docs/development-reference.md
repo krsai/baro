@@ -13,6 +13,8 @@
 
 ## 운송 신청(SR)·Master/House·AR/AP 최신 계약
 
+- 최신 배치 정정: 왼쪽은 관리 정보(고객/담당/일정/서류/비고), 오른쪽은 넓은 BL 편집 양식으로 좌우를 반전한다. 모바일 DOM/키보드 순서도 관리 정보 → BL 편집 양식이다. 아래 이전 좌우 방향보다 이 정정이 우선하며 저장 범위와 업무 정책은 유지한다.
+
 - 최신 사용자 정정(편집 양식·BL 배치): 운송 업무는 수정 가능한 양식이다. PC 왼쪽은 Shipper/Consignee/Notify Party·구간/인수/인도지·화인/화물/수량/중량/부피/컨테이너·조건을 BL 계열 배치로 구성하고 오른쪽은 고객/담당자·일정·공통 MBL/HBL·비고를 배치한다. 모바일은 세로로 이어진다. 저장은 상단 단일 작업이며 새 내부 탭/진행 UI를 만들지 않는다. 항만 등 기존 공식 FK는 보존한다. 당사자·주소·화물·조건의 수정은 data.workDetails에 저장하고 원본 SR/requestSnapshot·실제 거래/당사자 FK·기존 FreightBill/출력본을 재작성하지 않는다. 신규 BL/출력본은 명시적 workDetails를 우선해 초기화한다. 내부 workDetails는 고객 공유 whitelist에 추가하지 않는다. 회사/ACTIVE 직원·역할/접수/취소/revision/행 잠금/요청 ID/hash·숫자/날짜/컨테이너 검사를 유지한다. DB migration은 없다.
 - 운송 의뢰·업무·서류의 당사자 라벨은 한영베 모두 Shipper / Consignee / Notify Party로 표기한다. SHPR/CNEE/NOTIFY 축약이나 한국어/베트남어 병기는 사용하지 않는다. 의뢰의 별도 당사자 제목행과 Same As Consignee 체크박스는 제거하고 입력 자체에 라벨을 붙인다. Notify Party는 기본 Consignee를 따라가되 다른 업체를 직접 선택하면 독립 입력으로 전환한다. 기존 명시적 Notify 자료·고객 역할 FK는 덮어쓰지 않는다.
 

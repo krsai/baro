@@ -41,7 +41,7 @@
 
 ## UI·저장·갱신
 
-- 운송 의뢰·업무·서류의 당사자 표기는 한영베 모두 Shipper / Consignee / Notify Party다. 의뢰의 별도 제목행과 Same As Consignee 체크는 제거하며 Notify Party는 기본 Consignee를 따르고 직접 다른 업체를 선택하면 독립한다. 업무는 왼쪽 BL 계열 편집 양식·오른쪽 관리 정보로 배치한다. 원본 SR/거래 FK·기존 BL/출력본을 보존하면서 업무 수정본은 workDetails에 저장한다. 고객 응답 whitelist에 내부 수정본을 임의 추가하지 않는다.
+- 운송 의뢰·업무·서류의 당사자 표기는 한영베 모두 Shipper / Consignee / Notify Party다. 의뢰의 별도 제목행과 Same As Consignee 체크는 제거하며 Notify Party는 기본 Consignee를 따르고 직접 다른 업체를 선택하면 독립한다. 업무는 왼쪽 관리 정보·오른쪽 BL 계열 편집 양식으로 배치하며 모바일도 관리 정보부터 표시한다. 원본 SR/거래 FK·기존 BL/출력본을 보존하면서 업무 수정본은 workDetails에 저장한다. 고객 응답 whitelist에 내부 수정본을 임의 추가하지 않는다.
 
 - 일반 텍스트의 약어 보존은 SYSTEM 약어 사전을 사용한다. 단어에 대문자가 2개 이상 포함되고 사전에 등록된 경우에만 등록 표기를 적용하며 iOS·SaaS 같은 혼합 표기도 포함한다. bom/Bom처럼 조건을 충족하지 않는 입력은 일반 Title Case 규칙을 따른다. 약어의 풀어쓴 이름·뜻은 비워둘 수 있다. 공식 코드·회사명·검색어·이메일·URL·식별자의 별도 보존 규칙은 유지하고, 과거 문서·개인정보·감사 snapshot을 추정으로 일괄 복원하지 않는다.
 
