@@ -16,7 +16,12 @@ export async function jobDetail(db:any,orgId:number,actorId:number,id:string){
  await freightActor(db,orgId,actorId);const row=await job(db,orgId,id);
  const bills=await linkedJobBills(db,orgId,id);
  const documents=await db.$queryRawUnsafe('SELECT id,kind,number,"sourceVersion","createdAt",snapshot->\'tradeDocument\'->>\'sourceMode\' AS "sourceMode" FROM "FreightDocument" WHERE "orgId"=$1 AND "jobId"=$2 ORDER BY "createdAt" DESC,id',orgId,id);
- return {...row,bills,documents};
+ const assignee=Number.isSafeInteger(row.data?.assigneeId)?await db.employee.findFirst({where:{id:row.data.assigneeId,orgId},select:{id:true,name:true,employeeNo:true}}):null;
+ return {...row,bills,documents,assignee};
+}
+export async function jobOptions(db:any,orgId:number,actorId:number){
+ await freightForwarder(db,orgId,actorId);
+ return {forwarder:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true}}),employees:await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:'OPERATOR'},select:{id:true,name:true,employeeNo:true},orderBy:{name:'asc'}}),currencies:await db.currency.findMany({select:{code:true,name:true},orderBy:{code:'asc'}})};
 }
 export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:string,input:any,id?:string,remove=false){
  await freightForwarder(db,orgId,actorId);
@@ -83,7 +88,7 @@ export async function saveDocumentSetup(db:any,orgId:number,actorId:number,jobId
 export function registerJobRoutes(app:any,db:any,access:any){
  const route=(method:string,path:string,work:any)=>app[method]('/freight/transport-jobs'+path,async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await work(scope,req));});
  route('get','',({orgId,actorId}:any,req:any)=>listFreight(db,orgId,actorId,'jobs',req.query));
- route('get','/options',async({orgId}:any)=>({forwarder:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true}}),employees:await db.employee.findMany({where:{orgId,status:'ACTIVE'},select:{id:true,name:true,employeeNo:true},orderBy:{name:'asc'}}),currencies:await db.currency.findMany({select:{code:true,name:true},orderBy:{code:'asc'}})}));
+ route('get','/options',({orgId,actorId}:any)=>jobOptions(db,orgId,actorId));
  route('get','/:id/master-bills',({orgId,actorId}:any,req:any)=>searchJobMasters(db,orgId,actorId,req.params.id,req.query.q||''));
  route('post','/:id/master-links/:masterId',({orgId,actorId}:any,req:any)=>changeJobMasterLink(db,orgId,actorId,req.params.id,req.params.masterId,req.body));
  route('delete','/:id/master-links/:masterId',({orgId,actorId}:any,req:any)=>changeJobMasterLink(db,orgId,actorId,req.params.id,req.params.masterId,req.body,true));

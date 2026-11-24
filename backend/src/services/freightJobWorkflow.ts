@@ -35,7 +35,7 @@ export async function saveJobOperationDetails(db:any,orgId:number,actorId:number
   const prior=await tx.$queryRawUnsafe('SELECT "after" FROM "FreightAudit" WHERE "orgId"=$1 AND entity=\'operation-details\' AND "sourceId"=$2 AND "after"->\'data\'->\'operationEdit\'->>\'id\'=$3',orgId,id,input.requestId);
   if(prior.length){if(prior[0].after.data.operationEdit.hash!==requestHash)fail('FREIGHT_CHANGED',409);return row;}
   if(row.version!==input.version)fail('FREIGHT_CHANGED',409);
-  if(fields.assigneeId&&!await tx.employee.findFirst({where:{id:fields.assigneeId,orgId,status:'ACTIVE'},select:{id:true}}))fail('FREIGHT_ASSIGNEE_SCOPE',403);
+  if(fields.assigneeId&&!await tx.employee.findFirst({where:{id:fields.assigneeId,orgId,status:'ACTIVE',orgRole:'OPERATOR'},select:{id:true}}))fail('FREIGHT_ASSIGNEE_SCOPE',403);
   const working=Object.fromEntries(Object.entries(fields).filter(([key])=>Object.hasOwn(workFieldLimits,key)||key==='containers'));
   const base=Object.fromEntries(Object.entries(fields).filter(([key])=>!Object.hasOwn(working,key)));
   const data={...row.data,...base,...(Object.keys(working).length?{workDetails:{...row.data.workDetails,...working}}:{}),operationEdit:{id:input.requestId,hash:requestHash}};
