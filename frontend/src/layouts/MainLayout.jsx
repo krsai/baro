@@ -133,8 +133,6 @@ const isKeepAliveCandidatePath = (path) => {
   if (pathname === '/login') return false;
   if (pathname.startsWith('/auth')) return false;
   if (pathname === EMPTY_WORKSPACE_PATH) return false;
-  // New invoices are discarded on departure; returning must start a fresh form.
-  if (pathname === '/invoices/new') return false;
   return true;
 };
 

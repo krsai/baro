@@ -4,7 +4,7 @@ import {invoicePartyText} from '../frontend/src/constants/invoiceParty.js';
 import {EXPENSE_LOOKUP_TEXT} from '../frontend/src/constants/expenseLookup.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {writeFileSync,unlinkSync,existsSync} from 'node:fs';
+import {readFileSync,writeFileSync,unlinkSync,existsSync} from 'node:fs';
 import path from 'node:path';
 import {chromium} from 'playwright-core';
 import {generalInvoiceText} from '../frontend/src/constants/generalInvoice.js';
@@ -19,12 +19,21 @@ const html=`frontend/${fixtureName}.html`,jsx=`frontend/${fixtureName}.jsx`;
 writeFileSync(html,`<meta charset="utf-8"><div id="root"></div><script type="module" src="/${fixtureName}.jsx"></script>`);
 // JSX uses a normal Vite entry so the real workspace and all shared inputs run.
 writeFileSync(jsx,`import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Workspace from '/src/pages/App/invoice/InvoiceWorkspace';createRoot(document.getElementById('root')).render(<MemoryRouter><ThemeProvider theme={theme}><CssBaseline/><Workspace view="editor"/></ThemeProvider></MemoryRouter>);`);
+if(process.argv.includes('--tabs-only')){
+ const layout=readFileSync('frontend/src/layouts/MainLayout.jsx','utf8');
+ const start=layout.indexOf('const isKeepAliveCandidatePath ='),end=layout.indexOf('\n};',start)+3;
+ const policy=layout.slice(start,end);
+ writeFileSync(jsx,`import React from 'react';import{createRoot}from'react-dom/client';import{MemoryRouter,Routes,Route,useNavigate,useLocation}from'react-router-dom';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Workspace from'/src/pages/App/invoice/InvoiceWorkspace';
+ const toPathname=path=>path.split('?')[0],EMPTY_WORKSPACE_PATH='/empty';${policy}
+ function Shell(){const location=useLocation(),navigate=useNavigate(),[open,setOpen]=React.useState(true);window.invoiceNav=(path,options)=>{if(options?.closeTabId==='/invoices/new')setOpen(false);else if(path==='/invoices/new')setOpen(true);navigate(path);};const visible=location.pathname==='/invoices/new';return <>{(open&&(isKeepAliveCandidatePath('/invoices/new')||visible))&&<section style={{display:visible?'block':'none'}}><Routes location="/invoices/new"><Route path="/invoices/new" element={<Workspace view="editor"/>}/></Routes></section>}{!visible&&<div>Other page</div>}</>;}
+ createRoot(document.getElementById('root')).render(<MemoryRouter initialEntries={['/invoices/new']}><ThemeProvider theme={theme}><CssBaseline/><Shell/></ThemeProvider></MemoryRouter>);`);
+}
 const port=process.argv.includes('--service')?43497:43293,server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/${path.basename(html)}`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const [lang,width,failure] of [...['ko','en','vi'].flatMap(lang=>[1440,390].map(width=>[lang,width,'none'])),['en',1440,'save'],['en',1440,'issue']]){
-  if((process.argv.includes('--customer-only')||process.argv.includes('--layout-only')||process.argv.includes('--codes-only')||process.argv.includes('--selection-only'))&&failure!=='none')continue;
+  if((process.argv.includes('--customer-only')||process.argv.includes('--layout-only')||process.argv.includes('--codes-only')||process.argv.includes('--selection-only')||process.argv.includes('--tabs-only'))&&failure!=='none')continue;
   if(process.argv.includes('--service')&&lang!=='en')continue;
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],saves=[],issues=[],sourceReads=[];let failed=false;
   console.log('Checking general invoice',lang,width,failure,process.argv.includes('--material-only')?'material':'standard');
@@ -32,7 +41,7 @@ try{
   page.on('pageerror',error=>errors.push(error.message));page.on('dialog',dialog=>dialog.accept());
   await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useAuth=()=>({activeOrgId:1,activeProfile:{orgType:'${process.argv.includes('--service')?'SERVICE':'MANUFACTURER'}'}});`}));
   await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
-  await page.route('**/src/context/AppContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'const actions={navigateToPath:()=>window.issued=true,showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;'}));
+  await page.route('**/src/context/AppContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'const actions={navigateToPath:(path,options)=>{window.issued=true;window.invoiceNav?.(path,options);},showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;'}));
   await page.route('**/src/components/PageDialogProvider.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const usePageDialogs=()=>({confirm:async()=>true,prompt:async()=>"Correction"});'}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/text-acronyms',route=>route.fulfill({headers,json:{revision:1,entries:[]}}));
@@ -97,12 +106,26 @@ try{
   await row.getByRole('textbox',{name:roleName(t.description)}).fill('Polybag agency purchase');
   if(!process.argv.includes('--material-only')){await row.getByRole('combobox',{name:roleName(t.unit)}).click();await page.getByRole('option',{name:({ko:'\uAC1C',en:'Pcs',vi:'C\u00e1i'})[lang],exact:true}).click();}await row.getByRole('textbox',{name:roleName(t.quantity)}).fill('1000');await row.getByRole('textbox',{name:roleName(t.price)}).fill('1250');await row.getByRole('textbox',{name:roleName(t.vat)}).fill('10');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'Only the item table may scroll horizontally');
+  if(process.argv.includes('--tabs-only')){
+   for(const path of ['/inventory/materials','/invoices']){
+    await page.evaluate(path=>window.invoiceNav(path),path);await page.getByText('Other page',{exact:true}).waitFor();
+    await page.evaluate(()=>window.invoiceNav('/invoices/new'));await row.waitFor();
+    assert.equal(await row.getByRole('textbox',{name:roleName(t.description)}).inputValue(),'Polybag Agency Purchase');
+    assert.equal((await row.getByRole('textbox',{name:roleName(t.quantity)}).inputValue()).replaceAll(',',''),'1000');
+    assert.equal(await customer.inputValue(),'CUST-001');assert.equal(await code.inputValue(),process.argv.includes('--material-only')?'PBGV':'GENV');
+    assert.equal(sourceReads.length,1);assert.equal(saves.length,0);
+   }
+  }
   const paymentText=invoicePaymentAccountText[lang];await page.getByRole('button',{name:roleName(paymentText.select)}).click();const bankDialog=page.getByRole('dialog');await bankDialog.waitFor();await bankDialog.getByRole('row').filter({hasText:'CHOSEN-002'}).getByRole('button').click();await bankDialog.waitFor({state:'hidden'});assert.match(await page.getByTestId('invoice-payment-account').innerText(),/ASCBVNVX/);
   await page.getByRole('checkbox',{name:roleName(t.review)}).check();const issue=page.getByRole('button',{name:roleName(u.issue)});await issue.click();
 
   if(failure!=='none'){await page.getByRole('alert').filter({hasText:t.uncertain}).waitFor();assert.equal(await row.getByRole('textbox',{name:roleName(t.description)}).isDisabled(),true);await issue.click();}
   await page.waitForFunction(()=>window.issued===true).catch(async error=>{console.error({lang,width,failure,saves:saves.length,issues:issues.length,errors,alerts:await page.getByRole('alert').allTextContents(),dialogs:await page.getByRole('dialog').allTextContents(),reviewed:await page.getByRole('checkbox',{name:t.review}).isChecked(),issueDisabled:await issue.isDisabled()});throw error;});
   assert.equal(sourceReads.length,1);assert.equal(saves[0].fields.bankAccountId,'selected-bank');assert.match(saves[0].fields.bank,/CHOSEN-002/);assert.doesNotMatch(saves[0].fields.bank,/DEFAULT-001/);assert.equal(saves[0].fields.bankAccountSnapshot.swiftCode,'ASCBVNVX');assert.deepEqual(errors,[]);
+  if(process.argv.includes('--tabs-only')){
+   await page.getByText('Other page',{exact:true}).waitFor();await page.evaluate(()=>window.invoiceNav('/invoices/new'));
+   await page.getByRole('combobox',{name:new RegExp('^'+t.type,'i')}).waitFor();assert.equal(await page.getByTestId('general-invoice-line').count(),0,'Issuance closes the cached form');
+  }
   if(process.argv.includes('--codes-only'))assert.equal(saves[0].lines[0].transactionCodeId,2,'OUT-direction polybag code retains its actual company FK through issuance');
   assert.equal(saves[0].lines[0].unitId,9);if(process.argv.includes('--material-only')){assert.equal(saves[0].lines[0].materialItemId,'material-master');assert.equal(saves[0].lines[0].materialVariantId,'material-variant');assert.equal(saves[0].lines[0].materialVariantRevision,2);}
   if(failure==='save')assert.deepEqual(saves[0],saves[1]);if(failure==='issue'){assert.equal(saves.length,1);assert.deepEqual(issues[0],issues[1]);}
@@ -114,5 +137,5 @@ try{
   }
   await page.close();
  }
- console.log(process.argv.includes('--selection-only')?'PASS: material name/specification, reselect/cancel, unit/FK and issuance; ko/en/vi desktop/mobile.':process.argv.includes('--codes-only')?'PASS: three-row company details without internal codes, POL/Poly Bag/Korean and transport code selection, scoped FK through VAT/issue/PDF; '+(process.argv.includes('--service')?'SERVICE en desktop/mobile':'MANUFACTURER ko/en/vi desktop/mobile'):process.argv.includes('--layout-only')?'PASS: invoice currency metadata, 36px controls, party/address alignment, item input alignment, codes/VAT/issue and PDF; ko/en/vi desktop/mobile.':process.argv.includes('--customer-only')?'PASS: invoice customer code column, code search/selection and original buyer ID; ko/en/vi desktop/mobile.':'General invoice workspace: ko/en/vi desktop/mobile, customer without orders, codes/items/VAT, bank confirmation, issue and uncertain save/issue retries passed.');
+ console.log(process.argv.includes('--tabs-only')?'PASS: invoice draft survives material/list page round trips without extra reads or saves; issued form closes and reopens empty; ko/en/vi desktop/mobile.':process.argv.includes('--selection-only')?'PASS: material name/specification, reselect/cancel, unit/FK and issuance; ko/en/vi desktop/mobile.':process.argv.includes('--codes-only')?'PASS: three-row company details without internal codes, POL/Poly Bag/Korean and transport code selection, scoped FK through VAT/issue/PDF; '+(process.argv.includes('--service')?'SERVICE en desktop/mobile':'MANUFACTURER ko/en/vi desktop/mobile'):process.argv.includes('--layout-only')?'PASS: invoice currency metadata, 36px controls, party/address alignment, item input alignment, codes/VAT/issue and PDF; ko/en/vi desktop/mobile.':process.argv.includes('--customer-only')?'PASS: invoice customer code column, code search/selection and original buyer ID; ko/en/vi desktop/mobile.':'General invoice workspace: ko/en/vi desktop/mobile, customer without orders, codes/items/VAT, bank confirmation, issue and uncertain save/issue retries passed.');
 }finally{await browser?.close();server.kill();for(const file of [html,jsx])if(existsSync(file))unlinkSync(file);}

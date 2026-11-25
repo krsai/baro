@@ -32,7 +32,7 @@ function InvoiceMenuWorkspace({ activeOrgId, canManageInvoiceTargets, view = 'li
   const t = invoiceMessages[languageCode] || invoiceMessages.en;
   const {invoiceId}=useParams();
   if (view === 'editor') {
-    return <InvoiceCustomerWorkspace activeOrgId={activeOrgId} onBack={() => navigateToPath('/invoices')} />;
+    return <InvoiceCustomerWorkspace activeOrgId={activeOrgId} onBack={() => navigateToPath('/invoices',{closeTabId:'/invoices/new',skipUnsavedChangesCheck:true})} />;
   }
   if(view==='detail')return <InvoiceList key={invoiceId} orgId={activeOrgId} languageCode={languageCode} invoiceId={invoiceId}/>;
   const actions = (
