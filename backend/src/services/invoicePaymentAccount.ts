@@ -5,6 +5,22 @@ export async function listInvoicePaymentAccounts(db:any,orgId:number){
 
 // Resolve an explicit account FK. Legacy document text is preserved verbatim.
 export async function resolveInvoicePaymentAccount(db:any,orgId:number,fields:any){
+ if(fields.bankAccounts!==undefined){
+  const input=fields.bankAccounts;
+  if(!Array.isArray(input)||input.length>3||input.some((row:any)=>typeof row?.id!=='string'||!row.id||row.id.length>100||row.revision!==undefined&&(typeof row.revision!=='string'||row.revision.length>100))||new Set(input.map((row:any)=>row.id)).size!==input.length)throw createHttpError(400,'INVOICE_BANK_ACCOUNT_INVALID');
+  if(fields.bankAccountId!==undefined&&fields.bankAccountId!==(input[0]?.id??null))throw createHttpError(400,'INVOICE_BANK_ACCOUNT_INVALID');
+  for(const id of input.map((row:any)=>row.id).sort())await db.$queryRawUnsafe('SELECT id FROM "OrganizationBankAccount" WHERE id=$1 AND "orgId"=$2 AND "entityId"=$2 FOR SHARE',id,orgId);
+  const resolved=[];
+  for(const selected of input){
+   const one:any={bankAccountId:selected.id,bankAccountRevision:selected.revision||''};
+   await resolveInvoicePaymentAccount(db,orgId,one);
+   resolved.push({id:one.bankAccountId,revision:one.bankAccountRevision,snapshot:one.bankAccountSnapshot});
+  }
+  fields.bankAccounts=resolved;fields.bankAccountId=resolved[0]?.id??null;fields.bankAccountRevision=resolved[0]?.revision||'';
+  if(resolved.length)fields.bankAccountSnapshot=resolved[0]!.snapshot;else delete fields.bankAccountSnapshot;
+  fields.bank=resolved.map(row=>['Bank Name: '+row.snapshot.bankName,'Account Number: '+row.snapshot.accountNumber,'Account Holder: '+row.snapshot.accountHolder,'Currency: '+row.snapshot.currencyCode,'SWIFT Code: '+(row.snapshot.swiftCode||'—')].join('\n')).join('\n\n');
+  return;
+ }
  if(fields.bankAccountId===undefined)return;
  if(fields.bankAccountId===null){fields.bank='';delete fields.bankAccountSnapshot;delete fields.bankAccountRevision;return;}
  const id=fields.bankAccountId;
@@ -18,3 +34,4 @@ export async function resolveInvoicePaymentAccount(db:any,orgId:number,fields:an
  fields.bankAccountSnapshot={bankName:account.bankName,accountNumber:account.accountNumber,accountHolder:account.accountHolder,currencyCode:account.currency.code,swiftCode:account.swiftCode||''};
  fields.bank=['Bank Name: '+account.bankName,'Account Number: '+account.accountNumber,'Account Holder: '+account.accountHolder,'Currency: '+account.currency.code,'SWIFT Code: '+(account.swiftCode||'—')].join('\n');
 }
+export const invoiceBankLinks=(fields:any)=>fields.bankAccountId===undefined?{}:{bankAccountId:fields.bankAccountId,bankAccountId2:fields.bankAccounts?.[1]?.id??null,bankAccountId3:fields.bankAccounts?.[2]?.id??null};

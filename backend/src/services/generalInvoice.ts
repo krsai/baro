@@ -1,7 +1,7 @@
 import {invoiceCurrencyTotals,totalGeneralInvoiceCurrencies} from './invoiceCurrencies';
 import {companyInvoiceParty} from './companyDocumentContact';
 import {prepareMaterialSelection} from './materialItems';
-import {resolveInvoicePaymentAccount} from './invoicePaymentAccount';
+import {resolveInvoicePaymentAccount,invoiceBankLinks} from './invoicePaymentAccount';
 import {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
 import {calculateRequestAmounts} from './transactionRequest';
@@ -91,7 +91,7 @@ export async function issueGeneralInvoice(tx:any,sellerOrgId:number,actor:string
  const invoiceNumber=await allocateDocumentNumber(tx,sellerOrgId,'INV',content.fields.date,normalizeDocumentNumber(content.fields.number));
  calculated.snapshot.fields={...calculated.snapshot.fields,number:invoiceNumber};
  const latest=await tx.invoice.findFirst({where:{sellerOrgId},orderBy:{sequenceNumber:'desc'},select:{sequenceNumber:true}});
- const invoice=await tx.invoice.create({data:{...(content.fields.bankAccountId!==undefined?{bankAccountId:content.fields.bankAccountId}:{}),sellerOrgId,buyerOrgId:draft.buyerOrgId,documentKind:'GENERAL',pricingBasis:null,clientKey:issueKey,invoiceNumber,sequenceNumber:(latest?.sequenceNumber||0)+1,currencyCode:calculated.currencyCode,subtotal:calculated.subtotal,total:calculated.total,receivableAdded:calculated.total,snapshot:calculated.snapshot,issuedBy:actor,revisionOfInvoiceId:original?.id??null,rootInvoiceId:original?(original.rootInvoiceId||original.id):null,revisionNumber:original?original.revisionNumber+1:1,revisionReason}});
+ const invoice=await tx.invoice.create({data:{...invoiceBankLinks(content.fields),sellerOrgId,buyerOrgId:draft.buyerOrgId,documentKind:'GENERAL',pricingBasis:null,clientKey:issueKey,invoiceNumber,sequenceNumber:(latest?.sequenceNumber||0)+1,currencyCode:calculated.currencyCode,subtotal:calculated.subtotal,total:calculated.total,receivableAdded:calculated.total,snapshot:calculated.snapshot,issuedBy:actor,revisionOfInvoiceId:original?.id??null,rootInvoiceId:original?(original.rootInvoiceId||original.id):null,revisionNumber:original?original.revisionNumber+1:1,revisionReason}});
  await tx.invoiceGeneralLine.createMany({data:calculated.lines.map(line=>({...line,sellerOrgId,invoiceId:invoice.id}))});
  if(original){const updated=await tx.invoice.updateMany({where:{id:original.id,sellerOrgId,status:'ISSUED'},data:{status:'SUPERSEDED'}});if(updated.count!==1)throw createHttpError(409,'STALE_EDIT');}
  return invoice;

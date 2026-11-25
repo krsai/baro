@@ -16,7 +16,8 @@ export default function InvoiceFormSummary({orgId,fields,total,currencyTotals,or
       {formulas.map(row=><Box className="invoice-amount-formula" key={row.key}><Typography variant="caption" color="text.secondary">{row.label} · {text.subtotal}</Typography><Typography variant="body2">{row.formula}</Typography>{row.deduction&&<Typography variant="body2">{row.deduction}</Typography>}</Box>)}
       {orders.some(order=>order.vatRate!==undefined)&&<Typography variant="body2">VAT: {orders.map(order=>formatInvoiceMoney(order.vatAmount,currencyCode)+' ('+order.vatRate+'%)').join(' / ')}</Typography>}
       {(currencyTotals||[{currencyCode,amount:total}]).map(row=><Box key={row.currencyCode} className="invoice-total"><span>{ui.summary} / {row.currencyCode}</span><span>{formatInvoiceMoney(row.amount??row.total,row.currencyCode)}</span></Box>)}
-      <Typography variant="caption" color="text.secondary">{ui.bank}</Typography><InvoicePaymentAccount orgId={orgId} fields={fields} accounts={bankAccounts} languageCode={languageCode} onChange={onBankChange} readOnly={readOnly} disabled={disabled}/>
+
     </Stack>
+    <Box className="invoice-bank-section"><InvoicePaymentAccount orgId={orgId} fields={fields} accounts={bankAccounts} languageCode={languageCode} onChange={onBankChange} readOnly={readOnly} disabled={disabled}/></Box>
   </Box>;
 }

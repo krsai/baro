@@ -1,5 +1,5 @@
 import {cashScheduleDate} from './cashSchedule';
-import {resolveInvoicePaymentAccount} from './invoicePaymentAccount';
+import {resolveInvoicePaymentAccount,invoiceBankLinks} from './invoicePaymentAccount';
 import {normalizeStoredAddress} from './companyDocumentContact';
 import {generalInvoiceSource,normalizeGeneralInvoiceLines,validateGeneralInvoiceCodes} from './generalInvoice';
 import { createHttpError } from "../utils/http";
@@ -62,6 +62,7 @@ export const normalizeInvoiceDraftContent = (body: any) => {
     const value = settlementInput[row.orderId] == null ? {} : object(settlementInput[row.orderId]);
     return [row.orderId, { deduction: text(value.deduction ?? "", 32), reason: text(value.reason ?? "", 2000), ...(value.adjustment !== undefined ? { adjustment: text(value.adjustment, 32) } : {}) }];
   }));
+  if(body.fields.bankAccounts!==undefined){if(!Array.isArray(body.fields.bankAccounts)||body.fields.bankAccounts.length>3)return bad();fields.bankAccounts=body.fields.bankAccounts.map((row:any)=>({id:text(row?.id,100),revision:text(row?.revision??'',100)}));}
   if(body.fields.bankAccountId!==undefined){const id=body.fields.bankAccountId;if(id!==null&&(typeof id!=='string'||!id||id.length>100))return bad();fields.bankAccountId=id;}
   return { version: 2,...(general?{documentKind:'GENERAL'}:{}), buyerOrgId: body.buyerOrgId, orders, basis: general?null:body.basis, currency, fields, percentages, settlements, lines };
 };
@@ -81,7 +82,7 @@ export async function saveInvoiceDraft(db: any, sellerOrgId: number, actor: stri
       if((existing.content?.documentKind||'ORDER')!==(content.documentKind||'ORDER'))return bad();
     }
     await resolveInvoicePaymentAccount(tx,sellerOrgId,content.fields);
-    const bankLink=content.fields.bankAccountId===undefined?{}:{bankAccountId:content.fields.bankAccountId};
+    const bankLink=invoiceBankLinks(content.fields);
     if(content.documentKind==='GENERAL'){
       await generalInvoiceSource(tx,sellerOrgId,content.buyerOrgId);
       await validateGeneralInvoiceCodes(tx,sellerOrgId,content.lines);

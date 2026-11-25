@@ -1,3 +1,4 @@
+import {invoicePaymentAccountText} from '../frontend/src/constants/invoicePaymentAccount.js';
 import {invoiceUi} from '../frontend/src/constants/invoiceUi.js';
 import {invoicePartyText} from '../frontend/src/constants/invoiceParty.js';
 import {cashScheduleText} from '../frontend/src/constants/cashSchedule.js';
@@ -36,8 +37,8 @@ try{
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],saves=[],issues=[],reads=[];let failed=false;
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
   await page.addInitScript(({lang,invoice})=>{window.testLang=lang;window.testInvoice=invoice;},{lang,invoice:failure==='detail'?{id:'i1',buyerOrgId:2,invoiceNumber:'INV-001',revisionNumber:1,pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',orders:[{sourceOrderId:'o1',sourceUpdatedAt:source.sourceUpdatedAt,billingPercentage:'100',appliedDeductionAmount:'0'}],snapshot:{fields:{number:'INV-001',date:'2026-10-31',seller:source.seller,buyer:source.buyer,notes:'',bank:'Saved bank USD-001'},lines:combineInvoiceSources([source]).lines.map(row=>({...row,lineKey:row.key,unitPrice:'2'}))}}:null});
-  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
-  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const actions={showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;'}));
+  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`import React from '/node_modules/.vite/deps/react.js';export const LanguageContext=React.createContext({languageCode:'${lang}'});export const useLanguage=()=>({languageCode:'${lang}'});`}));
+  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const actions={showNotification:message=>(window.testNotices??=[]).push(String(message)),setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;'}));
   if(failure==='detail')await page.route('**/src/components/PageDialogProvider.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const usePageDialogs=()=>({confirm:async()=>true,prompt:async()=>"Correction",alert:async()=>{}});'}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/text-acronyms',r=>r.fulfill({headers,json:{revision:1,entries:[]}}));
@@ -57,7 +58,7 @@ try{
   });
   await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html${failure==='revision'?'?draft=revision':''}`);
   const review=page.getByRole('checkbox');await review.waitFor();
-  await page.getByTestId('invoice-payment-account').getByRole('button').click();const bankPicker=page.getByRole('dialog');await bankPicker.getByRole('row').filter({hasText:bankReviewOnly?'USD-999':summaryOnly?'01234567890123456789':'USD-001'}).first().getByRole('button').click();await bankPicker.waitFor({state:'hidden'});
+  await page.getByTestId('invoice-payment-account').getByRole('button').click();const bankPicker=page.getByRole('dialog');await bankPicker.getByRole('row').filter({hasText:bankReviewOnly?'USD-999':summaryOnly?'01234567890123456789':'USD-001'}).first().getByRole('checkbox').check();await bankPicker.getByRole('button',{name:invoicePaymentAccountText[lang].apply,exact:true}).click();await bankPicker.waitFor({state:'hidden'});
   if(adjustmentOnly){
    assert.equal(await page.getByRole('button',{name:invoiceUi[lang].cancel,exact:true}).count(),0);
    const adjustment=page.getByLabel(/\(\+\/-\)/);await adjustment.waitFor();
@@ -65,7 +66,7 @@ try{
    assert.ok(await adjustment.evaluate(el=>!!(document.querySelector('table').compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING)));
    await adjustment.fill('+1.005');await review.check();
    const issue=page.getByRole('button',{name:invoiceUi[lang].issue,exact:true});assert.equal(await issue.isDisabled(),true);
-   await page.getByLabel('REMARK',{exact:true}).fill('Agreed rounding');await review.check();assert.equal(await issue.isDisabled(),false);
+   await page.getByRole('textbox',{name:new RegExp('^'+RegExp.escape(invoiceUi[lang].notes)+'$','i')}).fill('Agreed rounding');await review.check();assert.equal(await issue.isDisabled(),false);
    assert.match(await page.locator('.invoice-total').innerText(),/31\.01/);
    await adjustment.fill('-0.005');assert.match(await page.locator('.invoice-total').innerText(),/29\.99/);
    assert.match(await page.locator('.invoice-amount-formula').innerText(),/0\.01/);
@@ -88,7 +89,7 @@ try{
   assert.equal(await grid.locator('tbody tr[data-invoice-line]').first().locator('td').nth(3).innerText(),failure==='layout'?'90':'15');
   assert.equal(await grid.locator('tbody tr[data-invoice-line]').count(),1);
   assert.equal(await page.locator('.invoice-party').count(),2);
-  assert.equal(await page.locator('.invoice-party').first().locator('input').first().inputValue(),'CUST-001');
+  assert.equal(await page.locator('.invoice-party').first().locator('input').first().inputValue(),'Customer');
   assert.equal(await page.locator('.invoice-party').last().locator('input').first().inputValue(),'BARO');
   assert.equal(await page.locator('.invoice-cell').first().evaluate(el=>getComputedStyle(el).display),'flex');
   assert.equal(await grid.locator('td').first().evaluate(el=>getComputedStyle(el).borderRightStyle),'none');
@@ -133,22 +134,22 @@ try{
   assert.match(await grid.innerText(),/\$/);assert.equal(await grid.locator('tr[data-invoice-line] input[inputmode="decimal"]').nth(0).inputValue(),'2');await grid.locator('tr[data-invoice-line] input[inputmode="decimal"]').nth(0).fill('2.3456');assert.match(await grid.innerText(),/Shirt/);assert.doesNotMatch(await grid.innerText(),/HS \/ Origin/);
   assert.equal(await page.getByRole('textbox',{name:'HS code',exact:true}).count(),0);assert.equal(await page.getByRole('textbox',{name:'Origin',exact:true}).count(),0);
   await grid.locator('tr[data-invoice-line] input[inputmode="decimal"]').nth(1).fill('14');
-  await page.getByLabel('REMARK',{exact:true}).fill('One missing piece');
+  await page.getByRole('textbox',{name:new RegExp('^'+RegExp.escape(invoiceUi[lang].notes)+'$','i')}).fill('One missing piece');
   if(failure==='advance'){const rate=page.locator('input[inputmode="decimal"][aria-label$=" PO-1"]');await rate.fill('30');await rate.press('Tab');}
   await review.check();assert.equal(await issue.isEnabled(),true);
-  await page.getByLabel('REMARK',{exact:true}).fill('Reviewed note');assert.equal(await review.isChecked(),false);
+  await page.getByRole('textbox',{name:new RegExp('^'+RegExp.escape(invoiceUi[lang].notes)+'$','i')}).fill('Reviewed note');assert.equal(await review.isChecked(),false);
   await review.check();
   for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
   await issue.click();
   if(['issue','save'].includes(failure)){
-   await page.getByRole('alert').filter({hasText:'could not be confirmed'}).waitFor();assert.equal(await page.getByLabel('REMARK',{exact:true}).isDisabled(),true);await issue.click();
+   await page.waitForFunction(()=>window.testNotices?.some(message=>message.includes('could not be confirmed')));assert.equal(await page.getByRole('textbox',{name:new RegExp('^'+RegExp.escape(invoiceUi[lang].notes)+'$','i')}).isDisabled(),true);await issue.click();
   }
   await page.waitForFunction(()=>window.issuedEditor===true);
   if(scheduleOnly)assert.equal(saves[0].fields.expectedCollectionDate,'2026-12-20');
   assert.equal(saves.length,failure==='save'?2:1);assert.equal(issues.length,failure==='issue'?2:1);
   assert.equal(new Set(saves.map(s=>s.clientKey)).size,1);assert.ok(issues.every(i=>i.path==='/invoices/drafts/pending-1/issue'));
   if(failure==='advance')assert.equal(saves[0].percentages.o1,'30');
-  assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark===''));assert.equal(saves[0].lines[0].adjustmentReason,'Reviewed note');assert.equal(saves[0].fields.notes,'Reviewed note');if(failure!=='revision'){assert.match(saves[0].fields.bank,bankReviewOnly?/USD-999/:/USD-001/);assert.doesNotMatch(saves[0].fields.bank,/VND-001/);assert.equal(saves[0].fields.bankAccountId,bankReviewOnly?'3':'1');}assert.equal(saves[0].fields.number,failure==='save'?'CUSTOM-2026-A':failure==='detail'?'INV-001-R2':'');
+  assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark===''));assert.equal(saves[0].lines[0].adjustmentReason,'Reviewed Note');assert.equal(saves[0].fields.notes,'Reviewed Note');if(failure!=='revision'){assert.match(saves[0].fields.bank,bankReviewOnly?/USD-999/:/USD-001/);assert.doesNotMatch(saves[0].fields.bank,/VND-001/);assert.equal(saves[0].fields.bankAccountId,bankReviewOnly?'3':'1');}assert.equal(saves[0].fields.number,failure==='save'?'CUSTOM-2026-A':failure==='detail'?'INV-001-R2':'');
   assert.deepEqual(errors,[]);await page.close();
  }
  for(const lang of ((adjustmentOnly||summaryOnly||bankReviewOnly||scheduleOnly||compactOnly)?[]:['ko','en','vi'])){
@@ -206,9 +207,9 @@ try{
   const orders=page.getByRole('button',{name:/^(청구 대상 주문|Orders to invoice|Đơn hàng cần lập hóa đơn)/});
   const apply=()=>page.getByRole('button',{name:lang==='ko'?'선택 적용':lang==='vi'?'Áp dụng':'Apply selection',exact:true}).click();
   await orders.click();await page.getByRole('dialog').getByRole('button',{name:/PO-1/}).click();await apply();
-  await page.getByLabel('REMARK',{exact:true}).waitFor();await page.getByLabel('REMARK',{exact:true}).fill('Keep this input');
+  await page.getByRole('textbox',{name:new RegExp('^'+RegExp.escape(invoiceUi[lang].notes)+'$','i')}).waitFor();await page.getByRole('textbox',{name:new RegExp('^'+RegExp.escape(invoiceUi[lang].notes)+'$','i')}).fill('Keep this input');
   await orders.click();await page.getByRole('dialog').getByRole('button',{name:/PO-2/}).click();await apply();
-  assert.equal(await page.getByLabel('REMARK',{exact:true}).inputValue(),'Keep this input','Rejected selection change must preserve entered lines');
+  assert.equal(await page.getByRole('textbox',{name:new RegExp('^'+RegExp.escape(invoiceUi[lang].notes)+'$','i')}).inputValue(),'Keep this input','Rejected selection change must preserve entered lines');
   allowDiscard=true;await apply();
   await page.waitForFunction(()=>document.querySelectorAll('fieldset table').length>0&&[...document.querySelectorAll('fieldset table:first-of-type tbody tr')].some(row=>row.textContent.includes('PO-2')));
   await page.getByRole('dialog').waitFor({state:'hidden'});assert.equal(await page.locator('h1').count(),1);

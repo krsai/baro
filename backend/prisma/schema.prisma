@@ -3084,6 +3084,8 @@ model AssignmentCard {
 // A draft has no invoice number, issued status, settlement balance or order lock.
 model InvoiceDraft {
   bankAccountId String?
+  bankAccountId2 String?
+  bankAccountId3 String?
   id String @id @default(cuid())
   sellerOrgId Int
   buyerOrgId Int
@@ -3152,6 +3154,8 @@ enum InvoicePaymentKind {
 // Immutable issuance snapshot. Corrections and settlements are appended in later phases.
 model Invoice {
   bankAccountId String?
+  bankAccountId2 String?
+  bankAccountId3 String?
   transactionCodeId Int?
   accountingCode TransactionCode? @relation("InvoiceAccountingCode",fields:[transactionCodeId,sellerOrgId],references:[id,ownerOrgId],onDelete:Restrict,onUpdate:Restrict,map:"Invoice_accounting_code_scope_fkey")
   openingAdjustments AccountingOpeningItem[]

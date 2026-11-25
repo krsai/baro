@@ -35,6 +35,13 @@ export const invoiceDocumentCss = `
 .invoice-sheet .invoice-remark{align-self:stretch;min-height:190px}
 .invoice-sheet .invoice-remark .MuiInputBase-root{height:100%;align-items:flex-start}
 .invoice-sheet .invoice-remark textarea:not([aria-hidden]){height:100%!important;overflow:auto!important}
+.invoice-sheet .invoice-bank-section{grid-column:1/-1;min-width:0}
+.invoice-sheet .invoice-bank-grid{display:grid;grid-template-columns:repeat(var(--invoice-bank-count,3),minmax(0,1fr));gap:16px;align-items:stretch}
+.invoice-sheet .invoice-bank-card{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 12px;align-content:start;min-width:0;margin:0;padding:12px;border:1px solid #e7ecf2;border-radius:6px}
+.invoice-sheet .invoice-bank-card dt,.invoice-sheet .invoice-bank-card dd{margin:0;min-width:0;overflow-wrap:anywhere;line-height:1.6}
+.invoice-sheet .invoice-bank-card dt{font-size:11px;color:#667085}
+@media screen and (max-width:900px){.invoice-sheet .invoice-bank-grid{grid-template-columns:repeat(var(--invoice-bank-tablet-count,2),minmax(0,1fr))}}
+@media screen and (max-width:600px){.invoice-sheet .invoice-bank-grid{grid-template-columns:minmax(0,1fr)}}
 .invoice-sheet .invoice-bank-lines{min-width:0;overflow-x:auto}
 .invoice-sheet .invoice-bank-line{white-space:pre;overflow-wrap:normal;line-height:1.7}
 .invoice-sheet .invoice-amount-formula{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}

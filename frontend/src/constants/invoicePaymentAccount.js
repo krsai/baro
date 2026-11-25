@@ -6,3 +6,6 @@ export const invoicePaymentAccountText={
 Object.assign(invoicePaymentAccountText.ko,{retry:'다시 시도',failed:'계좌 목록을 불러오지 못했습니다.'});
 Object.assign(invoicePaymentAccountText.en,{retry:'Retry',failed:'Unable To Load Payment Accounts.'});
 Object.assign(invoicePaymentAccountText.vi,{retry:'Thử Lại',failed:'Không Thể Tải Danh Sách Tài Khoản.'});
+Object.assign(invoicePaymentAccountText.ko,{apply:'선택 적용'});
+Object.assign(invoicePaymentAccountText.en,{apply:'Apply Selection'});
+Object.assign(invoicePaymentAccountText.vi,{apply:'Áp Dụng Lựa Chọn'});

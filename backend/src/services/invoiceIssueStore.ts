@@ -1,7 +1,7 @@
 import {invoiceCurrencyAmount} from './invoiceCurrencies';
 import {orderInvoiceAccounting} from './invoiceAccounting';
 import {assertInvoiceDeletable} from './invoiceDeletion';
-import {resolveInvoicePaymentAccount} from './invoicePaymentAccount';
+import {resolveInvoicePaymentAccount,invoiceBankLinks} from './invoicePaymentAccount';
 import { createHttpError } from "../utils/http";
 import {issueGeneralInvoice} from './generalInvoice';
 import {allocateDocumentNumber,normalizeDocumentNumber} from './documentNumber';
@@ -230,7 +230,7 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
     const invoiceNumber=await allocateDocumentNumber(tx,sellerOrgId,'INV',content.fields.date,requestedNumber);
     calculated.snapshot.fields={...calculated.snapshot.fields,number:invoiceNumber};
     const latest = await tx.invoice.findFirst({ where: { sellerOrgId }, orderBy: { sequenceNumber: "desc" }, select: { sequenceNumber: true } });
-    const invoice = await tx.invoice.create({ data: { ...(content.fields.bankAccountId!==undefined?{bankAccountId:content.fields.bankAccountId}:{}), sellerOrgId, buyerOrgId: draft.buyerOrgId, invoiceNumber,
+    const invoice = await tx.invoice.create({ data: { ...invoiceBankLinks(content.fields), sellerOrgId, buyerOrgId: draft.buyerOrgId, invoiceNumber,
       clientKey: issueKey, sequenceNumber: (latest?.sequenceNumber || 0) + 1, pricingBasis: calculated.pricingBasis,
       transactionCodeId:accounting?.transactionCodeId??null,
       currencyCode: calculated.currencyCode, subtotal: calculated.subtotal, total: calculated.total, receivableAdded: calculated.receivableAdded,
@@ -451,7 +451,7 @@ export async function createInvoiceRevisionDraft(db: any, sellerOrgId: number, a
       lines: invoice.lines.map((line: any) => ({ key: line.lineKey, quantity: String(line.quantity), unitPriceOverride: String(line.unitPrice), remark: line.remark || "",
         adjustmentReason: line.adjustmentReason || "", hsCode: line.hsCode || "", origin: line.origin || "" })),
     };
-    const draft = await tx.invoiceDraft.create({ data: { ...(content.fields.bankAccountId!==undefined?{bankAccountId:content.fields.bankAccountId}:{}),sellerOrgId, buyerOrgId: invoice.buyerOrgId, clientKey,
+    const draft = await tx.invoiceDraft.create({ data: { ...invoiceBankLinks(content.fields),sellerOrgId, buyerOrgId: invoice.buyerOrgId, clientKey,
       content, createdBy: actor, updatedBy: actor, revisionOfInvoiceId: invoice.id, revisionReason } });
     if (invoice.orders.length) await tx.invoiceDraftOrder.createMany({ data: invoice.orders.map((row: any) => ({ draftId: draft.id,
       workOrderId: row.workOrderId, sourceOrderId: row.sourceOrderId, sourceUpdatedAt: row.sourceUpdatedAt })) });
