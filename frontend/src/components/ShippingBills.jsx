@@ -20,10 +20,13 @@ import {shippingBillText} from '../constants/shippingBills';
 import {freightText} from '../constants/freight';
 import {billHierarchy,initialBillData} from '../utils/shippingBillData.mjs';
 
-export default function ShippingBills({job,orgId,languageCode,onDirtyChange,onChanged,initialBillId,initialKind,initialMasterId}){
+export default function ShippingBills({job,orgId,languageCode,onDirtyChange,onStateChange,onChanged,initialBillId,initialKind,initialMasterId}){
  const t=shippingBillText[languageCode]||shippingBillText.en,dialogs=usePageDialogs();
  const [rows,setRows]=useState(job.bills||[]),[selected,setSelected]=useState(()=>job.bills?.some(row=>row.id===initialBillId)?initialBillId:billHierarchy(job.bills||[])[0]?.id||null),[draft,setDraft]=useState(()=>['MASTER','HOUSE'].includes(initialKind)?{id:crypto.randomUUID(),kind:initialKind,number:'',issuer:'',masterId:initialKind==='HOUSE'&&job.bills.some(row=>row.id===initialMasterId&&row.kind==='MASTER')?initialMasterId:null,data:{}}:null),[formDirty,setFormDirty]=useState(false),[chargeDirty,setChargeDirty]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const dirty=formDirty||chargeDirty,blocked=dirty||busy;
+ const [formState,setFormState]=useState({busy:false,uncertain:false}),[chargeState,setChargeState]=useState({busy:false,uncertain:false});
+ const markFormState=useCallback(value=>setFormState(value),[]),markChargeState=useCallback(value=>setChargeState(value),[]);
+ useEffect(()=>{onStateChange?.({busy:busy||formState.busy||chargeState.busy,uncertain:formState.uncertain||chargeState.uncertain});return()=>onStateChange?.({busy:false,uncertain:false});},[busy,formState,chargeState,onStateChange]);
  useEffect(()=>{onDirtyChange?.(blocked);return()=>onDirtyChange?.(false);},[blocked,onDirtyChange]);
  useEffect(()=>{if(!blocked)setRows(job.bills||[]);},[job.bills]);
  const canEdit=job.receiptStatus==='ACCEPTED'&&job.status!=='CANCELLED';
@@ -45,14 +48,14 @@ export default function ShippingBills({job,orgId,languageCode,onDirtyChange,onCh
   {error&&<AppNotice severity="error">{error}</AppNotice>}
   <ListDetailLayout listWidth="minmax(220px,280px)" detailWidth="minmax(0,1fr)" list={<DialogRecordList rows={billHierarchy(rows)} selectedKey={selected} onSelect={choose} onPreview={row=>{if(!blocked&&!draft){setSelected(row.id);setError('');}}} previewDisabled={blocked||!!draft} disabled={busy} languageCode={languageCode} columns={[{key:'number',label:t.number,value:row=><Box component="span" sx={{pl:row.depth?2:0}}>{row.kind==='MASTER'?'MBL':'HBL'} · {row.number}{row.unlinked&&<Typography variant="caption" display="block">{t.unlinked}</Typography>}</Box>}]}/>}
    detail={current?<Stack spacing={2}>
-    <BillForm key={current.id+':'+(current.version?'saved':'new')} initial={current} rows={rows} job={job} orgId={orgId} languageCode={languageCode} readOnly={!canEdit} disabled={busy} onBusyChange={setBusy} onDirtyChange={markForm} onSaved={saved} onDelete={current.version&&(current.kind!=='MASTER'||current.jobId===job.id&&!(current.linkedJobCount>1))?()=>remove(current):undefined}/>
+    <BillForm key={current.id+':'+(current.version?'saved':'new')} initial={current} rows={rows} job={job} orgId={orgId} languageCode={languageCode} readOnly={!canEdit} disabled={busy} onBusyChange={setBusy} onDirtyChange={markForm} onStateChange={markFormState} onSaved={saved} onDelete={current.version&&(current.kind!=='MASTER'||current.jobId===job.id&&!(current.linkedJobCount>1))?()=>remove(current):undefined}/>
     {current.version&&canEdit&&current.jobId!==job.id&&current.kind==='MASTER'&&<Typography variant="caption" color="text.secondary">{({ko:'MBL 금액은 등록 업무에서 관리합니다.',en:'MBL charges are managed in its source job.',vi:'Chi Phí MBL Được Quản Lý Trong Công Việc Gốc.'})[languageCode]}</Typography>}
-    {current.version&&canEdit&&current.jobId===job.id&&<ShippingChargeDrafts key={current.id} billId={current.id} orgId={orgId} jobId={job.id} languageCode={languageCode} readOnly={false} onDirtyChange={markCharges} refreshKey={job.version+':'+chargeRevision} onSaved={chargesSaved}/>}
+    {current.version&&canEdit&&current.jobId===job.id&&<ShippingChargeDrafts key={current.id} billId={current.id} orgId={orgId} jobId={job.id} languageCode={languageCode} readOnly={false} onDirtyChange={markCharges} onStateChange={markChargeState} refreshKey={job.version+':'+chargeRevision} onSaved={chargesSaved}/>}
    </Stack>:null}/>
 
  </Stack>;
 }
-function BillForm({initial,rows,job,orgId,languageCode,readOnly,disabled,onBusyChange,onDirtyChange,onSaved,onDelete}){
+function BillForm({initial,rows,job,orgId,languageCode,readOnly,disabled,onBusyChange,onDirtyChange,onStateChange,onSaved,onDelete}){
  const t=shippingBillText[languageCode]||shippingBillText.en,f=freightText[languageCode]||freightText.en,dialogs=usePageDialogs(),{showNotification}=useAppActions();
  const [baseline,setBaseline]=useState(()=>({...initial,data:initialBillData(job,initial,rows.find(row=>row.id===initial.masterId))}));
  const [value,setValue]=useState(baseline),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[error,setError]=useState(''),pending=useRef(null),lock=useRef(false),live=useRef(true);
@@ -60,6 +63,7 @@ function BillForm({initial,rows,job,orgId,languageCode,readOnly,disabled,onBusyC
  useUnsavedChanges(dirty||uncertain);
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
  useEffect(()=>{onDirtyChange?.(dirty||uncertain);return()=>onDirtyChange?.(false);},[dirty,uncertain,onDirtyChange]);
+ useEffect(()=>{onStateChange?.({busy,uncertain});return()=>onStateChange?.({busy:false,uncertain:false});},[busy,uncertain,onStateChange]);
  useEffect(()=>{if(!dirty&&!busy&&!uncertain&&initial.version>baseline.version){const next={...initial,data:initialBillData(job,initial,rows.find(row=>row.id===initial.masterId))};setBaseline(next);setValue(next);}},[initial.version]);
  const save=async()=>{
   if(lock.current||disabled||readOnly)return;if(!value.number.trim()){setError(t.required);return;}

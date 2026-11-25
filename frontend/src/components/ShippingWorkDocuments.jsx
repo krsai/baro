@@ -11,11 +11,13 @@ import {usePageDialogs} from './PageDialogProvider';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {shippingOperationText} from '../constants/shippingOperations';
 
-export default function ShippingWorkDocuments({job,orgId,languageCode,compact=false,toolbar=false,actions,onOpen,onCreate,onChanged,onDirtyChange,busy=false}){
+export default function ShippingWorkDocuments({job,orgId,languageCode,compact=false,toolbar=false,actions,onOpen,onCreate,onChanged,onDirtyChange,onReturnDetail,returnVersion=0,busy=false}){
  const labels=shippingOperationText[languageCode]||shippingOperationText.en,t=job.mode==='AIR'&&job.service!=='EXPRESS'?Object.fromEntries(Object.entries(labels).map(([key,value])=>[key,value.replaceAll('MBL','MAWB').replaceAll('HBL','HAWB')])):labels,dialogs=usePageDialogs();
  const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[rows,setRows]=useState([]),[selected,setSelected]=useState(null),[loading,setLoading]=useState(false),[loadError,setLoadError]=useState(false),[reload,setReload]=useState(0),[working,setWorking]=useState(false),[uncertain,setUncertain]=useState(false),[error,setError]=useState('');
  const pending=useRef(null),lock=useRef(false),canEdit=job.receiptStatus==='ACCEPTED'&&job.status!=='CANCELLED',masters=job.bills.filter(row=>row.kind==='MASTER'),houses=job.bills.filter(row=>row.kind==='HOUSE');
  const [panel,setPanel]=useState(null),hasBills=job.service!=='EXPRESS'&&['SEA','AIR'].includes(job.mode)||job.bills.length>0;
+ useEffect(()=>{setPanel(null);},[returnVersion]);
+ const returnDetail=async()=>{if(busy||working||uncertain)return;if(onReturnDetail&&await onReturnDetail()===false)return;setPanel(null);setOpen(false);};
  useEffect(()=>{onDirtyChange?.(working||uncertain);return()=>onDirtyChange?.(false);},[working,uncertain,onDirtyChange]);
  useEffect(()=>{if(!open)return;let live=true;setLoading(true);setLoadError(false);const timer=setTimeout(()=>{requestJSON('/freight/transport-jobs/'+job.id+'/master-bills'+buildQueryString({orgId,q:query}),{skipCache:true}).then(value=>{if(live)setRows(value.rows);}).catch(()=>live&&setLoadError(true)).finally(()=>live&&setLoading(false));},150);return()=>{live=false;clearTimeout(timer);};},[open,query,reload,job.id,orgId]);
  const act=async(row,remove=false)=>{
@@ -34,7 +36,8 @@ export default function ShippingWorkDocuments({job,orgId,languageCode,compact=fa
   <Button type="button" size="small" disabled={blocked} onClick={()=>onOpen(row.id)}>{t.openDocument}</Button>{kind==='MASTER'&&canEdit&&<Button type="button" size="small" disabled={blocked} onClick={()=>act(row,true)}>{t.unlink}</Button>}
  </Stack>;
  return <Stack spacing={1.5} data-shipping-work-documents>
-  {toolbar&&<Box data-shipping-work-actions sx={{display:'grid',gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',sm:`repeat(${hasBills?4:2},minmax(0,1fr))`},gap:1}}>
+  {toolbar&&<Box data-shipping-work-actions sx={{display:'grid',gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',sm:`repeat(${hasBills?5:3},minmax(0,1fr))`},gap:1}}>
+   <Button type="button" variant={!panel?'contained':'outlined'} disabled={blocked} aria-current={!panel?'page':undefined} onClick={returnDetail}>{t.detail}</Button>
    {hasBills&&['MASTER','HOUSE'].map(kind=><Button key={kind} type="button" variant={panel===kind?'contained':'outlined'} disabled={blocked} aria-expanded={panel===kind} aria-controls={`shipping-${job.id}-${kind}`} onClick={()=>setPanel(old=>old===kind?null:kind)}>{job.mode==='AIR'?(kind==='MASTER'?'MAWB':'HAWB'):(kind==='MASTER'?'MBL':'HBL')} ({kind==='MASTER'?masters.length:houses.length})</Button>)}
    {actions}
   </Box>}
@@ -47,6 +50,6 @@ export default function ShippingWorkDocuments({job,orgId,languageCode,compact=fa
    search={<SearchInput value={query} onChange={e=>setQuery(e.target.value)} label={t.masterSearch}/>}
    list={<DialogRecordList rows={rows} columns={[{key:'number',label:job.mode==='AIR'?'MAWB':'MBL',value:row=>row.number},{key:'issuer',label:t.issuer,value:row=>row.issuer}]} selectedKey={selected?.id} onSelect={setSelected} disabled={blocked} loading={loading} error={loadError} onRetry={()=>setReload(n=>n+1)} languageCode={languageCode}/>}
    detail={<Stack spacing={2}>{selected&&<RecordDetails fields={[{key:'number',label:job.mode==='AIR'?'MAWB':'MBL',value:selected.number},{key:'issuer',label:t.issuer,value:selected.issuer},{key:'vessel',label:t.vessel,value:selected.data.vessel},{key:'voyage',label:t.voyage,value:selected.data.voyage},{key:'etd',label:t.etd,value:selected.data.etd},{key:'eta',label:t.eta,value:selected.data.eta}]}/ >}{error&&<AppNotice severity="error">{error}</AppNotice>}</Stack>}
-   actions={<PageActions primary={<Button variant="contained" disabled={working||loading||loadError||!selected||selected.linked&&!uncertain} onClick={()=>act(selected)}>{uncertain?t.retry:t.link}</Button>}/>}/ >}
+   actions={<PageActions secondary={toolbar&&<Button disabled={blocked} onClick={returnDetail}>{t.returnDetail}</Button>} primary={<Button variant="contained" disabled={working||loading||loadError||!selected||selected.linked&&!uncertain} onClick={()=>act(selected)}>{uncertain?t.retry:t.link}</Button>}/>}/ >}
  </Stack>;
 }
