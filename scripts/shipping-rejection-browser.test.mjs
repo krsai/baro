@@ -39,7 +39,7 @@ try{
    await remove.click();await confirm.getByRole('button').last().click();await page.waitForTimeout(200);assert.equal(deleted,false);
    await remove.click();await confirm.getByRole('button').last().click();await row.waitFor({state:'hidden'});assert.deepEqual(writes[0],writes[1]);assert.deepEqual(errors,[]);await page.close();console.log('PASS source customer permanent delete and failure retry',lang,width);continue;
   }
-  const row=page.locator('[data-shipping-row=job1]');await row.waitFor();assert.equal(await row.locator('td').nth(6).textContent(),t.ACCEPTED);assert.equal(await page.getByRole('columnheader',{name:t.actions,exact:true}).count(),1);assert.equal(await row.getByRole('button',{name:t.deleteRejected+' '+job.number,exact:true}).count(),0);
+  const row=page.locator('[data-shipping-row=job1]');await row.waitFor();assert.equal(await row.locator('td').nth(6).textContent(),t.ACCEPTED);assert.equal(await page.getByRole('columnheader',{name:t.actions,exact:true}).count(),1);assert.equal(await row.getByRole('button',{name:t.deleteRejected+' '+job.number,exact:true}).isDisabled(),true);
   await row.dblclick();await page.getByTestId('shipping-operations-form').waitFor();
   const reject=page.getByRole('button',{name:t.reject,exact:true});await reject.click();let confirm=page.locator('[data-page-confirmation]');await confirm.getByRole('button').first().click();assert.equal(writes.length,0);
   await reject.click();await confirm.getByRole('button').last().click();await page.waitForFunction(()=>document.body.textContent.includes('JOB-000001'));await reject.waitFor();await page.waitForTimeout(200);assert.equal(writes.length,1);assert.equal(job.receiptStatus,'ACCEPTED');
