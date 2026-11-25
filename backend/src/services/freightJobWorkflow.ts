@@ -31,7 +31,7 @@ export async function saveJobOperationDetails(db:any,orgId:number,actorId:number
    const allowed=['20DC','40DC','40HQ','45HQ','20RF','40RF','40RH','20OT','40OT','40OH','20FR','40FR','40FH','20TK'];
    if(!Array.isArray(value)||value.length>100||value.some((r:any)=>!r||Object.keys(r).some(k=>!['size','type','count'].includes(k))||!allowed.includes(String(r.size)+String(r.type))||!/^\d{1,6}$/.test(String(r.count))||Number(r.count)<1))fail('FREIGHT_INVALID_INPUT');
    fields[key]=value.map((r:any)=>({size:String(r.size),type:String(r.type),count:String(r.count)}));
-  }else if(key==='etd'||key==='eta'||key==='plannedDate'){
+  }else if(key==='etd'||key==='eta'||key==='plannedDate'||key.startsWith('routeDate')){
    if(value!==null&&(typeof value!=='string'||!/^\d{4}-\d\d-\d\d$/.test(value)||!Number.isFinite(Date.parse(value))||new Date(value).toISOString().slice(0,10)!==value))fail('FREIGHT_INVALID_INPUT');fields[key]=value;
   }else {fields[key]=text(value,workFieldLimits[key]??(key==='vessel'?160:100));if(['shipper','consignee','origin','destination'].includes(key)&&!fields[key])fail('FREIGHT_REQUIRED');if(['quantity','weightKg','cbm','chargeableWeightKg'].includes(key)&&fields[key]&&!/^\d{1,16}(?:\.\d{1,4})?$/.test(fields[key]))fail('FREIGHT_INVALID_INPUT');}
  }
