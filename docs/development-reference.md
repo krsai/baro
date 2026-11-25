@@ -856,6 +856,8 @@ SHA-256은 원문의 줄바꿈을 LF로 정규화한 기준입니다.
 
 ## 2026-10-31 청구서 비용 신청형 폼·컴팩트 PDF (최신 정정)
 
+- 출력 최신 정정: 주문/일반 청구 PDF와 인쇄의 문서 언어는 UI 언어와 무관하게 영어로 고정하고 제목은 INVOICE다. 한국어 화면 제목은 청구서이며 일반 청구는 유형 구분으로만 사용한다. 발행 snapshot의 업체명·주소·품목·비고 원문은 자동 번역/재작성하지 않는다. 번호/날짜는 제목 오른쪽, 품목표는 A4 실사용 폭 안의 명시적 열 비율, 비고와 합계는 짧은 두 열, 계좌 안내는 그 아래 최대 세 열을 사용한다. 단일 통화 합계의 별도 통화 행/중복 접두어는 제거하고 혼합 통화의 합계별 식별만 유지한다. PDF 캡처 본문의 border-box/여백/캡처 너비를 688px로 일치시켜 182mm 출력 폭 안에 표·합계·계좌를 보존한다. 앱 비고 입력은 기본 세 줄이며 합계/계좌 높이에 맞춰 빈 영역을 늘리지 않는다. 검증은 실제 html2canvas/jsPDF를 실행하는 invoice-pdf-layout-browser.test.mjs에서 모든 UI 언어의 영어 출력과 오른쪽 끝/내부 overflow를 확인한다. native page.pdf만으로 실제 앱 PDF 경로의 잘림 검증을 대체하지 않는다.
+
 - 계좌 안내 최신 정정: 주문/일반 청구서 한 장에 현재 회사 자신의 활성 BANK 계좌를 최대 3개 직접 선택하고 적용한다. 앞선 단일 계좌 선택 기준을 대체한다. 비고·합계 아래 전체 너비의 안내 영역에서 제목과 변경 버튼을 같은 줄에 맞추고 PC/출력은 최대 세 열, 좁은 화면은 세로 배치한다. 선택 취소는 기존 안내를 보존하고 빈 선택 적용은 명시적 해제다. 선택 순서를 유지하며 통화에 따른 자동 선택이나 기본 계좌 변경은 하지 않는다. 서버가 선택별 회사·계좌 종류·활성·revision을 검증하고 은행 정보 snapshot을 생성한다. bankAccounts 배열과 회사 범위 실제 FK bankAccountId/bankAccountId2/bankAccountId3를 초안·발행·개정에 보존한다. 기존 단일 계좌와 fields.bank 원문·발행 snapshot은 소급 재작성하지 않는다. 추가 migration 20261125060000_invoice_payment_accounts_three는 공통 실행기·Railway preflight·시작 검사에 등록한다. 롤백 시 호환 앱으로 복원하되 추가 컬럼·FK·원문을 보존한다. 검증은 invoice-payment-account.test.mjs, invoice-payment-accounts-store.test.mjs, invoice-payment-account-browser.test.mjs를 사용한다.
 
 - 앞선 종이 서식형 화면 지시는 비용 신청 등록과 같은 앱 폼으로 대체한다. 등록/수정/상세는 공통 헤더·행 높이·하단 REMARK/합계·회사 계좌 안내를 사용한다. 상세는 iframe/PDF 미리보기가 아니라 발행 snapshot의 조회 전용 폼이며 현재 주문·단가로 재계산하지 않는다.

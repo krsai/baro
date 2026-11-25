@@ -55,12 +55,12 @@ test('issued template rejects unknown versions and explicitly supports legacy sn
   assert.throws(() => buildIssuedInvoicePrintHtml(invoice), /TEMPLATE_UNSUPPORTED/);
 });
 
-test('document grid localizes the form and keeps cancelled status visible',()=>{
+test('print uses English for every UI language and keeps cancelled status visible',()=>{
   const invoice=fixture();invoice.status='CANCELLED';
   for(const [lang,title,status] of [['ko','청 구 서','취소'],['en','INVOICE','Cancelled'],['vi','HÓA ĐƠN','Đã hủy']]){
     const html=buildIssuedInvoicePrintHtml(invoice,lang);
-    assert.ok(html.includes(`<h1 class="invoice-heading">${title}</h1>`));
-    assert.ok(html.includes(`<p class="invoice-status">${status}</p>`));
+    assert.ok(html.includes(`<h1 class="invoice-heading">INVOICE</h1>`));
+    assert.ok(html.includes(`<p class="invoice-status">Cancelled</p>`));
     assert.match(html,/class="invoice-parties"/);assert.match(html,/class="invoice-total"/);
     assert.equal((html.match(/aria-hidden="true"/g)||[]).length,0);
   }
