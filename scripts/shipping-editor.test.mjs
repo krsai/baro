@@ -29,6 +29,21 @@ test('mode-specific cargo, exact metres-to-CBM and explicit safe party snapshots
  assert.deepEqual(snapshot.data.shipperParty,{name:'THE SAN',address:'Factory'});assert.deepEqual(snapshot.data.notifyParty,{name:'Buyer'});assert.equal(snapshot.data.internalCost,undefined);
  assert.deepEqual(shippingCargo({cargo:'Historical'},'SEA'),{});
 });
+
+test('SR declared totals survive FCL and measured cargo snapshots without being replaced by measurements',()=>{
+ const summary={cargoSchemaVersion:1,cargo:'Cotton Shirts',quantity:'77',unit:'CTN',weightKg:'1040',cbm:'5.440000'};
+ const fcl={...summary,shipmentType:'FCL',containers:[{size:'20',type:'DC',count:'1'}],outOfGauge:false,hsCode:'610910'};
+ const parsed=shippingCargo(fcl,'SEA');for(const key of ['quantity','unit','weightKg','cbm','hsCode'])assert.equal(parsed[key],fcl[key]);
+ assert.equal(transportSnapshot({mode:'SEA',data:fcl}).data.cbm,'5.440000');
+ for(const mode of ['SEA','AIR','ROAD']){
+  const data={...summary,shipmentType:mode==='SEA'?'LCL':mode,packages:[{quantity:'2',lengthM:'1',widthM:'1',heightM:'1'}]};
+  assert.equal(shippingCargo(data,mode).quantity,'77');assert.equal(shippingCargo(data,mode).cbm,'5.440000');
+  assert.deepEqual(shippingCargo({...data,packages:[]},mode).packages,[]);
+  assert.throws(()=>shippingCargo({...data,packages:[{quantity:'1',lengthM:'1000000',widthM:'1000000',heightM:'1000000'}]},mode),/SHIPPING_CARGO_INVALID/);
+ }
+ for(const patch of [{quantity:'1.5'},{weightKg:'-1'},{cbm:'NaN'},{unit:'X'.repeat(31)}])assert.throws(()=>shippingCargo({...fcl,...patch},'SEA'),/SHIPPING_CARGO_INVALID/);
+ const missing={...summary,unit:'',shipmentType:'AIR',packages:[]};assert.throws(()=>shippingCargo(missing,'AIR'),/SHIPPING_CARGO_INVALID/);
+});
 test('real company/customer-scoped presets, FK guards, soft deletion, audit and cargo persistence',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),orgId=s.company.id,actorId=s.people.admin.id,scope={orgId,actorId,org:{type:'SERVICE'}};
@@ -51,6 +66,9 @@ test('real company/customer-scoped presets, FK guards, soft deletion, audit and 
   await assert.rejects(saveShippingPreset(db,scope,{...location,version:2,data:{address:'Warehouse',phone:123}}),/SHIPPING_INVALID/);
   const routeData={origin:'Hanoi warehouse',destination:'Buyer warehouse',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'},routeLocations:{ORIGIN_DOOR:'Hanoi warehouse',DESTINATION_DOOR:'Buyer warehouse'},routeLocationDetails:{ORIGIN_DOOR:{label:'Main warehouse',contactName:'Kim',phone:'+84 123',privateCost:'secret'}}};
   const routeJob=await saveFreight(db,orgId,actorId,'jobs',{clientKey:randomUUID(),mode:'ROAD',customerId:s.vendor.id,data:routeData});
+  const summaryData={...routeData,cargoSchemaVersion:1,shipmentType:'ROAD',cargo:'Cotton Shirts',hsCode:'610910',quantity:'77',unit:'CTN',weightKg:'1040',cbm:'5.440000',packages:[]};
+  const summaryJob=await saveFreight(db,orgId,actorId,'jobs',{clientKey:randomUUID(),mode:'ROAD',customerId:s.vendor.id,data:summaryData});
+  for(const key of ['cargo','quantity','unit','weightKg','cbm','hsCode']){assert.equal(summaryJob.data[key],summaryData[key]);assert.equal(summaryJob.requestSnapshot.data[key],summaryData[key]);}
   const countryMigration=require('../backend/scripts/migrate-entity-profiles').migrations().find(row=>row.version==='20261122010000_shipping_location_country');
   await f.pg.exec(countryMigration.sql);await f.pg.exec(countryMigration.sql);
   const countryData={...routeData,routeLocationDetails:{ORIGIN_DOOR:{...routeData.routeLocationDetails.ORIGIN_DOOR,country:'VN'}}};

@@ -21,6 +21,13 @@ export function shippingCargo(data:any,mode:string){
   result.dgClass=data.dgClass;result.unNumber=data.unNumber;
  }
  if(typeof data.cargo!=='string'||!data.cargo.trim())fail();
+ // Declared totals are independent of container counts and optional package measurements.
+ const declared=['quantity','weightKg','cbm'].every(key=>Number(data[key])>0)&&typeof data.unit==='string'&&Boolean(data.unit.trim());
+ for(const key of ['quantity','weightKg','cbm'])if(data[key]!=null&&data[key]!==''){
+  if(typeof data[key]!=='string'||!(key==='quantity'?/^\d{1,12}$/:/^\d{1,10}(\.\d{1,6})?$/).test(data[key]))fail();
+  result[key]=data[key];
+ }
+ if(data.unit!=null){if(typeof data.unit!=='string'||data.unit.length>30)fail();result.unit=data.unit.trim();}
  if(data.dangerousGoods&&data.dgClass===undefined&&(typeof data.dangerousGoodsDetails!=='string'||!data.dangerousGoodsDetails.trim()||data.dangerousGoodsDetails.length>500))fail();
  if(mode==='SEA'&&data.shipmentType==='FCL'){
   if(!Array.isArray(data.containers)||!data.containers.length||data.containers.length>50)fail();
@@ -43,10 +50,13 @@ export function shippingCargo(data:any,mode:string){
   result.containerCount=result.containers.reduce((sum:number,row:any)=>sum+Number(row.count),0).toString();
   result.containerType=result.containers.map((row:any)=>`${row.size}${row.type}`).join(', ');
  }else{
-  if(!Array.isArray(data.packages)||!data.packages.length||data.packages.length>50)fail();
-  result.packages=data.packages.map((row:any)=>{if(!row||typeof row!=='object'||Array.isArray(row))fail();return {quantity:number(row.quantity,true),...Object.fromEntries(['lengthM','widthM','heightM'].map(key=>[key,express&&(row[key]==null||row[key]==='')?'':number(row[key])]))};});
-  result.quantity=result.packages.reduce((sum:number,row:any)=>sum+Number(row.quantity),0).toString();
-  result.cbm=express&&result.packages.some((row:any)=>!row.lengthM||!row.widthM||!row.heightM)?'':result.packages.reduce((sum:any,row:any)=>sum.add(new Prisma.Decimal(row.quantity).mul(row.lengthM).mul(row.widthM).mul(row.heightM)),new Prisma.Decimal(0)).toFixed(6);
+  const packages=data.packages??[];
+  if(!Array.isArray(packages)||!packages.length&&!declared||packages.length>50)fail();
+  result.packages=packages.map((row:any)=>{if(!row||typeof row!=='object'||Array.isArray(row))fail();return {quantity:number(row.quantity,true),...Object.fromEntries(['lengthM','widthM','heightM'].map(key=>[key,express&&(row[key]==null||row[key]==='')?'':number(row[key])]))};});
+  const measuredVolume=result.packages.reduce((sum:any,row:any)=>sum.add(new Prisma.Decimal(row.quantity).mul(row.lengthM||0).mul(row.widthM||0).mul(row.heightM||0)),new Prisma.Decimal(0));
+  if(measuredVolume.gte('1000000000000'))fail();
+  if(!declared){result.quantity=result.packages.reduce((sum:number,row:any)=>sum+Number(row.quantity),0).toString();
+  result.cbm=express&&result.packages.some((row:any)=>!row.lengthM||!row.widthM||!row.heightM)?'':measuredVolume.toFixed(6);}
   if(result.cbm&&new Prisma.Decimal(result.cbm).gte('1000000000000'))fail();
   result.weightKg=number(data.weightKg);
  }
