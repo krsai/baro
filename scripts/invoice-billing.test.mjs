@@ -125,7 +125,7 @@ test('source lookup always scopes seller, including the old endpoint alias', asy
     await routes.get(path)({ params: { orderId: 'foreign-order' }, query: {} }, response);
     assert.deepEqual(queries[0].where, { orderId: 'foreign-order', sellerOrgId: 7 });
     assert.deepEqual(queries[0].include.sellerOrg.include.bankAccounts.where,{orgId:7,entityId:7,accountKind:'BANK'});
-    assert.deepEqual(queries[0].include.sellerOrg.include.bankAccounts.select,{isDefault:true,isActive:true,bankName:true,accountNumber:true,accountHolder:true,currency:{select:{code:true}}});
+    assert.deepEqual(queries[0].include.sellerOrg.include.bankAccounts.select,{id:true,isDefault:true,isActive:true,bankName:true,accountNumber:true,accountHolder:true,swiftCode:true,updatedAt:true,currency:{select:{code:true}}});
     assert.equal(response.statusCode, 404);
   }
 });

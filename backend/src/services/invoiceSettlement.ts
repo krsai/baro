@@ -11,9 +11,19 @@ export const decimal4 = (value: bigint) => {
 };
 export const invoiceFamily = (invoice: any) => invoice.rootInvoiceId || invoice.id;
 
-export function invoiceFamilyBalance(invoices: any[], familyId: string) {
+export function invoiceFamilyBalance(invoices: any[], familyId: string):any {
   const family = invoices.filter(invoice => invoiceFamily(invoice) === familyId);
   const current = family.find(invoice => invoice.status === 'ISSUED') || null;
+  if(family.some(invoice=>invoice.currencyCode==='MIX')){
+    const currencies=[...new Set(family.flatMap(invoice=>(invoice.snapshot?.currencyTotals||[]).map((row:any)=>row.currencyCode)))];
+    const currencyBalances=currencies.map(currencyCode=>{
+      const scoped=family.map(invoice=>({...invoice,currencyCode,
+        receivableAdded:invoice.snapshot?.currencyTotals?.find((row:any)=>row.currencyCode===currencyCode)?.receivableAdded||'0',
+        credits:[],openingAdjustments:[],payments:(invoice.payments||[]).filter((row:any)=>row.currencyCode===currencyCode)}));
+      return {currencyCode,...invoiceFamilyBalance(scoped,familyId)};
+    });
+    return {currentInvoiceId:current?.id??null,receivedAmount:null,debtAmount:null,balanceAmount:null,balanceKind:currencyBalances.some(row=>row.balanceKind==='DUE')?'DUE':currencyBalances.some(row=>row.balanceKind==='CREDIT')?'CREDIT':'SETTLED',currencyBalances};
+  }
   let received = family.reduce((sum, invoice) => sum + (invoice.payments || [])
     .filter((payment: any) => !payment.voidedAt)
     .reduce((paymentSum: bigint, payment: any) => paymentSum

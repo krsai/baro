@@ -3205,6 +3205,7 @@ model Invoice {
 }
 
 model InvoiceGeneralLine {
+  currencyCode String?
   // materialBaseId/materialVariantId are stored generated SQL columns used by scoped FKs.
   unitId Int?
   materialItemId String?

@@ -1,0 +1,66 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {readFileSync} from 'node:fs';
+import {randomUUID} from 'node:crypto';
+import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
+import {calculateGeneralInvoiceDraft} from '../frontend/src/utils/generalInvoice.mjs';
+import {buildIssuedInvoicePrintHtml} from '../frontend/src/utils/issuedInvoicePrint.mjs';
+const require=createRequire(import.meta.url);
+const {saveInvoiceDraft}=require('../backend/dist/services/invoiceDraftStore');
+const {issueInvoiceDraft,recordInvoicePayment,createInvoiceRevisionDraft}=require('../backend/dist/services/invoiceIssueStore');
+const {invoiceFamilyBalance}=require('../backend/dist/services/invoiceSettlement');
+const {resolveEvidence}=require('../backend/dist/services/bankEvidence');
+const {outstandingReport}=require('../backend/dist/services/accountOverview');
+const {postLedgerEntry,searchLedgerEvidence}=require('../backend/dist/services/bankLedger');
+const {registerInvoiceDraftRoutes}=require('../backend/dist/routes/invoiceDraft.routes');
+const {readLedgerEdit}=require('../backend/dist/services/bankLedgerEdit');
+
+test('mixed invoice preserves one number, independent debts, currency-scoped receipts and revision snapshots',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id;
+  const line=(currencyCode,quantity,unitPrice)=>({key:randomUUID(),transactionCodeId:s.code.id,currencyCode,quantity,unitPrice,vatRate:'0',unit:'Pcs',description:'Material '+currencyCode,remark:''});
+  const lines=[line('USD','2','1.25'),line('VND','3','1000')];
+  const calculated=calculateGeneralInvoiceDraft(lines,'VND');assert.equal(calculated.valid,true);assert.equal(calculated.amount,null);assert.deepEqual(calculated.currencyTotals.map(row=>[row.currencyCode,row.amount]),[['USD','2.50'],['VND','3000']]);
+  const body={clientKey:randomUUID(),documentKind:'GENERAL',buyerOrgId:s.vendor.id,orders:[],basis:null,currency:'VND',fields:{date:'2026-11-25',seller:{name:'Seller'},buyer:{name:'Buyer'}},lines};
+  const draft=await saveInvoiceDraft(db,org,'actor',body),invoice=await issueInvoiceDraft(db,org,'actor',draft.id,draft.revision);
+  assert.equal(invoice.currencyCode,'MIX');assert.equal(invoice.total.toString(),'0');assert.equal(invoice.snapshot.currencyTotals.length,2);
+  assert.equal((await issueInvoiceDraft(db,org,'actor',draft.id,draft.revision)).id,invoice.id);assert.equal(await db.invoice.count(),1);
+  const evidence=(code,amount)=>db.$transaction(tx=>resolveEvidence(tx,org,{currencyCode:code},{evidenceType:'INVOICE',direction:'IN',evidenceNumber:invoice.invoiceNumber,amount,bankFee:'0'}));
+  assert.equal((await evidence('USD','2.50')).allocations[0].amount,'2.50');assert.equal((await evidence('VND','3000')).allocations[0].amount,'3000');
+  await assert.rejects(evidence('USD','2.51'),/EXCEEDS_DOCUMENT/);await assert.rejects(evidence('VND','3001'),/EXCEEDS_DOCUMENT/);await assert.rejects(evidence('KRW','1'),/NOT_FOUND/);
+  const pay=(currencyCode,amount)=>recordInvoicePayment(db,org,'actor',invoice.id,{clientKey:randomUUID(),currencyCode,amount,receivedAt:'2026-11-25',reference:'Receipt',note:''});
+  await pay('USD','1.25');await pay('VND','1000');await assert.rejects(pay('KRW','1'),/CURRENCY_INVALID/);
+  const receiptBody={clientKey:randomUUID(),transactionDate:'2026-11-25',direction:'IN',amount:'0.50',accountingCodeId:s.code.id,evidenceType:'INVOICE',evidenceNumber:invoice.invoiceNumber,counterparty:{kind:'PARTNER',id:s.vendor.id},purpose:'USD partial receipt'};
+  const receipt=await postLedgerEntry(db,org,'admin@example.test',s.account.id,receiptBody);
+  assert.equal((await postLedgerEntry(db,org,'admin@example.test',s.account.id,receiptBody)).id,receipt.id);
+  assert.equal((await evidence('USD','0.75')).allocations[0].amount,'0.75');await assert.rejects(evidence('USD','0.76'),/EXCEEDS_DOCUMENT/);
+  assert.equal((await evidence('VND','2000')).allocations[0].amount,'2000','USD receipt must not reduce VND');
+  const search=await searchLedgerEvidence(db,org,{type:'INVOICE',currencyCode:'USD',search:invoice.invoiceNumber});
+  assert.equal(search.documents[0].remaining,'0.75');
+  assert.equal((await readLedgerEdit(db,org,receipt.id)).document.remaining,'1.25','Editing a receipt excludes its own cash from the available balance');
+  const vnd=await db.currency.upsert({where:{code:'VND'},create:{code:'VND',name:'Vietnam Dong'},update:{}});
+  const own=await db.organizationBankAccount.create({data:{orgId:org,entityId:org,currencyId:vnd.id,bankName:'VND Bank',accountNumber:'VND001',accountHolder:'Seller',createdByEmployeeId:s.people.admin.id,updatedByEmployeeId:s.people.admin.id}});
+  const vndAccount=await db.bankLedgerAccount.create({data:{orgId:org,entityAccountId:own.id,clientKey:randomUUID(),bankName:'VND Bank',accountNumber:'VND001',accountHolder:'Seller',currencyCode:'VND',openingDate:'0001-01-01',openingBalance:'0',createdBy:'admin@example.test'}});
+  await postLedgerEntry(db,org,'admin@example.test',vndAccount.id,{...receiptBody,clientKey:randomUUID(),amount:'500',purpose:'VND partial receipt'});
+  assert.equal((await searchLedgerEvidence(db,org,{type:'INVOICE',currencyCode:'VND',search:invoice.invoiceNumber})).documents[0].remaining,'1500');
+  assert.equal((await searchLedgerEvidence(db,org,{type:'INVOICE',currencyCode:'USD',search:invoice.invoiceNumber})).documents[0].remaining,'0.75');
+  const routes=new Map(),app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,fn)=>routes.set(method+path,fn)]));
+  registerInvoiceDraftRoutes(app,{db,requireAccess:async()=>({organization:{id:org,name:'Seller'}}),actor:()=> 'actor'});
+  let listed;await routes.get('get/invoices/issued')({query:{}},{setHeader(){},json(value){listed=value;}});
+  assert.deepEqual(listed.rows[0].currencyBalances.map(row=>[row.currencyCode,row.balanceAmount]),[['USD','0.7500'],['VND','1500.0000']]);
+  assert.equal(listed.rows[0].total,null,'A mixed invoice must not expose an added scalar total');
+  const family=await db.invoice.findMany({include:{payments:true,credits:true}}),balance=invoiceFamilyBalance(family,invoice.id);
+  assert.deepEqual(balance.currencyBalances.map(row=>[row.currencyCode,row.balanceAmount]),[['USD','1.2500'],['VND','2000.0000']]);
+  const report=outstandingReport(family.map(row=>({...row,buyer:{name:'Buyer'}})),[],[]);
+  assert.ok(JSON.stringify(report).includes('USD'));assert.ok(JSON.stringify(report).includes('VND'));assert.ok(!JSON.stringify(report).includes('MIX'));
+  const revision=await createInvoiceRevisionDraft(db,org,'actor',invoice.id,{clientKey:randomUUID(),reason:'Correct prices'});assert.deepEqual(revision.content.lines.map(row=>row.currencyCode),['USD','VND']);
+  const changed=await saveInvoiceDraft(db,org,'actor',{...revision.content,buyerOrgId:s.vendor.id,clientKey:revision.clientKey,revision:revision.revision,lines:revision.content.lines.map(row=>row.currencyCode==='USD'?{...row,unitPrice:'2'}:row)},revision.id);
+  const revised=await issueInvoiceDraft(db,org,'actor',changed.id,changed.revision);
+  assert.equal((await searchLedgerEvidence(db,org,{type:'INVOICE',currencyCode:'USD',search:revised.invoiceNumber})).documents[0].remaining,'2.25');
+  assert.equal((await searchLedgerEvidence(db,org,{type:'INVOICE',currencyCode:'VND',search:revised.invoiceNumber})).documents[0].remaining,'1500');
+  for(const lang of ['ko','en','vi']){const html=buildIssuedInvoicePrintHtml(invoice,lang);assert.match(html,/USD/);assert.match(html,/VND/);assert.doesNotMatch(html,/>MIX</);}
+  const sql=readFileSync('backend/prisma/migrations/20261125040000_general_invoice_currencies/migration.sql','utf8');await f.pg.exec(sql);await f.pg.exec(sql);
+  assert.equal((await db.invoice.findUnique({where:{id:invoice.id}})).invoiceNumber,invoice.invoiceNumber);
+ }finally{await f.close();}
+});

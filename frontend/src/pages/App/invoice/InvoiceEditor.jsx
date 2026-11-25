@@ -256,12 +256,12 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
   </Stack>}>
     <InvoiceSheet>
       <Stack spacing={0} sx={{minWidth:0}}>
-        <InvoiceEntrySettings fields={source&&fields} languageCode={languageCode} onChange={changeField} disabled={saving||uncertain} currencyControl={<InvoiceDocumentField appearance="form" label={t.currency} value={currency} readOnly/>} selection={renderSelection?.({requestChange:requestSelectionChange,disabled:saving||uncertain})}/>
+        <InvoiceEntrySettings selection={renderSelection?.({requestChange:requestSelectionChange,disabled:saving||uncertain})}/>
         {loading && <CircularProgress />}
         {error && <Alert severity="error" action={<Button disabled={saving || uncertain} onClick={async () => { if (!dirty || await pageDialogs.confirm(storageText.discard,{purpose:'discard'})) setReload((v) => v + 1); }}>{t.retry}</Button>}>{error}</Alert>}
         {source && fields && <Box component="fieldset" disabled={saving || uncertain} sx={{ border: 0, m: 0, p: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0 }}>
           {basis==='MANUFACTURING_SERVICE_PRICE'&&<Stack direction="row" spacing={2} sx={{p:2,flexWrap:'wrap'}}><TextField select label={(invoiceAccountingText[languageCode]||invoiceAccountingText.en).treatment} value={fields.vatTreatment||'E'} onChange={e=>{changeField('vatTreatment',e.target.value);changeField('vatRate','0');}} sx={{minWidth:260}}>{['E','Z','V'].map(value=><MenuItem key={value} value={value}>{(invoiceAccountingText[languageCode]||invoiceAccountingText.en)[value]}</MenuItem>)}</TextField><DecimalAmountField label="VAT (%)" value={fields.vatRate??'0'} onValueChange={value=>changeField('vatRate',value)} disabled={(fields.vatTreatment||'E')!=='V'} sx={{width:140}}/></Stack>}
-          <InvoiceFormHeader fields={fields} languageCode={languageCode} onChange={changeField} hideIdentifiers/>
+          <InvoiceFormHeader fields={fields} languageCode={languageCode} onChange={changeField}/>
           <Typography className="invoice-section-title">{ui.details} · {invoiceNumber(styleRows.length)}</Typography>
           <Box sx={{overflowX:'auto'}}><Table data-table-layout="document" className="invoice-lines" size="small" sx={{minWidth:820,'& td':{verticalAlign:'middle'},'& th':{whiteSpace:'nowrap'}}}><colgroup>{[40,110,null,100,130,120,150].map((width,index)=><col key={index} style={width?{width}:undefined}/>)}</colgroup><TableHead><TableRow>
             {[sheetText.row,sheetText.orderNumber,sheetText.style,sheetText.orderedQuantity,t.price,t.quantity,t.amount].map((label,index)=><TableCell key={label} align={index===0||index>=3?'right':'left'}>{label}</TableCell>)}

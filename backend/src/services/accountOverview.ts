@@ -1,3 +1,4 @@
+import {invoiceCurrencyTotals} from './invoiceCurrencies';
 import {attachLedgerReportItems,ledgerReportItems} from './ledgerReportItems';
 import {attachLedgerCounterpartyNames} from './ledgerCounterparty';
 import {openingSum} from './accountingOpening';
@@ -96,9 +97,9 @@ export async function loadAccountOverview(db:any,orgId:number,query:any={}){
 }
 async function loadOutstanding(tx:any,orgId:number,asOf:string):Promise<any>{
  const [invoices,requests,allocations,openings]=await Promise.all([
-  tx.invoice.findMany({where:{sellerOrgId:orgId},select:{id:true,buyerOrgId:true,currencyCode:true,status:true,invoiceNumber:true,receivableAdded:true,issuedAt:true,buyer:{select:{name:true}},credits:{where:{voidedAt:null},select:{amount:true}},payments:{where:{voidedAt:null,receivedAt:{lte:new Date(`${asOf}T23:59:59.999+07:00`)}},select:{kind:true,amount:true}}}}),
+  tx.invoice.findMany({where:{sellerOrgId:orgId},select:{id:true,buyerOrgId:true,currencyCode:true,snapshot:true,status:true,invoiceNumber:true,receivableAdded:true,issuedAt:true,buyer:{select:{name:true}},credits:{where:{voidedAt:null},select:{amount:true}},payments:{where:{voidedAt:null,receivedAt:{lte:new Date(`${asOf}T23:59:59.999+07:00`)}},select:{kind:true,amount:true,currencyCode:true}}}}),
   tx.expenseRequest.findMany({where:{orgId,requestDate:{lte:asOf}},include:{partner:{select:{name:true}},payeeEmployee:{select:{name:true}},createdByEmployee:{select:{id:true,orgId:true,status:true,orgRole:true}},approvalSteps:{orderBy:{position:'asc'}},items:{orderBy:[{expenseRequestLine:'asc'},{id:'asc'}],select:{id:true,currency:true,amount:true,description:true,transactionCode:{select:{code:true,base:{select:{code:true}}}}}}}}),
-  tx.bankLedgerEvidenceAllocation.findMany({where:{orgId,entry:{voidedAt:null,transactionDate:{lte:asOf}}},select:{invoiceId:true,expenseItemId:true,amount:true}}),
+  tx.bankLedgerEvidenceAllocation.findMany({where:{orgId,entry:{voidedAt:null,transactionDate:{lte:asOf}}},select:{invoiceId:true,expenseItemId:true,amount:true,entry:{select:{account:{select:{currencyCode:true}}}}}}),
   tx.accountingOpeningItem.findMany({where:{orgId,voidedAt:null,balanceDate:{lte:asOf}},include:{party:{select:{name:true}},employee:{select:{name:true}},allocations:{where:{entry:{voidedAt:null,transactionDate:{lte:asOf}}}}}}),
  ]);
  const approved=(await attachExpenseApprovalStates(tx,orgId,requests)).filter((row:any)=>row.approval.approved);
@@ -108,12 +109,12 @@ async function loadOutstanding(tx:any,orgId:number,asOf:string):Promise<any>{
 export function outstandingReport(invoices:any[],requests:any[],allocations:any[],openings:any[]=[],payroll:any[]=[]){
  const receivable=new Map<string,any>(),payable=new Map<string,any>();
  const payableDetails=new Map<string,any>();
- for(const invoice of invoices){
+ for(const invoice of invoices.flatMap(invoice=>invoice.currencyCode==='MIX'?invoiceCurrencyTotals(invoice).map(total=>({...invoice,currencyCode:total.currencyCode,receivableAdded:total.receivableAdded,credits:[],payments:invoice.payments.filter((payment:any)=>payment.currencyCode===total.currencyCode)})):[invoice])){
   const key=JSON.stringify([invoice.buyerOrgId,invoice.currencyCode]),code=invoice.currencyCode;
   const group=receivable.get(key)||{partyId:invoice.buyerOrgId,party:invoice.buyer?.name||'',currencyCode:code,debt:0n,matched:0n,separateReceived:0n,references:[]};
   if(invoice.status==='ISSUED')group.debt+=ledgerScale4(invoice.receivableAdded)-invoice.credits.reduce((sum:bigint,row:any)=>sum+ledgerScale4(row.amount),0n);
   group.matched+=openingSum(openings.filter(row=>row.invoiceId===invoice.id));
-  group.matched+=allocations.filter(row=>row.invoiceId===invoice.id).reduce((sum:bigint,row:any)=>sum+ledgerScale4(row.amount),0n);
+  group.matched+=allocations.filter(row=>row.invoiceId===invoice.id&&(!row.entry?.account?.currencyCode||row.entry.account.currencyCode===invoice.currencyCode)).reduce((sum:bigint,row:any)=>sum+ledgerScale4(row.amount),0n);
   group.separateReceived+=invoice.payments.reduce((sum:bigint,row:any)=>sum+(row.kind==='REFUND'?-1n:1n)*ledgerScale4(row.amount),0n);
   group.references.push({kind:'INVOICE',id:invoice.id,number:invoice.invoiceNumber,date:invoice.issuedAt});receivable.set(key,group);
  }

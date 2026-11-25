@@ -1,3 +1,4 @@
+import {invoiceCurrencyAmount,mixedInvoiceRemaining} from './invoiceCurrencies';
 import {payrollPayableRemaining} from './payrollPayables';
 import {documentOpeningAmount,invoiceOpeningRemaining} from './accountingOpening';
 import {expensePaymentScheduleStatus} from './expensePaymentSchedule';
@@ -49,7 +50,7 @@ export async function readLedgerEdit(db:any,orgId:number,id:string){
  const [invoices,expenses,other]=await Promise.all([
   invoiceIds.length?db.invoice.findMany({where:{sellerOrgId:orgId,id:{in:invoiceIds}},include:{credits:{where:{voidedAt:null}},buyer:{select:{name:true}}}}):[],
   expenseIds.length?db.partnerTransactionCost.findMany({where:{orgId,id:{in:expenseIds}},include:expenseInclude}):[],
-  invoiceIds.length||expenseIds.length?db.bankLedgerEvidenceAllocation.findMany({where:{orgId,entryId:{not:id},entry:{voidedAt:null},OR:[{invoiceId:{in:invoiceIds}},{expenseItemId:{in:expenseIds}}]}}):[],
+  invoiceIds.length||expenseIds.length?db.bankLedgerEvidenceAllocation.findMany({where:{orgId,entryId:{not:id},entry:{voidedAt:null},OR:[{invoiceId:{in:invoiceIds}},{expenseItemId:{in:expenseIds}}]},include:{entry:{select:{account:{select:{currencyCode:true}}}}}}):[],
  ]);
  entry.allocations=entry.allocations.map((allocation:any)=>({...allocation,invoice:invoices.find((row:any)=>row.id===allocation.invoiceId)||null,expenseItem:expenses.find((row:any)=>row.id===allocation.expenseItemId)||null}));
  if(entry.allocations.some((allocation:any)=>allocation.invoiceId&&!allocation.invoice||allocation.expenseItemId&&!allocation.expenseItem))return fail('LEDGER_INVALID_EVIDENCE');
@@ -67,8 +68,8 @@ export async function readLedgerEdit(db:any,orgId:number,id:string){
  if(entry.evidenceType==='INVOICE'){
   const invoice=entry.allocations[0]?.invoice;if(!invoice)return fail('LEDGER_INVALID_EVIDENCE');
   const historical=await documentOpeningAmount(db,orgId,{invoiceId:invoice.id});
-  const available=historical>0n?(await invoiceOpeningRemaining(db,orgId,invoice)).remaining+entry.allocations.filter((a:any)=>a.invoiceId===invoice.id).reduce((sum:bigint,a:any)=>sum+ledgerScale4(a.amount),0n):ledgerScale4(invoice.receivableAdded??invoice.total)-other.filter((a:any)=>a.invoiceId===invoice.id).reduce((sum:bigint,a:any)=>sum+ledgerScale4(a.amount),0n);
-  document={id:invoice.id,reference:invoice.invoiceNumber,payee:invoice.buyer?.name||'',amount:ledgerMoney(ledgerScale4(invoice.total),code),remaining:ledgerMoney(available,code)};
+  const available=invoice.currencyCode==='MIX'?ledgerScale4(await mixedInvoiceRemaining(db,orgId,invoice,code,id)):historical>0n?(await invoiceOpeningRemaining(db,orgId,invoice)).remaining+entry.allocations.filter((a:any)=>a.invoiceId===invoice.id).reduce((sum:bigint,a:any)=>sum+ledgerScale4(a.amount),0n):ledgerScale4(invoiceCurrencyAmount(invoice,code))-other.filter((a:any)=>a.invoiceId===invoice.id&&(!a.entry?.account?.currencyCode||a.entry.account.currencyCode===code)).reduce((sum:bigint,a:any)=>sum+ledgerScale4(a.amount),0n);
+  document={id:invoice.id,reference:invoice.invoiceNumber,payee:invoice.buyer?.name||'',amount:ledgerMoney(ledgerScale4(invoiceCurrencyAmount(invoice,code)),code),remaining:ledgerMoney(available,code)};
  }
  if(entry.evidenceType==='EXPENSE'){
   const requests=[...new Map(entry.allocations.filter((a:any)=>a.expenseItem?.expenseRequest).map((a:any)=>[a.expenseItem.expenseRequest.id,a.expenseItem.expenseRequest])).values()] as any[];

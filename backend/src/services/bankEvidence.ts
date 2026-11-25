@@ -1,3 +1,4 @@
+import {invoiceCurrencyAmount,mixedInvoiceRemaining} from './invoiceCurrencies';
 import {expensePaymentComparison} from './expensePaymentComparison';
 import {Prisma} from '@prisma/client';
 import {ledgerTaxSnapshot} from './ledgerVat';
@@ -133,15 +134,15 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
   if(bankFee)return fail('LEDGER_INVALID_EVIDENCE');reference='';
  }else if(type==='INVOICE'){
   if(body.direction!=='IN'||!reference||reference.length>200)return fail('LEDGER_INVALID_EVIDENCE');
-  const invoice=await tx.invoice.findFirst({where:{sellerOrgId:orgId,invoiceNumber:reference,status:'ISSUED',currencyCode:code}});
+  const invoice=await tx.invoice.findFirst({where:{sellerOrgId:orgId,invoiceNumber:reference,status:'ISSUED',OR:[{currencyCode:code},{currencyCode:'MIX',generalLines:{some:{currencyCode:code}}}]}});
   if(!invoice)return fail('LEDGER_INVOICE_NOT_FOUND');
   await tx.$queryRawUnsafe('SELECT id FROM "Invoice" WHERE id=$1 FOR UPDATE',invoice.id);
-  const current=await tx.invoice.findFirst({where:{id:invoice.id,sellerOrgId:orgId,status:'ISSUED',currencyCode:code}});
+  const current=await tx.invoice.findFirst({where:{id:invoice.id,sellerOrgId:orgId,status:'ISSUED',OR:[{currencyCode:code},{currencyCode:'MIX',generalLines:{some:{currencyCode:code}}}]}});
   if(!current)return fail('LEDGER_INVOICE_NOT_FOUND');
   const openingAmount=await documentOpeningAmount(tx,orgId,{invoiceId:invoice.id});
   if(openingAmount>0n){const remaining=await invoiceOpeningRemaining(tx,orgId,await tx.invoice.findFirst({where:{id:invoice.id,sellerOrgId:orgId},include:{credits:{where:{voidedAt:null}}}}));if(amount+bankFee+loss>remaining.remaining)return fail('LEDGER_EXCEEDS_DOCUMENT');}
-  const used=await tx.bankLedgerEvidenceAllocation.findMany({where:{orgId,invoiceId:invoice.id,entry:{voidedAt:null}}});
-  if(used.reduce((s:bigint,r:any)=>s+ledgerScale4(r.amount),0n)+amount+bankFee+loss+await documentOpeningAmount(tx,orgId,{invoiceId:invoice.id})>ledgerScale4(current.receivableAdded??current.total))return fail('LEDGER_EXCEEDS_DOCUMENT');
+  const used=await tx.bankLedgerEvidenceAllocation.findMany({where:{orgId,invoiceId:invoice.id,entry:{voidedAt:null,account:{currencyCode:code}}}});
+  if((current.currencyCode==='MIX'?0n:used.reduce((s:bigint,r:any)=>s+ledgerScale4(r.amount),0n))+amount+bankFee+loss+await documentOpeningAmount(tx,orgId,{invoiceId:invoice.id})>ledgerScale4(current.currencyCode==='MIX'?await mixedInvoiceRemaining(tx,orgId,current,code):invoiceCurrencyAmount(current,code)))return fail('LEDGER_EXCEEDS_DOCUMENT');
   allocations.push({invoiceId:invoice.id,amount:ledgerMoney(amount+bankFee+loss,code)});
  }else{
   if(body.direction!=='OUT'||!Array.isArray(body.expenseItems)||!body.expenseItems.length||body.expenseItems.length>50)return fail('LEDGER_INVALID_EVIDENCE');

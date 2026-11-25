@@ -1,3 +1,4 @@
+import {invoiceCurrencyAmount} from './invoiceCurrencies';
 import {orderInvoiceAccounting} from './invoiceAccounting';
 import {assertInvoiceDeletable} from './invoiceDeletion';
 import {resolveInvoicePaymentAccount} from './invoicePaymentAccount';
@@ -324,9 +325,11 @@ export async function recordInvoicePayment(db: any, sellerOrgId: number, actor: 
   return editTransaction(db, async (tx: any) => {
     const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId },include:{openingAdjustments:{where:{voidedAt:null},select:{id:true}}} });
     if (!invoice) throw createHttpError(404, "INVOICE_NOT_FOUND");
+    const paymentCurrency=invoice.currencyCode==='MIX'?String(body.currencyCode||''):invoice.currencyCode;
+    invoiceCurrencyAmount(invoice,paymentCurrency);
     const existing = await tx.invoicePayment.findFirst({ where: { invoiceId, clientKey } });
     if (existing) {
-      if ((parseMoneyScale4(existing.amount) ?? -1n) !== (parseMoneyScale4(rawAmount) ?? -2n)
+      if (existing.currencyCode!==paymentCurrency || (parseMoneyScale4(existing.amount) ?? -1n) !== (parseMoneyScale4(rawAmount) ?? -2n)
         || new Date(existing.receivedAt).getTime() !== receivedAt.getTime()
         || existing.kind !== kind || existing.reference !== reference || existing.note !== note) fail("INVOICE_PAYMENT_RETRY_MISMATCH");
       return existing;
@@ -337,13 +340,13 @@ export async function recordInvoicePayment(db: any, sellerOrgId: number, actor: 
       const familyId = invoiceFamily(invoice);
       const family = await tx.invoice.findMany({ where: { sellerOrgId,
         OR: [{ id: familyId }, { rootInvoiceId: familyId }] }, include: { payments: true } });
-      const available = family.reduce((sum: bigint, row: any) => sum + row.payments.filter((payment: any) => !payment.voidedAt)
+      const available = family.reduce((sum: bigint, row: any) => sum + row.payments.filter((payment: any) => !payment.voidedAt&&payment.currencyCode===paymentCurrency)
         .reduce((paymentSum: bigint, payment: any) => paymentSum
           + (payment.kind === "REFUND" ? -1n : 1n) * (parseMoneyScale4(payment.amount) ?? 0n), 0n), 0n);
       if ((parseMoneyScale4(rawAmount) ?? 0n) > available) fail("INVOICE_REFUND_EXCEEDS_RECEIPTS");
     }
     return tx.invoicePayment.create({ data: { invoiceId, clientKey, amount: rawAmount,
-      kind, currencyCode: invoice.currencyCode, receivedAt, reference, note, createdBy: actor } });
+      kind, currencyCode: paymentCurrency, receivedAt, reference, note, createdBy: actor } });
   });
 }
 
@@ -435,7 +438,7 @@ export async function createInvoiceRevisionDraft(db: any, sellerOrgId: number, a
     const existingDraft = await tx.invoiceDraft.findFirst({ where: { revisionOfInvoiceId: invoiceId } });
     if (existingDraft) return existingDraft;
     const snapshot: any = invoice.snapshot || {};
-    const content:any = invoice.documentKind==='GENERAL'?{documentKind:'GENERAL',basis:null,currency:invoice.currencyCode,fields:{...(snapshot.fields||{}),number:`${invoice.invoiceNumber}-R${Number(invoice.revisionNumber||1)+1}`},orders:[],percentages:{},settlements:{},lines:(snapshot.lines||[]).map((line:any)=>({key:line.lineKey,transactionCodeId:line.transactionCodeId,description:line.description,unit:line.unit||'',quantity:String(line.quantity),unitPrice:String(line.unitPrice),vatRate:String(line.vatRate),remark:line.remark||''}))}:{
+    const content:any = invoice.documentKind==='GENERAL'?{documentKind:'GENERAL',basis:null,currency:invoice.snapshot?.currencyTotals?.[0]?.currencyCode||invoice.currencyCode,fields:{...(snapshot.fields||{}),number:`${invoice.invoiceNumber}-R${Number(invoice.revisionNumber||1)+1}`},orders:[],percentages:{},settlements:{},lines:(snapshot.lines||[]).map((line:any)=>({key:line.lineKey,transactionCodeId:line.transactionCodeId,description:line.description,unit:line.unit||'',quantity:String(line.quantity),unitPrice:String(line.unitPrice),vatRate:String(line.vatRate),remark:line.remark||'',...(line.currencyCode?{currencyCode:line.currencyCode}:{}),...(line.unitId?{unitId:line.unitId}:{}),...(line.materialItemId?{materialItemId:line.materialItemId,materialVariantId:line.materialItemSnapshot?.variantId,materialVariantRevision:line.materialItemSnapshot?.variantRevision}: {})}))}:{
       basis: invoice.pricingBasis, currency: invoice.currencyCode, fields: {
         ...(snapshot.fields || {}), number: `${invoice.invoiceNumber}-R${Number(invoice.revisionNumber || 1) + 1}`,
       },

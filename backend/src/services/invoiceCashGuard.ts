@@ -11,7 +11,7 @@ export function assertInvoiceCashBalances(invoices: any[]) {
     for (const payment of invoice.payments) {
       if (payment.voidedAt) continue;
       const sign = payment.kind === 'REFUND' ? -1n : 1n;
-      families.set(family, (families.get(family) ?? 0n) + sign * money4(payment.amount));
+      families.set(JSON.stringify([family,payment.currencyCode]), (families.get(JSON.stringify([family,payment.currencyCode])) ?? 0n) + sign * money4(payment.amount));
       for (const order of invoice.orders) {
         const amount = invoice.orders.length === 1 ? money4(payment.amount)
           : payment.allocations.filter((row: any) => !row.voidedAt && row.invoiceOrderId === order.id)

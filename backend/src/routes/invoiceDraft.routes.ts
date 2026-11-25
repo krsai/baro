@@ -121,9 +121,15 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
     const familyIds = [...new Set(visible.map((row: any) => invoiceFamily(row)))];
     const familyInvoices = familyIds.length ? await db.invoice.findMany({ where: { sellerOrgId: access.organization.id,
       OR: [{ id: { in: familyIds } }, { rootInvoiceId: { in: familyIds } }] },
-      select: { id: true, rootInvoiceId: true, status: true, receivableAdded: true, credits: true, openingAdjustments:{where:{voidedAt:null}},
-        payments: { select: { amount: true, kind: true, voidedAt: true } } } }) : [];
+      select: { id: true, rootInvoiceId: true, status: true, currencyCode:true,snapshot:true,receivableAdded: true, credits: true, openingAdjustments:{where:{voidedAt:null}},
+        payments: { select: { amount: true, kind: true,currencyCode:true, voidedAt: true } } } }) : [];
     const historicalFamilies=familyInvoices.filter((invoice:any)=>invoice.openingAdjustments?.length).map((invoice:any)=>invoiceFamily(invoice));
+    const mixedFamilies=new Set(familyInvoices.filter((invoice:any)=>invoice.currencyCode==='MIX').map((invoice:any)=>invoiceFamily(invoice)));
+    const mixedIds=familyInvoices.filter((invoice:any)=>mixedFamilies.has(invoiceFamily(invoice))).map((invoice:any)=>invoice.id);
+    if(mixedIds.length){
+      const cash=await db.bankLedgerEvidenceAllocation.findMany({where:{orgId:access.organization.id,invoiceId:{in:mixedIds},entry:{voidedAt:null}},select:{invoiceId:true,amount:true,entry:{select:{account:{select:{currencyCode:true}}}}}});
+      for(const invoice of familyInvoices as any[])if(mixedIds.includes(invoice.id))invoice.payments.push(...cash.filter((row:any)=>row.invoiceId===invoice.id).map((row:any)=>({amount:row.amount,kind:'RECEIPT',currencyCode:row.entry.account.currencyCode,voidedAt:null})));
+    }
     if(historicalFamilies.length){
       const historicalIds=familyInvoices.filter((invoice:any)=>historicalFamilies.includes(invoiceFamily(invoice))).map((invoice:any)=>invoice.id);
       const cash=await db.bankLedgerEvidenceAllocation.groupBy({by:['invoiceId'],where:{orgId:access.organization.id,invoiceId:{in:historicalIds},entry:{voidedAt:null}},_sum:{amount:true}});
@@ -131,8 +137,8 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
     }
     res.setHeader("Cache-Control", "no-store");
       return res.json({ rows: visible.map((row: any) => { const familyBalance = invoiceFamilyBalance(familyInvoices, invoiceFamily(row)); return ({ id: row.id,documentKind:row.documentKind||'ORDER', invoiceNumber: row.invoiceNumber,
-      expectedCollectionDate:(row.snapshot as any)?.fields?.expectedCollectionDate||null, status: row.status, buyerName: (row.snapshot as any)?.fields?.buyer?.name ?? row.buyer.name, currencyCode: row.currencyCode, total: String(row.total),
-      receivableAdded: String(row.receivableAdded),
+      expectedCollectionDate:(row.snapshot as any)?.fields?.expectedCollectionDate||null, status: row.status, buyerName: (row.snapshot as any)?.fields?.buyer?.name ?? row.buyer.name, currencyCode: row.currencyCode, total: row.currencyCode==='MIX'?null:String(row.total),
+      receivableAdded: row.currencyCode==='MIX'?null:String(row.receivableAdded),currencyTotals:(row.snapshot as any)?.currencyTotals,currencyBalances:familyBalance.currencyBalances,
       issuedAt: row.issuedAt, issuedBy: row.issuedBy, issuedByName:actors.find((actor:any)=>actor.id===row.id)?.createdByName||null, orders: row.orders,
       sellerName:(row.snapshot as any)?.fields?.seller?.name||access.organization.name,
       accountingCodes:[...new Set([(row.snapshot as any)?.accounting?.code,...((row.snapshot as any)?.lines||[]).map((line:any)=>line.code)].filter(Boolean))],
@@ -147,8 +153,8 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
       receivedAmount: familyBalance.receivedAmount, familyDebtAmount: familyBalance.debtAmount,
       familyBalanceAmount: familyBalance.balanceAmount, familyBalanceKind: familyBalance.balanceKind,
       isCurrentRevision: familyBalance.currentInvoiceId === row.id,
-      directReceivedAmount: invoicePaymentMoney(row.payments, payment => [payment.amount]),
-      allocatedAmount: invoicePaymentMoney(row.payments, payment => payment.allocations.map((allocation: any) => allocation.amount)) }); }), hasMore: rows.length > 30 });
+      directReceivedAmount: row.currencyCode==='MIX'?null:invoicePaymentMoney(row.payments, payment => [payment.amount]),
+      allocatedAmount: row.currencyCode==='MIX'?null:invoicePaymentMoney(row.payments, payment => payment.allocations.map((allocation: any) => allocation.amount)) }); }), hasMore: rows.length > 30 });
   });
   app.get("/invoices/issued/:id", async (req: any, res: any) => {
     const access = await requireAccess(req, res); if (!access) return;
@@ -161,7 +167,7 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
       credits: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
       finalLockEvents: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] } } });
     if (!row) return res.status(404).json({ error: "INVOICE_NOT_FOUND" });
-    res.setHeader("Cache-Control", "no-store"); return res.json({ ...row, subtotal: String(row.subtotal), total: String(row.total) });
+    res.setHeader("Cache-Control", "no-store"); return res.json({ ...row, currencyTotals:(row.snapshot as any)?.currencyTotals,subtotal:row.currencyCode==='MIX'?null:String(row.subtotal),total:row.currencyCode==='MIX'?null:String(row.total) });
   });
   app.post("/invoices/issued/:id/cancel", async (req: any, res: any) => {
     const access = await requireAccess(req, res); if (!access) return;
