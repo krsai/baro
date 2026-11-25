@@ -14,7 +14,7 @@ import ExpenseApprovalActions from '../../components/ExpenseApprovalActions';
 import { useRequestScopeContext } from '../../context/RequestScopeContext';
 import ExpenseApprovalSettings from '../../components/ExpenseApprovalSettings';
 import {approvalSettingsText} from '../../constants/approvalSettings';
-import {documentNumberError} from '../../constants/documentNumber';
+import {documentNumberError,documentNumberText} from '../../constants/documentNumber';
 import { ENTITY_TEXT } from '../../constants/entityProfile';
 import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -259,6 +259,7 @@ export default function TransactionRequestEntry() {
             onChange={(selected,accounts)=>{update({partnerOrgId:selected?.employeeId?null:selected?.id||null,payeeEmployeeId:selected?.employeeId||null});setPayeeBanks({entityId:selected?.id,accounts,loaded:true});}}
             onSaved={saved=>{if(organizationRef.current===activeOrgId&&mountedRef.current)setData(current=>({...current,partners:current.partners.map(row=>row.id===saved.id?saved:row)}));}}/>
           <ReadOnlyField data-entry-field="date" label={labels.date} value={form.requestDate||today()}/>
+          <ReadOnlyField data-entry-field="number" label={(documentNumberText[languageCode]||documentNumberText.en).expense} value={form.managementNumber||(!editing?FORM_TEXT[languageCode]?.auto||FORM_TEXT.en.auto:'')}/>
           <TextField data-entry-field="date" fullWidth size="small" type="date" label={(cashScheduleText[languageCode]||cashScheduleText.en).payment} value={form.scheduledPaymentDate||''} disabled={disabled||form.paidCorrectionOnly} slotProps={{inputLabel:{shrink:true}}} onChange={event=>update({scheduledPaymentDate:event.target.value})}/>
           </Stack>
         </DocumentEntryHeader>

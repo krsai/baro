@@ -3,6 +3,7 @@ import {accountingCompactText} from '../frontend/src/constants/accountingCompact
 import {expensePaymentText} from '../frontend/src/constants/expensePaymentSchedule.js';
 const remarkOnly=process.argv.includes('--remark-only');
 const layoutOnly=process.argv.includes('--layout-only');
+const numberOnly=process.argv.includes('--number-only');
 import {cashScheduleText} from '../frontend/src/constants/cashSchedule.js';
 const scheduleOnly=process.argv.includes('--schedule-only');
 const lookupOnly=process.argv.includes('--lookup-only')||process.env.EXPENSE_EDITOR_LOOKUP_ONLY==='1';
@@ -78,6 +79,12 @@ try {
       assert.equal(settingsReads,0,'Saved documents do not fetch current editor settings on entry');
       releaseDocument();
       await strip.getByText('Original author',{exact:true}).first().waitFor();
+      const number=page.getByRole('textbox',{name:documentNumberText[lang].expense,exact:true});
+      assert.equal(await number.inputValue(),'EXP-2026-000008');
+      assert.equal(await number.evaluate(el=>el.readOnly),true);
+      for(const width of [1440,390]){await page.setViewportSize({width,height:1000});assert.equal(await number.isVisible(),true);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
+      if(numberOnly){assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);await page.close();continue;}
+      await page.setViewportSize({width:1600,height:1000});
       await page.waitForFunction(()=>document.querySelectorAll('[data-testid="expense-approval-stages"] [data-approval-state="approved"]').length===1);
       assert.equal(await strip.getByText('Current editor',{exact:true}).count(),0);
       assert.equal(await page.getByTestId('expense-approval-button').isDisabled(),true,'References are still loading');
