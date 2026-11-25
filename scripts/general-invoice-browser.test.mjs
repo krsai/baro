@@ -86,6 +86,9 @@ try{
    await materialDialog.getByRole('row').filter({hasText:'Poly Bag Material'}).getByRole('button').click();await materialDialog.waitFor({state:'hidden'});
    assert.equal(await row.getByRole('textbox',{name:roleName(t.description)}).inputValue(),'Poly Bag Material / 30 × 40 × 0.08 Mm');
    const materialButton=row.getByRole('button',{name:materialItemText[lang].select,exact:true});
+   assert.equal(await materialButton.innerText(),'','Material selection uses an icon without repeating the description');
+   const positions=await row.locator('.MuiInputBase-root').evaluateAll(nodes=>nodes.map(node=>Math.round(node.getBoundingClientRect().y)));
+   assert.equal(new Set(positions).size,1,'Material selection keeps item inputs in one aligned row');
    await materialButton.click();await materialDialog.waitFor();await page.keyboard.press('Escape');await materialDialog.waitFor({state:'hidden'});
    assert.equal(await row.getByRole('textbox',{name:roleName(t.description)}).inputValue(),'Poly Bag Material / 30 × 40 × 0.08 Mm');
    assert.equal(await row.getByRole('textbox',{name:roleName(t.unit)}).inputValue(),({ko:'\uAC1C',en:'Pcs',vi:'C\u00e1i'})[lang]);
