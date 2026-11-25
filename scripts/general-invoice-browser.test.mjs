@@ -60,13 +60,13 @@ try{
   await customer.fill('Customer');await customer.press('Enter');
   const row=page.getByTestId('general-invoice-line');await row.waitFor();
   if(process.argv.includes('--layout-only')||process.argv.includes('--codes-only')){
-   const header=page.locator('[data-invoice-form-header="editing"]'),currency=header.getByRole('combobox',{name:roleName(t.currency)});
-   await currency.waitFor();assert.equal(await header.locator('.invoice-document-identifiers').getByRole('combobox').count(),1,'Currency belongs to document metadata');
+   const header=page.locator('[data-invoice-form-header="editing"]'),metadata=page.locator('[data-invoice-entry-metadata]'),currency=metadata.getByRole('combobox',{name:roleName(t.currency)});
+   await currency.waitFor();assert.equal(await header.locator('.invoice-document-identifiers').count(),0);const settingsBox=await page.locator('[data-invoice-entry-settings]').boundingBox(),documentBox=await header.boundingBox();assert.ok(settingsBox.y+settingsBox.height<=documentBox.y+1,'Settings precede the document');assert.equal(await metadata.getByRole('combobox').count(),1,'Currency belongs to entry settings');
    if(lang==='ko'&&width===1440){await currency.click();await page.getByRole('option',{name:'USD',exact:true}).click();assert.match(await currency.textContent(),/USD/);await currency.click();await page.getByRole('option',{name:'VND',exact:true}).click();}
    const controls=await header.locator('.MuiInputBase-root').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().height));
    assert.ok(controls.every(height=>Math.abs(height-36)<1),'Header inputs share the 36px control height');
    if(width>=900){
-    const positions=await header.locator('.invoice-document-identifiers .MuiInputBase-root').evaluateAll(nodes=>nodes.map(node=>Math.round(node.getBoundingClientRect().y)));assert.equal(new Set(positions).size,1,'Number, date and currency align');
+    const positions=await metadata.locator('.MuiInputBase-root').evaluateAll(nodes=>nodes.map(node=>Math.round(node.getBoundingClientRect().y)));assert.equal(new Set(positions).size,1,'Number, date and currency align');
     const parties=header.locator('.invoice-party');const left=await parties.nth(0).boundingBox(),right=await parties.nth(1).boundingBox();assert.equal(Math.round(left.y),Math.round(right.y));
     for(const party of await parties.all()){const address=await party.locator('.invoice-party-address').boundingBox(),panel=await party.boundingBox();assert.ok(address.width>panel.width-2,'Address uses the full party width');}
    }

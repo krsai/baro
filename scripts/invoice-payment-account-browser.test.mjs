@@ -33,7 +33,7 @@ try{
    throw Error('Unexpected request: '+url.pathname);
   });
   await page.goto(`http://127.0.0.1:${port}/${path.basename(file)}?lang=${lang}`);
-  const t=invoicePaymentAccountText[lang];await page.getByRole('button',{name:name(t.select)}).click();const dialog=page.getByRole('dialog');await dialog.waitFor();await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});await page.getByRole('button',{name:name(t.select)}).click();
+  const t=invoicePaymentAccountText[lang];await page.locator('[data-invoice-entry-metadata]').waitFor();assert.equal(await page.locator('[data-invoice-form-header] .invoice-document-identifiers').count(),0);const settings=await page.locator('[data-invoice-entry-settings]').boundingBox(),document=await page.locator('[data-invoice-form-header]').boundingBox();assert.ok(settings.y+settings.height<=document.y+1);await page.getByRole('button',{name:name(t.select)}).click();const dialog=page.getByRole('dialog');await dialog.waitFor();await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});await page.getByRole('button',{name:name(t.select)}).click();
   await dialog.getByRole('row').filter({hasText:'CHOSEN-002'}).getByRole('button').click();await dialog.waitFor({state:'hidden'});
   const summary=page.getByTestId('invoice-payment-account');for(const value of ['Selected Bank','CHOSEN-002','BARO','USD','ASCBVNVX'])assert.match(await summary.innerText(),new RegExp(value));assert.doesNotMatch(await summary.innerText(),/DEFAULT-001/);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
