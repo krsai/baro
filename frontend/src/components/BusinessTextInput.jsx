@@ -11,7 +11,7 @@ const BusinessTextInput=forwardRef(function BusinessTextInput({ownerState={},onC
  const format=value=>policy==='party'?titleCasePartyBlock(value):titleCaseWords(value);
  // Presentation never changes the parent's draft. Only an actual edit may emit
  // a normalized value; focusing a legacy value must not mark a form dirty.
- const display=policy==='title'&&typeof props.value==='string'&&!editing&&!composing.current?format(props.value):props.value;
+ const display=['title','party'].includes(policy)&&typeof props.value==='string'&&!editing&&!composing.current?format(props.value):props.value;
  const normalize=event=>{
   if(!changed.current||composing.current||event.nativeEvent?.isComposing||!onChange||!['title','party'].includes(policy))return;
   const before=event.target.value,next=format(before);
