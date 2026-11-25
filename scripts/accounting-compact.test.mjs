@@ -29,7 +29,7 @@ test('ledger representative is the largest actual allocation, keeps ties in sour
 test('ledger activity returns every paid expense item even when codes repeat, so summary counts real lines',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id;
-  const expense=await db.$transaction(tx=>registerExpenseRequest(tx,org,s.people.admin.id,{partnerOrgId:s.vendor.id,automaticRequestDate:true,clientKey:randomUUID(),items:[1,2,3].map(n=>({transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'10',vatRate:'0',details:{reference:'MULTI-'+n,evidenceFile:'invoice.pdf'}}))}));
+  const expense=await db.$transaction(tx=>registerExpenseRequest(tx,org,s.people.admin.id,{partnerOrgId:s.vendor.id,automaticRequestDate:true,remark:'Multiple expenses',clientKey:randomUUID(),items:[1,2,3].map(n=>({transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'10',vatRate:'0',details:{reference:'MULTI-'+n,evidenceFile:'invoice.pdf'}}))}));
   const entry=await postLedgerEntry(db,org,'admin@example.test',s.account.id,{clientKey:randomUUID(),transactionDate:'2026-11-13',direction:'OUT',amount:'30',purpose:'Multiple expenses',accountingCodeId:s.code.id,evidenceType:'EXPENSE',expenseRequestId:expense.id,expenseVersion:expense.version,expenseItems:expense.items.map(item=>({itemId:item.id,amount:'10'})),counterparty:{kind:'PARTNER',id:s.vendor.id}});
   const result=await listLedgerActivity(db,org,{start:'2026-11-01',end:'2026-11-13'}),row=result.rows.find(row=>row.id===entry.id);
   assert.equal(row.allocations.length,3);assert.deepEqual(new Set(row.allocations.map(a=>a.expenseItem.id)),new Set(expense.items.map(item=>item.id)));

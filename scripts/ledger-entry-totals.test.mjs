@@ -1,6 +1,19 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {ledgerEntryTotals} from '../frontend/src/utils/ledgerEntryTotals.mjs';
+import {ledgerExpenseSelectionAmount} from '../frontend/src/utils/ledgerExpenseRows.mjs';
+
+test('linking multiple expense items replaces a previous single-item cash total',()=>{
+ const row={entryKind:'BANK',evidenceType:'EXPENSE',accountId:'v',direction:'OUT',amount:'6775950'};
+ const document={remaining:'7050950',items:[{id:'electricity',remaining:'6775950'},{id:'water',remaining:'275000'}]};
+ const amount=ledgerExpenseSelectionAmount(row,document);
+ assert.equal(amount,'7050950');
+ assert.deepEqual(ledgerEntryTotals([{...row,amount}],[{id:'v',currencyCode:'VND'}]),[{currency:'VND',incoming:'0.00',outgoing:'7050950.00',net:'-7050950.00'}]);
+ assert.equal(ledgerExpenseSelectionAmount(row,{...document,items:[document.items[0]]}),'6775950','Single-item partial payment stays editable');
+ assert.equal(ledgerExpenseSelectionAmount({...row,evidenceType:'INVOICE'},document),'6775950');
+ assert.equal(ledgerExpenseSelectionAmount(row,{...document,paymentSchedule:[{id:'plan'}]}),'','Installments still require explicit selection');
+ assert.equal(ledgerExpenseSelectionAmount(row,{items:[{id:'a',remaining:'9007199254740993.01'},{id:'b',remaining:'0.02'}]}),'9007199254740993.03');
+});
 test('actual bank movement stays separate by currency and does not double count settlement lines',()=>{
  const accounts=[{id:'u',currencyCode:'USD'},{id:'v',currencyCode:'VND'}];
  const bank=(accountId,direction,amount)=>({entryKind:'BANK',accountId,direction,amount});

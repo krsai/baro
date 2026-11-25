@@ -47,6 +47,7 @@ try{
    const row=page.locator('[data-ledger-entry-row="0"]');
    const from=row.getByRole('textbox',{name:roleName(ledgerFlowText[lang].from)});await from.fill('Bank VND');await from.press('Enter');
    const to=row.getByRole('textbox',{name:roleName(ledgerFlowText[lang].to)});await to.fill('BARO');await to.press('Enter');
+   if(process.argv.includes('--prefilled-amount'))await row.getByRole('textbox',{name:roleName(t.amount)}).fill('6775950');
    await row.getByRole('combobox',{name:roleName(l.evidenceKind)}).click();await page.getByRole('option',{name:roleName(l.app)}).click();
    await row.getByRole('button',{name:roleName(l.unlinked)}).click();const proof=page.getByRole('dialog');await proof.getByRole('row').filter({hasText:'EXP-2026-000004'}).getByRole('button').click();await proof.waitFor({state:'hidden'});
    assert.equal(await page.locator('[data-ledger-entry-row]').count(),2);assert.equal((await page.getByTestId('ledger-totals').innerText()).match(/7,050,950/g)?.length,2);
