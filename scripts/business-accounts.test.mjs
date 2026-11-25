@@ -18,6 +18,12 @@ function memory(){
   update:async({where,data})=>{const row=accounts.find(r=>r.id===where.id),oldCode=currencies.find(c=>c.id===row.currencyId).code,newCode=currencies.find(c=>c.id===(data.currencyId??row.currencyId)).code;const own=ledgers.filter(a=>a.entityAccountId===row.id);if(oldCode!==newCode&&!own.some(a=>a.currencyCode===newCode))for(const ledger of own)if(ledger.currencyCode===oldCode&&!ledger.entryCount&&Number(ledger.openingBalance)===0)ledger.currencyCode=newCode;if(data.currencyId!==undefined)for(const ledger of own)Object.assign(ledger,{bankName:data.bankName,accountNumber:data.accountNumber,accountHolder:data.accountHolder});Object.assign(row,data);return include(row);},
  }};db.$transaction=async run=>run(db);return {db,accounts,ledgers,staff};
 }
+test('bank SWIFT is optional, normalized, retained by unrelated edits and rejects invalid formats',async()=>{
+ const {db}=memory();const body={currencyId:1,accountKind:'BANK',bankName:'Test Bank',accountNumber:'000123',accountHolder:'BARO',swiftCode:'ascbvnvx'};
+ const row=await saveEntityBankAccount(db,1,7,1,null,body);assert.equal(row.swiftCode,'ASCBVNVX');
+ const {swiftCode,...update}=row;const saved=await saveEntityBankAccount(db,1,7,1,row.id,{...update,bankName:'Renamed Bank'});assert.equal(saved.swiftCode,'ASCBVNVX');
+ await assert.rejects(saveEntityBankAccount(db,1,7,1,row.id,{...body,swiftCode:'bad'}),/INVALID_BANK_ACCOUNT/);
+});
 test('business registration supports VND twice, USD and KRW cash accounts without bank numbers or default/active settings',async()=>{
  const {db,accounts,ledgers}=memory();
  for(const [index,currencyId] of [1,1,2,3].entries())await saveEntityBankAccount(db,1,7,1,null,{accountKind:'CASH',displayName:'Cash '+index,currencyId,isDefault:true,isActive:false});

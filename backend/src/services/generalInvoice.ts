@@ -1,6 +1,6 @@
 import {companyInvoiceParty} from './companyDocumentContact';
 import {prepareMaterialSelection} from './materialItems';
-import {invoicePrimaryAccountText} from './invoicePrimaryAccounts';
+import {resolveInvoicePaymentAccount} from './invoicePaymentAccount';
 import {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
 import {calculateRequestAmounts} from './transactionRequest';
@@ -21,7 +21,7 @@ export async function generalInvoiceSource(db:any,sellerOrgId:number,buyerOrgId:
  ]);
  if(!seller||!localBuyer)return invalid('GENERAL_INVOICE_BUYER_INVALID');
  const [buyer]=await attachLinkedCompanies(db,sellerOrgId,[{...localBuyer,entityId:localBuyer.id}]);
- const accounts=await db.organizationBankAccount.findMany({where:{orgId:sellerOrgId,entityId:sellerOrgId,accountKind:'BANK'},select:{id:true,isDefault:true,isActive:true,bankName:true,accountNumber:true,accountHolder:true,currency:{select:{code:true}}},orderBy:[{sortOrder:'asc'},{createdAt:'asc'},{id:'asc'}]});
+ const accounts=await db.organizationBankAccount.findMany({where:{orgId:sellerOrgId,entityId:sellerOrgId,accountKind:'BANK'},select:{id:true,isDefault:true,isActive:true,bankName:true,accountNumber:true,accountHolder:true,swiftCode:true,updatedAt:true,currency:{select:{code:true}}},orderBy:[{sortOrder:'asc'},{createdAt:'asc'},{id:'asc'}]});
  return {buyerOrgId,sellerOrgId,seller:party(seller),buyer:party(buyer),sellerBankAccounts:accounts};
 }
 export function normalizeGeneralInvoiceLines(lines:any){
@@ -82,12 +82,12 @@ export async function issueGeneralInvoice(tx:any,sellerOrgId:number,actor:string
   if(!original||original.documentKind!=='GENERAL'||original.status!=='ISSUED'||original.buyerOrgId!==draft.buyerOrgId||original.currencyCode!==content.currency||!revisionReason)throw createHttpError(409,'INVOICE_REVISION_SCOPE_CHANGED');
   if(await tx.invoiceCredit.count({where:{invoiceId:original.id,voidedAt:null}}))throw createHttpError(409,'INVOICE_CREDIT_VOID_BEFORE_REVISION');
  }
- content.fields.bank=await invoicePrimaryAccountText(tx,sellerOrgId);
+ await resolveInvoicePaymentAccount(tx,sellerOrgId,content.fields);
  const calculated=calculateGeneralInvoice(content,await validateGeneralInvoiceCodes(tx,sellerOrgId,content.lines));
  const invoiceNumber=await allocateDocumentNumber(tx,sellerOrgId,'INV',content.fields.date,normalizeDocumentNumber(content.fields.number));
  calculated.snapshot.fields={...calculated.snapshot.fields,number:invoiceNumber};
  const latest=await tx.invoice.findFirst({where:{sellerOrgId},orderBy:{sequenceNumber:'desc'},select:{sequenceNumber:true}});
- const invoice=await tx.invoice.create({data:{sellerOrgId,buyerOrgId:draft.buyerOrgId,documentKind:'GENERAL',pricingBasis:null,clientKey:issueKey,invoiceNumber,sequenceNumber:(latest?.sequenceNumber||0)+1,currencyCode:content.currency,subtotal:calculated.subtotal,total:calculated.total,receivableAdded:calculated.total,snapshot:calculated.snapshot,issuedBy:actor,revisionOfInvoiceId:original?.id??null,rootInvoiceId:original?(original.rootInvoiceId||original.id):null,revisionNumber:original?original.revisionNumber+1:1,revisionReason}});
+ const invoice=await tx.invoice.create({data:{...(content.fields.bankAccountId!==undefined?{bankAccountId:content.fields.bankAccountId}:{}),sellerOrgId,buyerOrgId:draft.buyerOrgId,documentKind:'GENERAL',pricingBasis:null,clientKey:issueKey,invoiceNumber,sequenceNumber:(latest?.sequenceNumber||0)+1,currencyCode:content.currency,subtotal:calculated.subtotal,total:calculated.total,receivableAdded:calculated.total,snapshot:calculated.snapshot,issuedBy:actor,revisionOfInvoiceId:original?.id??null,rootInvoiceId:original?(original.rootInvoiceId||original.id):null,revisionNumber:original?original.revisionNumber+1:1,revisionReason}});
  await tx.invoiceGeneralLine.createMany({data:calculated.lines.map(line=>({...line,sellerOrgId,invoiceId:invoice.id}))});
  if(original){const updated=await tx.invoice.updateMany({where:{id:original.id,sellerOrgId,status:'ISSUED'},data:{status:'SUPERSEDED'}});if(updated.count!==1)throw createHttpError(409,'STALE_EDIT');}
  return invoice;

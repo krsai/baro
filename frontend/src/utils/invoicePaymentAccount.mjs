@@ -1,0 +1,6 @@
+import {invoicePaymentAccountText} from '../constants/invoicePaymentAccount.js';
+export const paymentAccountSnapshot=account=>({bankName:account.bankName,accountNumber:account.accountNumber,accountHolder:account.accountHolder,currencyCode:account.currency?.code||account.currencyCode||'',swiftCode:account.swiftCode||''});
+export const paymentAccountRows=(snapshot,languageCode='en')=>{const t=invoicePaymentAccountText[languageCode]||invoicePaymentAccountText.en;return ['bankName','accountNumber','accountHolder','currencyCode','swiftCode'].map(key=>({key,label:t[key],value:snapshot?.[key]||'—'}));};
+export const paymentAccountFields=account=>{const snapshot=paymentAccountSnapshot(account);return {bankAccountId:account.id,bankAccountRevision:account.updatedAt||'',bankAccountSnapshot:snapshot,bank:paymentAccountRows(snapshot).map(row=>row.label+': '+row.value).join('\n')};};
+export const paymentAccountText=(fields,languageCode='en')=>fields?.bankAccountSnapshot?paymentAccountRows(fields.bankAccountSnapshot,languageCode).map(row=>row.label+': '+row.value).join('\n'):fields?.bank||'';
+export const paymentAccountError=(error,languageCode='en')=>['INVOICE_BANK_ACCOUNT_INVALID','INVOICE_BANK_ACCOUNT_CHANGED'].includes(error)?(invoicePaymentAccountText[languageCode]||invoicePaymentAccountText.en).invalid:'';

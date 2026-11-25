@@ -40,8 +40,10 @@ try{
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const actions={showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;'}));
   if(failure==='detail')await page.route('**/src/components/PageDialogProvider.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const usePageDialogs=()=>({confirm:async()=>true,prompt:async()=>"Correction",alert:async()=>{}});'}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
+  await page.route('**/text-acronyms',r=>r.fulfill({headers,json:{revision:1,entries:[]}}));
   await page.route('**/invoices/**',r=>{
    const request=r.request(),url=new URL(request.url());if(request.method()==='OPTIONS')return r.fulfill({headers,status:204});
+   if(url.pathname.endsWith('/payment-accounts'))return r.fulfill({headers,json:source.sellerBankAccounts.map(account=>({...account,id:String(account.id)}))});
    if(url.pathname.includes('order-source')){reads.push(url.pathname);const incomplete={...source,ready:false,styles:source.styles.map(style=>({...style,ready:false,producedQuantity:5,assignments:[{externalId:'review-plan',completed:false,producedQuantity:5,plannedQuantity:15,factoryName:'HANOI'}]}))};return r.fulfill({headers,json:failure==='layout'?{...incomplete,lines:['L','M','FREE','S','XL','2XL','XS','3XL','4XL'].map(size=>({...source.lines[0],key:`item1:${size}`,size,gender:'M'}))}:failure==='advance'?incomplete:source});}
    if(request.method()==='POST'&&url.pathname.endsWith('/revision-draft')){assert.equal(saves.length,0);assert.ok(request.postDataJSON().reason);return r.fulfill({headers,json:{id:'revision',revision:1,clientKey:request.postDataJSON().clientKey}});}
    if(request.method()==='GET'&&url.pathname.endsWith('/drafts/revision'))return r.fulfill({headers,json:{id:'revision',revision:1,clientKey:'saved-client',buyerOrgId:2,content:{version:2,buyerOrgId:2,basis:'MANUFACTURING_SERVICE_PRICE',currency:'USD',orders:combineInvoiceSources([source]).orders,lines:combineInvoiceSources([source]).lines,percentages:{},settlements:{},fields:{number:'',date:'2026-10-31',seller:source.seller,buyer:source.buyer,notes:'',bank:'',shipTo:'',shipmentDate:'',dueDate:'',incoterm:'',paymentTerms:''}}}});
@@ -55,6 +57,7 @@ try{
   });
   await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html${failure==='revision'?'?draft=revision':''}`);
   const review=page.getByRole('checkbox');await review.waitFor();
+  await page.getByTestId('invoice-payment-account').getByRole('button').click();const bankPicker=page.getByRole('dialog');await bankPicker.getByRole('row').filter({hasText:bankReviewOnly?'USD-999':summaryOnly?'01234567890123456789':'USD-001'}).first().getByRole('button').click();await bankPicker.waitFor({state:'hidden'});
   if(adjustmentOnly){
    assert.equal(await page.getByRole('button',{name:invoiceUi[lang].cancel,exact:true}).count(),0);
    const adjustment=page.getByLabel(/\(\+\/-\)/);await adjustment.waitFor();
@@ -92,7 +95,7 @@ try{
   if(summaryOnly){
    const summary=page.locator('.invoice-summary');await page.locator('input[inputmode="decimal"][aria-label$=" PO-1"]').fill('50');
    assert.match(await summary.locator('.invoice-amount-formula').innerText(),/\$30\.00 \u00d7 50% = \$15\.00/);
-   assert.equal(await summary.locator('.invoice-bank-line').count(),3);
+   assert.equal(await summary.locator('[data-testid=invoice-payment-account] dd').count(),5);
    const treatment=page.getByRole('combobox').filter({hasText:'CMTE'});
    await treatment.click();await page.getByRole('option',{name:/CMTV/}).click();
    await page.getByLabel('VAT (%)',{exact:true}).fill('10');
@@ -101,7 +104,7 @@ try{
    for(const width of [1920,1720,1366,768,390]){
     await page.setViewportSize({width,height:1000});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
-    assert.equal(await summary.locator('.invoice-bank-line').first().evaluate(el=>getComputedStyle(el).whiteSpace),'pre');
+    assert.equal(await summary.locator('[data-testid=invoice-payment-account] dd').first().evaluate(el=>getComputedStyle(el).overflowWrap),'anywhere');
     if(width>=1366){const boxes=await summary.evaluate(el=>{const note=el.querySelector('.invoice-remark').getBoundingClientRect(),details=el.querySelector('.invoice-summary-details').getBoundingClientRect();return {note:note.bottom,details:details.bottom,right:details.width,total:el.getBoundingClientRect().width};});assert.ok(Math.abs(boxes.note-boxes.details)<3,JSON.stringify(boxes));assert.ok(boxes.right>boxes.total*.5,JSON.stringify(boxes));}
    }
    await review.check();await issue.click();await page.waitForTimeout(300);
@@ -145,7 +148,7 @@ try{
   assert.equal(saves.length,failure==='save'?2:1);assert.equal(issues.length,failure==='issue'?2:1);
   assert.equal(new Set(saves.map(s=>s.clientKey)).size,1);assert.ok(issues.every(i=>i.path==='/invoices/drafts/pending-1/issue'));
   if(failure==='advance')assert.equal(saves[0].percentages.o1,'30');
-  assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark===''));assert.equal(saves[0].lines[0].adjustmentReason,'Reviewed note');assert.equal(saves[0].fields.notes,'Reviewed note');if(failure!=='revision'){assert.match(saves[0].fields.bank,/USD-001/);assert.match(saves[0].fields.bank,/VND-001/);assert.doesNotMatch(saves[0].fields.bank,/USD-999/);}assert.equal(saves[0].fields.number,failure==='save'?'CUSTOM-2026-A':failure==='detail'?'INV-001-R2':'');
+  assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark===''));assert.equal(saves[0].lines[0].adjustmentReason,'Reviewed note');assert.equal(saves[0].fields.notes,'Reviewed note');if(failure!=='revision'){assert.match(saves[0].fields.bank,bankReviewOnly?/USD-999/:/USD-001/);assert.doesNotMatch(saves[0].fields.bank,/VND-001/);assert.equal(saves[0].fields.bankAccountId,bankReviewOnly?'3':'1');}assert.equal(saves[0].fields.number,failure==='save'?'CUSTOM-2026-A':failure==='detail'?'INV-001-R2':'');
   assert.deepEqual(errors,[]);await page.close();
  }
  for(const lang of ((adjustmentOnly||summaryOnly||bankReviewOnly||scheduleOnly||compactOnly)?[]:['ko','en','vi'])){

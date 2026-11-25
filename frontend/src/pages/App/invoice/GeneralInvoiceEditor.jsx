@@ -1,3 +1,4 @@
+import {paymentAccountError} from '../../../utils/invoicePaymentAccount.mjs';
 import AddActionButton from '../../../components/AddActionButton';
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {Box,Button,Checkbox,CircularProgress,FormControlLabel,MenuItem,Stack,Table,TableBody,TableCell,TableHead,TableRow,TextField,Typography} from '@mui/material';
@@ -18,7 +19,6 @@ import {usePageDialogs} from '../../../components/PageDialogProvider';
 import {useAppActions} from '../../../context/AppContext';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import {requestJSON,buildQueryString} from '../../../utils/apiClient';
-import {invoiceBankInfo} from '../../../utils/invoiceBankInfo.mjs';
 import {formatInvoiceMoney} from '../../../utils/invoiceItemGrid.mjs';
 import {newGeneralInvoiceLine,generalInvoiceLines,calculateGeneralInvoiceDraft} from '../../../utils/generalInvoice.mjs';
 import {generalInvoiceText} from '../../../constants/generalInvoice';
@@ -51,7 +51,7 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
    const content=stored?.content,snapshot=revisionInvoice?.snapshot;
    const chosenCurrency=content?.currency||revisionInvoice?.currencyCode||'VND';
    setCurrency(chosenCurrency);setLines(content?.lines|| (snapshot?generalInvoiceLines(snapshot):[newGeneralInvoiceLine()]));
-   setFields(content?.fields||(snapshot?{...snapshot.fields,number:revisionInvoice.invoiceNumber+'-R'+(Number(revisionInvoice.revisionNumber||1)+1)}:{number:'',date:new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Ho_Chi_Minh'}),seller:data.seller,buyer:data.buyer,shipTo:'',shipmentDate:'',dueDate:'',expectedCollectionDate:'',incoterm:'',paymentTerms:'',bank:invoiceBankInfo(data.sellerBankAccounts,chosenCurrency),notes:''}));
+   setFields(content?.fields||(snapshot?{...snapshot.fields,number:revisionInvoice.invoiceNumber+'-R'+(Number(revisionInvoice.revisionNumber||1)+1)}:{number:'',date:new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Ho_Chi_Minh'}),seller:data.seller,buyer:data.buyer,shipTo:'',shipmentDate:'',dueDate:'',expectedCollectionDate:'',incoterm:'',paymentTerms:'',bank:'',bankAccountId:null,notes:''}));
    if(stored){draft.current=stored;clientKey.current=stored.clientKey;}
   };
   load().catch(()=>{if(alive)setLoadError(true);}).finally(()=>{if(alive)setLoading(false);});
@@ -82,7 +82,7 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
  const issue=async(options={})=>{
   if(busy.current||loading||loadError||!source||selectingMaterial||!fields?.date||!reviewed||!calculation.valid)return;
   if(!uncertain&&!await dialogs.confirm(storage.confirmIssue))return;
-  const issueFields={...fields,bank:invoiceBankInfo(source?.sellerBankAccounts||[])};
+  const issueFields={...fields};
   if(revisionInvoice&&!draft.current&&!revisionRequest.current){const reason=await dialogs.prompt(t.reason);if(!reason?.trim())return;revisionRequest.current={clientKey:clientKey.current,reason:reason.trim()};}
   busy.current=true;setSaving(true);setError('');
   try{
@@ -98,7 +98,7 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
    if(!mounted.current||scope.current!==orgId)return;
    const unknown=!failure.status||failure.status>=500;setUncertain(unknown);
    if(!unknown)submission.current=null;
-   setError(documentNumberError(failure.details?.error||failure.message,languageCode)|| (unknown?t.uncertain:failure.message==='COMPANY_BILLING_CODE_INVALID'?t.codeInvalid:failure.message==='GENERAL_INVOICE_BUYER_INVALID'?t.buyerInvalid:t.failed));
+   setError(paymentAccountError(failure.details?.error||failure.message,languageCode)||documentNumberError(failure.details?.error||failure.message,languageCode)|| (unknown?t.uncertain:failure.message==='COMPANY_BILLING_CODE_INVALID'?t.codeInvalid:failure.message==='GENERAL_INVOICE_BUYER_INVALID'?t.buyerInvalid:t.failed));
   }finally{busy.current=false;if(mounted.current&&scope.current===orgId)setSaving(false);}
  };
  return <AppPageContainer keyboardEntry title={t.general} titleActions={<Stack direction="row" spacing={1}><Button variant="contained" disabled={loading||loadError||saving||selectingMaterial||!source||!reviewed||!calculation.valid||!fields?.date} onClick={()=>issue()}>{saving?<CircularProgress size={18}/>:ui.issue}</Button></Stack>}>
@@ -107,7 +107,7 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
    {renderSelection&&<Box sx={{p:2,borderBottom:1,borderColor:'divider'}}>{renderSelection({requestChange,disabled:locked})}</Box>}
    {loading&&<CircularProgress size={22}/>}{loadError&&<Alert severity="error" action={<Button disabled={locked} onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{t.failed}</Alert>}{error&&<Alert severity="error">{error}</Alert>}
    {source&&fields&&<Box component="fieldset" disabled={locked} sx={{border:0,p:0,m:0,minWidth:0}}>
-    <InvoiceFormHeader fields={fields} languageCode={languageCode} onChange={changeField} currencyControl={<InvoiceDocumentField appearance="form" select label={t.currency} value={currency} disabled={!!revisionInvoice||!!draftId||locked} onChange={event=>change(()=>{setCurrency(event.target.value);setFields(current=>({...current,bank:invoiceBankInfo(source.sellerBankAccounts,event.target.value)}));})}>{['VND','USD','KRW'].map(value=><MenuItem key={value} value={value}>{value}</MenuItem>)}</InvoiceDocumentField>}/>
+    <InvoiceFormHeader fields={fields} languageCode={languageCode} onChange={changeField} currencyControl={<InvoiceDocumentField appearance="form" select label={t.currency} value={currency} disabled={!!revisionInvoice||!!draftId||locked} onChange={event=>change(()=>{setCurrency(event.target.value);})}>{['VND','USD','KRW'].map(value=><MenuItem key={value} value={value}>{value}</MenuItem>)}</InvoiceDocumentField>}/>
     <Box sx={{overflowX:'auto'}}><Table data-table-layout="wide" data-invoice-entry-grid size="small" sx={{minWidth:1320,'& .MuiInputBase-root':{height:36},'& .MuiTextField-root':{width:'100%',maxWidth:'100%'}}}><colgroup>{[44,160,null,104,100,160,104,140,160,80].map((width,index)=><col key={index} style={width?{width}:undefined}/>)}</colgroup><TableHead><TableRow>{['#',t.code,t.description,t.quantity,t.unit,t.price,t.vat,t.tax,t.total,''].map((label,index)=><TableCell key={index} align={index===3||index>=5&&index<=8?'right':'left'}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{lines.map((line,index)=><TableRow key={line.key} data-testid="general-invoice-line">
      <TableCell>{index+1}</TableCell><TableCell sx={{minWidth:145}}><AccountingCodeField resetKey={codeRevision} hideLabel direction="IN" codes={source.codes} value={line.transactionCodeId} valueObject={source.codes.find(code=>code.id===line.transactionCodeId)|| (line.code?{id:line.transactionCodeId,code:line.code,nameEn:line.codeDescription,cashDirection:'IN'}:null)} languageCode={languageCode} disabled={locked} requireMaterialSelection onSelect={code=>chooseCode(line,code)}/></TableCell>
      <TableCell><Stack spacing={.5}><TextField size="small" inputProps={{maxLength:1000,'aria-label':t.description}} value={line.description} disabled={locked} onChange={event=>changeLine(line.key,{description:event.target.value})}/>{line.materialItemId&&<Button size="small" disabled={locked} onClick={()=>chooseCode(line,source.codes.find(code=>code.id===line.transactionCodeId))}>{[materialItemName({data:line.materialItemSnapshot},languageCode),materialItemSpec({data:line.materialItemSnapshot})].filter(Boolean).join(' / ')||(materialItemText[languageCode]||materialItemText.en).title}</Button>}</Stack></TableCell><TableCell><DecimalAmountField size="small" inputProps={{'aria-label':t.quantity,style:{textAlign:'right'},onFocus:event=>{const input=event.target;if(line.quantity==='1')requestAnimationFrame(()=>{if(document.activeElement===input)input.select();});},onMouseUp:event=>{if(line.quantity==='1')event.preventDefault();}}} value={line.quantity} disabled={locked} onValueChange={quantity=>changeLine(line.key,{quantity})}/></TableCell><TableCell>{line.materialItemId?<ReadOnlyField hideLabel label={t.unit} value={line.unit}/>:<TextField select size="small" value={line.unitId||line.unit||''} disabled={locked} slotProps={{select:{inputProps:{'aria-label':t.unit}}}} onChange={event=>{const unit=source.units?.find(unit=>unit.id===event.target.value);changeLine(line.key,{unitId:unit?.id||null,unit:unit?.nameEn||unit?.nameKo||unit?.nameVi||''});}}><MenuItem value="">—</MenuItem>{line.unit&&!line.unitId&&<MenuItem value={line.unit}>{line.unit}</MenuItem>}{(source.units||[]).map(unit=><MenuItem key={unit.id} value={unit.id}>{materialItemName(unit,languageCode)}</MenuItem>)}</TextField>}</TableCell>
@@ -115,7 +115,7 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
      <TableCell align="right">{formatInvoiceMoney(calculation.lines[index]?.vatAmount,currency)}</TableCell><TableCell align="right">{formatInvoiceMoney(calculation.lines[index]?.amount,currency)}</TableCell><TableCell data-table-actions><Stack direction="row"><AddActionButton aria-label={t.add} disabled={locked||lines.length>=50} onClick={()=>change(()=>setLines(current=>[...current.slice(0,index+1),newGeneralInvoiceLine(),...current.slice(index+1)]))}/><DeleteActionButton aria-label={t.remove} disabled={locked||lines.length===1} onClick={()=>change(()=>setLines(current=>current.filter(row=>row.key!==line.key)))}/></Stack></TableCell>
     </TableRow>)}</TableBody></Table></Box>
     <Stack alignItems="flex-end" sx={{p:2}}><Typography>{t.subtotal}: {formatInvoiceMoney(calculation.subtotal,currency)}</Typography><Typography>{t.tax}: {formatInvoiceMoney(calculation.vatAmount,currency)}</Typography></Stack>
-    <InvoiceFormSummary fields={{...fields,bank:invoiceBankInfo(source?.sellerBankAccounts||[])}} total={calculation.amount} currencyCode={currency} languageCode={languageCode} onRemark={value=>changeField('notes',value)}/>
+    <InvoiceFormSummary orgId={orgId} fields={fields} total={calculation.amount} currencyCode={currency} languageCode={languageCode} onRemark={value=>changeField('notes',value)} bankAccounts={source.sellerBankAccounts} disabled={locked} onBankChange={patch=>change(()=>setFields(current=>({...current,...patch})))}/>
     {!calculation.valid&&<Alert severity="info">{t.invalid}</Alert>}<FormControlLabel sx={{m:2}} control={<Checkbox checked={reviewed} disabled={locked} onChange={event=>setReviewed(event.target.checked)}/>} label={t.review}/>
    </Box>}
   </Stack></InvoiceSheet>

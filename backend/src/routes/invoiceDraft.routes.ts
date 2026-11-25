@@ -5,6 +5,7 @@ import { invoiceFinalReview } from '../services/invoiceFinalReview';
 import { invoiceFamily, invoiceFamilyBalance } from '../services/invoiceSettlement';
 import {generalInvoiceSource} from '../services/generalInvoice';
 import {ACCOUNTING_CODE_INCLUDE,resolveAccountingCode} from '../services/accountingCode';
+import {listInvoicePaymentAccounts} from '../services/invoicePaymentAccount';
 import { createInvoiceCredit, voidInvoiceCredit } from '../services/invoiceCredit';
 import {companyNameCodeSearch} from '../services/companySearch';
 import {attachLedgerActorNames} from '../services/ledgerActors';
@@ -23,6 +24,7 @@ const invoicePaymentMoney = (payments: any[], values: (payment: any) => unknown[
 };
 
 export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor }: any) {
+  app.get('/invoices/payment-accounts',async(req:any,res:any)=>{const access=await requireAccess(req,res);if(!access)return;res.setHeader('Cache-Control','no-store');res.json(await listInvoicePaymentAccounts(db,access.organization.id));});
   app.get('/invoices/general-source',async(req:any,res:any)=>{
     const access=await requireAccess(req,res);if(!access)return;
     const orgId=access.organization.id;

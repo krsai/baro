@@ -19,7 +19,7 @@ export async function readPayeeAccounts(db:any,orgId:number,entityId:number){
  await requireEntityAccess(db,orgId,entityId);
  const owner=await linkedAccountOwner(db,orgId,entityId);
  if(owner){
-  const accounts=await db.organizationBankAccount.findMany({where:{orgId:owner,entityId:owner,accountKind:'BANK'},select:{id:true,accountKind:true,displayName:true,bankName:true,accountNumber:true,accountHolder:true,currencyId:true,currency:{select:{id:true,code:true,name:true}}},orderBy:[{sortOrder:'asc'},{createdAt:'asc'},{id:'asc'}]});
+  const accounts=await db.organizationBankAccount.findMany({where:{orgId:owner,entityId:owner,accountKind:'BANK'},select:{id:true,accountKind:true,displayName:true,bankName:true,accountNumber:true,accountHolder:true,swiftCode:true,currencyId:true,currency:{select:{id:true,code:true,name:true}}},orderBy:[{sortOrder:'asc'},{createdAt:'asc'},{id:'asc'}]});
   return {accounts:accounts.map((row:any)=>({...row,ledgerAccounts:[]})),canEditAccounts:false};
  }
  return {accounts:await db.organizationBankAccount.findMany({where:{orgId,entityId},include:BANK_INCLUDE,orderBy:[{sortOrder:'asc'},{createdAt:'asc'},{id:'asc'}]}),canEditAccounts:true};
@@ -68,7 +68,9 @@ export async function saveEntityBankAccount(tx:any,orgId:number,actorId:number,e
   if(!['BANK','CASH'].includes(kind))throw createHttpError(400,'INVALID_BANK_ACCOUNT');
   const displayName=typeof body.displayName==='string'?body.displayName.trim():previous?.displayName||'';
   if(displayName.length>160||(kind==='CASH'&&!displayName))throw createHttpError(400,'INVALID_BANK_ACCOUNT');
-  const data={currencyId,isDefault,accountKind:kind,displayName,bankName:kind==='CASH'?'':text('bankName',120),accountNumber:kind==='CASH'?'':text('accountNumber',100),accountHolder:kind==='CASH'?'':text('accountHolder',160),updatedByEmployeeId:actorId};
+  const swiftCode=kind==='CASH'?'':body.swiftCode===undefined?previous?.swiftCode||'':typeof body.swiftCode==='string'?body.swiftCode.trim().toUpperCase():null;
+  if(swiftCode===null||swiftCode&&!/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(swiftCode))throw createHttpError(400,'INVALID_BANK_ACCOUNT');
+  const data={currencyId,isDefault,accountKind:kind,displayName,swiftCode,bankName:kind==='CASH'?'':text('bankName',120),accountNumber:kind==='CASH'?'':text('accountNumber',100),accountHolder:kind==='CASH'?'':text('accountHolder',160),updatedByEmployeeId:actorId};
   const result=id?await tx.organizationBankAccount.update({where:{id},data,include:BANK_INCLUDE}):await tx.organizationBankAccount.create({data:{...data,orgId,entityId,sortOrder:(await tx.organizationBankAccount.count({where:{orgId,entityId}})),createdByEmployeeId:actorId},include:BANK_INCLUDE});
   const currentLedger=entityId===orgId?await tx.bankLedgerAccount.findFirst({where:{orgId,entityAccountId:result.id,currencyCode:result.currency.code}}):null;
   if(entityId===orgId&&!currentLedger){

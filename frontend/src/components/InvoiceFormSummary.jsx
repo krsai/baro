@@ -4,8 +4,9 @@ import {invoiceUi} from '../constants/invoiceUi';
 import {formatInvoiceMoney} from '../utils/invoiceItemGrid.mjs';
 import {invoiceAmountFormulaRows} from '../utils/invoiceAmountFormula.mjs';
 import {invoiceMessages} from '../constants/invoiceMessages';
+import InvoicePaymentAccount from './InvoicePaymentAccount';
 
-export default function InvoiceFormSummary({fields,total,orders=[],currencyCode,languageCode,onRemark,readOnly=false}){
+export default function InvoiceFormSummary({orgId,fields,total,orders=[],currencyCode,languageCode,onRemark,readOnly=false,bankAccounts,onBankChange,disabled=false}){
   const ui=invoiceUi[languageCode]||invoiceUi.en;
   const text=invoiceMessages[languageCode]||invoiceMessages.en;
   const formulas=invoiceAmountFormulaRows(orders,currencyCode);
@@ -15,7 +16,7 @@ export default function InvoiceFormSummary({fields,total,orders=[],currencyCode,
       {formulas.map(row=><Box className="invoice-amount-formula" key={row.key}><Typography variant="caption" color="text.secondary">{row.label} · {text.subtotal}</Typography><Typography variant="body2">{row.formula}</Typography>{row.deduction&&<Typography variant="body2">{row.deduction}</Typography>}</Box>)}
       {orders.some(order=>order.vatRate!==undefined)&&<Typography variant="body2">VAT: {orders.map(order=>formatInvoiceMoney(order.vatAmount,currencyCode)+' ('+order.vatRate+'%)').join(' / ')}</Typography>}
       <Box className="invoice-total"><span>{ui.summary}</span><span>{formatInvoiceMoney(total,currencyCode)}</span></Box>
-      <Typography variant="caption" color="text.secondary">{ui.bank}</Typography><Box className="invoice-bank-lines">{String(fields.bank||'—').split(/\r?\n/).map((line,index)=><Typography className="invoice-bank-line" variant="body2" key={index}>{line||'\u00a0'}</Typography>)}</Box>
+      <Typography variant="caption" color="text.secondary">{ui.bank}</Typography><InvoicePaymentAccount orgId={orgId} fields={fields} accounts={bankAccounts} languageCode={languageCode} onChange={onBankChange} readOnly={readOnly} disabled={disabled}/>
     </Stack>
   </Box>;
 }

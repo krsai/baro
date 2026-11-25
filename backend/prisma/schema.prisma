@@ -961,6 +961,7 @@ model ExpenseApprovalDecision {
 }
 
 model OrganizationBankAccount {
+  swiftCode String @default("")
  counterpartyEntries BankLedgerEntry[] @relation("LedgerPartyAccount")
   id String @id @default(uuid())
   orgId Int
@@ -3082,6 +3083,7 @@ model AssignmentCard {
 
 // A draft has no invoice number, issued status, settlement balance or order lock.
 model InvoiceDraft {
+  bankAccountId String?
   id String @id @default(cuid())
   sellerOrgId Int
   buyerOrgId Int
@@ -3149,6 +3151,7 @@ enum InvoicePaymentKind {
 
 // Immutable issuance snapshot. Corrections and settlements are appended in later phases.
 model Invoice {
+  bankAccountId String?
   transactionCodeId Int?
   accountingCode TransactionCode? @relation("InvoiceAccountingCode",fields:[transactionCodeId,sellerOrgId],references:[id,ownerOrgId],onDelete:Restrict,onUpdate:Restrict,map:"Invoice_accounting_code_scope_fkey")
   openingAdjustments AccountingOpeningItem[]

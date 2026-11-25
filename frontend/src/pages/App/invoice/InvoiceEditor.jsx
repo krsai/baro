@@ -1,3 +1,4 @@
+import {paymentAccountError} from '../../../utils/invoicePaymentAccount.mjs';
 import {invoiceAccountingText} from '../../../constants/invoiceAccounting';
 import {managementTargetText} from '../../../constants/managementTargets';
 import {cashScheduleText} from '../../../constants/cashSchedule';
@@ -5,7 +6,6 @@ import {useAppActions} from '../../../context/AppContext';
 import InvoiceFormHeader from '../../../components/InvoiceFormHeader';
 import InvoiceDocumentField from '../../../components/InvoiceDocumentField';
 import InvoiceFormSummary from '../../../components/InvoiceFormSummary';
-import {invoiceBankInfo} from '../../../utils/invoiceBankInfo.mjs';
 import {invoiceDocumentText} from '../../../constants/invoiceDocument';
 import {documentNumberText,documentNumberError} from '../../../constants/documentNumber';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
@@ -185,7 +185,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
         const date = new Date().toLocaleDateString('sv-SE');
         setFields({ number: '', date, seller: data.seller, buyer: data.buyer,
           shipTo: '',
-          shipmentDate: '', dueDate: '', expectedCollectionDate:'', incoterm: '', paymentTerms: '', bank: invoiceBankInfo(data.sellerBankAccounts,first?.currencyCode||data.currencies?.[0]||'USD'), notes: '' });
+          shipmentDate: '', dueDate: '', expectedCollectionDate:'', incoterm: '', paymentTerms: '', bank:'',bankAccountId:null, notes: '' });
         setSettlements(Object.fromEntries(data.orders.map(order => [order.orderId, { deduction: order.settlementsByCurrency?.[first?.currencyCode]?.defaultDeductionAmount || '', reason: '' }])));
     };
     load().catch((e) => { if (!cancelled) setError(String(e.message).includes('INVOICE_SOURCE_CHANGED') || /404|403/.test(String(e.status)) ? ui.sourceChanged : t.load); })
@@ -216,7 +216,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
 
     const issue = async (options={}) => {
     if (!source || saving || !reviewed || calculation?.issues.length || !fields?.date) return;
-    const issueFields={...fields,bank:invoiceBankInfo(source?.sellerBankAccounts||[])};
+    const issueFields={...fields};
     if (!uncertain && !await pageDialogs.confirm(storageText.confirmIssue)) return;
     if (revisionInvoice && !draftRef.current && !revisionRequest.current) {
       const reason = await pageDialogs.prompt(languageCode==='ko'?'개정 사유를 입력하세요.':languageCode==='vi'?'Nhập lý do sửa đổi.':'Enter a revision reason.');
@@ -247,7 +247,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     } catch (e) {
       const unknown = !e.status || e.status >= 500;
       setUncertain(unknown);
-      setError((managementTargetText[languageCode]||managementTargetText.en)[e.message] || (e.message==='INVALID_CASH_SCHEDULE_DATE'?(cashScheduleText[languageCode]||cashScheduleText.en).invalid:'') || documentNumberError(e.details?.error||e.message,languageCode) || (e.message==='INVOICE_CMT_CODE_UNAVAILABLE'?(invoiceAccountingText[languageCode]||invoiceAccountingText.en).unavailable:'') || (String(e.message).includes('INVOICE_ORDER_FULLY_BILLED') ? (languageCode==='ko'?'이미 100% 이상 청구된 주문이 있습니다. 청구 대상을 다시 선택하세요.':languageCode==='vi'?'Có đơn hàng đã được lập hóa đơn đủ 100%. Vui lòng chọn lại đơn hàng.':'An order is already fully billed. Please select the orders again.') : unknown ? ui.uncertain : String(e.message).includes('INVOICE_CREDIT_') ? ui.credit : String(e.message).includes('SOURCE_CHANGED') ? ui.sourceChanged : ui.failed));
+      setError(paymentAccountError(e.details?.error||e.message,languageCode)||(managementTargetText[languageCode]||managementTargetText.en)[e.message] || (e.message==='INVALID_CASH_SCHEDULE_DATE'?(cashScheduleText[languageCode]||cashScheduleText.en).invalid:'') || documentNumberError(e.details?.error||e.message,languageCode) || (e.message==='INVOICE_CMT_CODE_UNAVAILABLE'?(invoiceAccountingText[languageCode]||invoiceAccountingText.en).unavailable:'') || (String(e.message).includes('INVOICE_ORDER_FULLY_BILLED') ? (languageCode==='ko'?'이미 100% 이상 청구된 주문이 있습니다. 청구 대상을 다시 선택하세요.':languageCode==='vi'?'Có đơn hàng đã được lập hóa đơn đủ 100%. Vui lòng chọn lại đơn hàng.':'An order is already fully billed. Please select the orders again.') : unknown ? ui.uncertain : String(e.message).includes('INVOICE_CREDIT_') ? ui.credit : String(e.message).includes('SOURCE_CHANGED') ? ui.sourceChanged : ui.failed));
     } finally { setSaving(false); }
   };
   return <AppPageContainer keyboardEntry title={revisionInvoice ? (languageCode==='ko'?'청구서 상세':languageCode==='vi'?'Chi tiết hóa đơn':'Invoice detail') : draftId ? ui.edit : ui.create} titleActions={<Stack direction="row" spacing={1}>
@@ -276,7 +276,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
 
           </TableRow></React.Fragment>;})}</TableBody></Table></Box>
           <Stack spacing={1.5} sx={{p:2}}>{source.orders.map(order=><Stack key={order.orderId} direction="row" spacing={1.5} alignItems="center"><Typography>{order.orderNumber}</Typography><DecimalAmountField size="small" currencyCode={currency} allowNegative allowPositiveSign label={languageCode==='ko'?'금액 조정 (+/-)':languageCode==='vi'?'Điều chỉnh (+/-)':'Amount adjustment (+/-)'} value={settlements[order.orderId]?.adjustment??''} onValueChange={value=>changeBilling(setSettlements,{...settlements,[order.orderId]:{...settlements[order.orderId],adjustment:value,reason:fields.notes||''}})} sx={{width:200}}/></Stack>)}</Stack>
-          <InvoiceFormSummary fields={{...fields,bank:invoiceBankInfo(source?.sellerBankAccounts||[])}} total={calculation.total} orders={calculation.orders} currencyCode={currency} languageCode={languageCode} onRemark={changeRemark}/>
+          <InvoiceFormSummary orgId={orgId} fields={fields} total={calculation.total} orders={calculation.orders} currencyCode={currency} languageCode={languageCode} onRemark={changeRemark} bankAccounts={source.sellerBankAccounts} disabled={saving||uncertain} onBankChange={patch=>{if(!saving&&!uncertain)changeBilling(setFields,{...fields,...patch});}}/>
           {calculation.issues.map((issue) => <Alert severity="warning" key={issue}>{billingText.errors[issue] || t.issues[issue] || adjustmentErrors[issue] || (issue==='VAT'?(invoiceAccountingText[languageCode]||invoiceAccountingText.en).invalid:'')}</Alert>)}
           {calculation.warnings.map((issue) => <Alert severity="warning" key={issue}>{t.issues[issue]}</Alert>)}
           <FormControlLabel control={<Checkbox checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} />} label={t.review} />

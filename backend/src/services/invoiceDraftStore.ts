@@ -1,4 +1,5 @@
 import {cashScheduleDate} from './cashSchedule';
+import {resolveInvoicePaymentAccount} from './invoicePaymentAccount';
 import {normalizeStoredAddress} from './companyDocumentContact';
 import {generalInvoiceSource,normalizeGeneralInvoiceLines,validateGeneralInvoiceCodes} from './generalInvoice';
 import { createHttpError } from "../utils/http";
@@ -44,7 +45,7 @@ export const normalizeInvoiceDraftContent = (body: any) => {
   }));
   if (new Set(lines.map((row: any) => row.key)).size !== lines.length) return bad();
   const expectedCollectionDate=cashScheduleDate(body.fields?.expectedCollectionDate);
-  const fields = { ...(body.fields?.vatTreatment!==undefined?{vatTreatment:text(body.fields.vatTreatment,1),vatRate:text(body.fields.vatRate??'0',8)}:{}), ...(expectedCollectionDate?{expectedCollectionDate}:{}), ...pickText(body.fields, ["number", "date", "shipTo", "shipmentDate", "dueDate", "incoterm", "paymentTerms", "bank", "notes"], 5000),
+  const fields:any = { ...(body.fields?.vatTreatment!==undefined?{vatTreatment:text(body.fields.vatTreatment,1),vatRate:text(body.fields.vatRate??'0',8)}:{}), ...(expectedCollectionDate?{expectedCollectionDate}:{}), ...pickText(body.fields, ["number", "date", "shipTo", "shipmentDate", "dueDate", "incoterm", "paymentTerms", "bank", "notes", "bankAccountRevision"], 5000),
     seller: { ...pickText(body.fields.seller, ["name", "address", "country", "taxId", "email", "phone"]),
       address:normalizeStoredAddress(text(body.fields.seller.address??'')),
       ...(body.fields.seller.contactName!==undefined?{contactName:text(body.fields.seller.contactName,200)}:{}),
@@ -61,6 +62,7 @@ export const normalizeInvoiceDraftContent = (body: any) => {
     const value = settlementInput[row.orderId] == null ? {} : object(settlementInput[row.orderId]);
     return [row.orderId, { deduction: text(value.deduction ?? "", 32), reason: text(value.reason ?? "", 2000), ...(value.adjustment !== undefined ? { adjustment: text(value.adjustment, 32) } : {}) }];
   }));
+  if(body.fields.bankAccountId!==undefined){const id=body.fields.bankAccountId;if(id!==null&&(typeof id!=='string'||!id||id.length>100))return bad();fields.bankAccountId=id;}
   return { version: 2,...(general?{documentKind:'GENERAL'}:{}), buyerOrgId: body.buyerOrgId, orders, basis: general?null:body.basis, currency, fields, percentages, settlements, lines };
 };
 
@@ -78,11 +80,13 @@ export async function saveInvoiceDraft(db: any, sellerOrgId: number, actor: stri
       if (!id || existing.revision !== body.revision || existing.clientKey !== clientKey) throw createHttpError(409, STALE_EDIT);
       if((existing.content?.documentKind||'ORDER')!==(content.documentKind||'ORDER'))return bad();
     }
+    await resolveInvoicePaymentAccount(tx,sellerOrgId,content.fields);
+    const bankLink=content.fields.bankAccountId===undefined?{}:{bankAccountId:content.fields.bankAccountId};
     if(content.documentKind==='GENERAL'){
       await generalInvoiceSource(tx,sellerOrgId,content.buyerOrgId);
       await validateGeneralInvoiceCodes(tx,sellerOrgId,content.lines);
-      if(!id)return tx.invoiceDraft.create({data:{sellerOrgId,buyerOrgId:content.buyerOrgId,clientKey,content,createdBy:actor,updatedBy:actor}});
-      const result=await tx.invoiceDraft.updateMany({where:{id,sellerOrgId,revision:body.revision},data:{content,buyerOrgId:content.buyerOrgId,updatedBy:actor,revision:{increment:1}}});
+      if(!id)return tx.invoiceDraft.create({data:{...bankLink,sellerOrgId,buyerOrgId:content.buyerOrgId,clientKey,content,createdBy:actor,updatedBy:actor}});
+      const result=await tx.invoiceDraft.updateMany({where:{id,sellerOrgId,revision:body.revision},data:{...bankLink,content,buyerOrgId:content.buyerOrgId,updatedBy:actor,revision:{increment:1}}});
       if(result.count!==1)throw createHttpError(409,STALE_EDIT);
       return tx.invoiceDraft.findFirst({where:{id,sellerOrgId}});
     }
@@ -110,11 +114,11 @@ export async function saveInvoiceDraft(db: any, sellerOrgId: number, actor: stri
       workOrderItemId: expectedLines.get(line.key), sourceItemId: expectedLines.get(line.key) }));
     content.lines.forEach((line: any) => { line.label = labels.get(line.key); });
     if (!id) return tx.invoiceDraft.create({ data: {
-      sellerOrgId, buyerOrgId: content.buyerOrgId, clientKey, content, createdBy: actor, updatedBy: actor,
+      ...bankLink, sellerOrgId, buyerOrgId: content.buyerOrgId, clientKey, content, createdBy: actor, updatedBy: actor,
       orders: { create: orderLinks }, lines: { create: lineLinks },
     } });
     const updated = await tx.invoiceDraft.updateMany({ where: { id, sellerOrgId, revision: body.revision },
-      data: { content, buyerOrgId: content.buyerOrgId, updatedBy: actor, revision: { increment: 1 } } });
+      data: { ...bankLink, content, buyerOrgId: content.buyerOrgId, updatedBy: actor, revision: { increment: 1 } } });
     if (updated.count !== 1) throw createHttpError(409, STALE_EDIT);
     await tx.invoiceDraftOrder.deleteMany({ where: { draftId: id } });
     await tx.invoiceDraftLine.deleteMany({ where: { draftId: id } });

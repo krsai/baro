@@ -83,7 +83,7 @@ test('create, idempotent retry, update and delete retain scoped canonical order/
   const created = await saveInvoiceDraft(db, 7, 'actor@example.com', input);
   assert.equal(created.createdBy, 'actor@example.com'); assert.equal(created.sellerOrgId, 7);
   assert.equal(created.content.fields.seller.contactName,'John Smith');
-  assert.equal(created.content.fields.seller.address,'12 MAIN STREET, HANOI');assert.equal(input.fields.seller.address,'12 Main Street, Hanoi');
+  assert.equal(created.content.fields.seller.address,'12 Main Street, Hanoi');assert.equal(input.fields.seller.address,'12 Main Street, Hanoi');
   assert.equal(db.state().orders[0].workOrderId, 1); assert.equal(db.state().lines[0].workOrderItemId, 11);
   assert.match(created.content.lines[0].label, /PO-ONE.*Shirt/);
   const again = await saveInvoiceDraft(db, 7, 'actor@example.com', { ...input, fields: { ...input.fields } });
@@ -122,11 +122,11 @@ test('all draft routes require invoice access before reading or writing; reads a
   const routes = [];
   const app = Object.fromEntries(['get', 'post', 'put', 'delete'].map(method => [method, (path, handler) => routes.push({ method, path, handler })]));
   registerInvoiceDraftRoutes(app, { db: {}, requireAccess: async () => null });
-  assert.equal(routes.length, 20);
+  assert.equal(routes.length, 21);
   for (const route of routes) await route.handler({}, {});
   routes.length = 0;
   const scopes = [];
-  registerInvoiceDraftRoutes(app, { db: { invoiceDraft: {
+  registerInvoiceDraftRoutes(app, { db: { organizationBankAccount:{findMany:async({where})=>{assert.equal(where.orgId,7);assert.equal(where.entityId,7);return [];}},invoiceDraft: {
     findFirst: async ({ where }) => { scopes.push(where); return null; },
     findMany: async ({ where }) => { scopes.push(where); return []; },
   }, invoice: { findMany: async ({ where }) => { scopes.push(where); return []; }, findFirst: async ({ where }) => { scopes.push(where); return null; } },
