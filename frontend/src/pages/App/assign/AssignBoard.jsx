@@ -6835,6 +6835,7 @@ const AssignBoard = () => {
         </Box>
       }
       toolbar={
+        <Stack spacing={1}>
         <SearchPanel onReset={()=>{setSearchTerm('');setIncludeManagementClosed(false);const start=clampAssignmentViewDate(getMonthStartDate(),assignmentOperationStartDateKey);setViewStart(start);setViewEnd(getMonthEndDate(start));}} disabled={controlsDisabled} filters={<FormControlLabel sx={{m:0}} control={<Checkbox size="small" checked={includeManagementClosed} onChange={event=>setIncludeManagementClosed(event.target.checked)}/>} label={getUiMessage('assign.includeManagementClosed', 'Include closed assignments', languageCode)}/>} search={<SearchInput
             placeholder={getUiMessage(
               'assign.searchPlaceholder',
@@ -6845,7 +6846,8 @@ const AssignBoard = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
 
           />} dates={<DateRangeSelector languageCode={languageCode} startValue={dayjs(viewStart)} endValue={dayjs(viewEnd)} onStartChange={changeViewDate(setViewStart)} onEndChange={changeViewDate(setViewEnd)} minDate={dayjs(assignmentOperationStartDateKey)} disabled={controlsDisabled}/>}
-          actions={<>
+        />
+        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" justifyContent="flex-end" data-assignment-history-actions>
             <Button
               variant="outlined"
               onMouseDown={preventToolbarButtonFocus}
@@ -6870,7 +6872,8 @@ const AssignBoard = () => {
             >
               {getUiMessage('common.reset', '초기화', languageCode)}
             </Button>
-          </>} />
+        </Stack>
+        </Stack>
       }
     >
       <StaleEditNotice stale={edit.stale && isAssignmentRouteActive} dirty={isDirty} busy={loading || persisting} languageCode={languageCode} onRefresh={requestExternalBoardReload} />
