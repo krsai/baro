@@ -29,6 +29,7 @@ try{
   await page.route('**/src/context/ManagementPeriodContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useManagementPeriod=()=>({startDate:'2026-04-01',loading:false});`}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'},stages=[{key:'step1',role:'ACCOUNTANT',employeeId:2,name:'Accountant',candidates:[{id:2,name:'Accountant'}]},{key:'step2',role:'ACCOUNTANT',employeeId:3,name:'Senior',candidates:[{id:3,name:'Senior'}]}];
   const reply=(pattern,json)=>page.route(pattern,r=>r.fulfill({headers,json}));
+  await reply('**/text-acronyms',{revision:1,entries:[]});
   await reply('**/app-settings?*',{});
   await reply('**/bank-ledger/accounts?*',{accounts:[{id:'a',entityAccountId:'ma',displayName:'Bank A',currencyCode:'USD'},{id:'b',entityAccountId:'mb',displayName:'Bank B',currencyCode:'USD'},{id:'v',entityAccountId:'mv',displayName:'Bank VND',currencyCode:'VND'}]});
   await reply('**/bank-ledger/counterparties?*',[{kind:'PARTNER',id:11,name:'BARO',code:'BARO'},{kind:'ACCOUNT',id:'ma',name:'Bank A',currencyCode:'USD'},{kind:'ACCOUNT',id:'mb',name:'Bank B',currencyCode:'USD'},{kind:'ACCOUNT',id:'mv',name:'Bank VND',currencyCode:'VND'}]);
@@ -38,8 +39,21 @@ try{
   await page.route('**/change-approval-preview?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});return r.fulfill({headers,json:{complete:true,stages,policy:{totals:[{currency:'USD',amount:'30'}]}}});});
   await page.route('**/change-approval-requests?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});requests.push(r.request().postDataJSON());return r.fulfill({headers,json:{id:'pending'}});});
   await page.route('**/bank-ledger/entries/batch?*',r=>{direct.push(r.request().method());return r.fulfill({headers,status:409,json:{error:'CHANGE_APPROVAL_REQUIRED'}});});
+  if(process.argv.includes('--expense-vat-only'))await reply('**/bank-ledger/evidence/search?*',{documents:[{id:22,version:3,reference:'EXP-2026-000004',remark:'Electricity and water October',amount:'7050950',remaining:'7050950',counterparty:{kind:'PARTNER',id:11,name:'BARO'},items:[{id:'electricity',description:'Electricity',amount:'6775950',remaining:'6775950',vatRate:'0',accountingCode:{id:7,code:'ELEE'}},{id:'water',description:'Water',amount:'275000',remaining:'275000',vatRate:'0',accountingCode:{id:8,code:'WTRE'}}]}]});
   if(!process.argv.includes('--partners-only')){
   await page.goto(`http://127.0.0.1:${port}/ledger-registration-acceptance.html`);const t=bankLedgerMessages[lang],e=ledgerEvidenceText[lang],w=ledgerWorkspaceText[lang],l=ledgerEntryText[lang],c=changeApprovalText[lang];
+  if(process.argv.includes('--expense-vat-only')){
+   const roleName=value=>new RegExp('^'+RegExp.escape(value)+'$','i');
+   const row=page.locator('[data-ledger-entry-row="0"]');
+   const from=row.getByRole('textbox',{name:roleName(ledgerFlowText[lang].from)});await from.fill('Bank VND');await from.press('Enter');
+   const to=row.getByRole('textbox',{name:roleName(ledgerFlowText[lang].to)});await to.fill('BARO');await to.press('Enter');
+   await row.getByRole('combobox',{name:roleName(l.evidenceKind)}).click();await page.getByRole('option',{name:roleName(l.app)}).click();
+   await row.getByRole('button',{name:roleName(l.unlinked)}).click();const proof=page.getByRole('dialog');await proof.getByRole('row').filter({hasText:'EXP-2026-000004'}).getByRole('button').click();await proof.waitFor({state:'hidden'});
+   assert.equal(await page.locator('[data-ledger-entry-row]').count(),2);assert.equal((await page.getByTestId('ledger-totals').innerText()).match(/7,050,950/g)?.length,2);
+   await page.getByRole('button',{name:roleName(t.save)}).click();const approval=page.getByRole('dialog');await approval.getByRole('button',{name:roleName(c.request)}).click();await approval.waitFor({state:'hidden'});
+   assert.equal(requests.length,1);const payment=requests[0].payload.rows[0];assert.equal(payment.amount,'7050950');assert.equal(payment.expenseRequestId,22);assert.equal('subtotal' in payment,false);assert.equal('vatRate' in payment,false);assert.equal('vatAmount' in payment,false);
+   assert.deepEqual(payment.expenseItems.map(item=>[item.itemId,item.amount,item.vatRate]),[['electricity','6775950','0'],['water','275000','0']]);assert.deepEqual(errors,[]);console.log('PASS expense VAT cash total and approval payload',lang,width);await page.close();continue;
+  }
   if(process.argv.includes('--remarks-only')){
    const hint=accountingRemarkText[lang],remark=page.getByRole('textbox',{name:l.documentRemark,exact:false});await remark.waitFor();assert.equal(await remark.getAttribute('placeholder'),hint.hint);assert.equal(await remark.getAttribute('required'),'');
    const row=page.locator('[data-ledger-entry-row="0"]');const from=row.getByRole('textbox',{name:ledgerFlowText[lang].from,exact:false});await from.fill('Bank A');await from.press('Enter');const to=row.getByRole('textbox',{name:ledgerFlowText[lang].to,exact:false});await to.fill('BARO');await to.press('Enter');await row.getByRole('textbox',{name:t.amount,exact:true}).fill('10');
@@ -99,5 +113,5 @@ try{
   }
   assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.close();
  }
- console.log(process.argv.includes('--remarks-only')?'PASS: expense FK remark copy, manual additions, mandatory remark and ko/en/vi desktop/mobile hints.':'PASS: From/To parties, IBT and FXC single-line approvals, both currency amounts/rate/totals, shared date; ko/en/vi desktop/mobile.');
+ console.log(process.argv.includes('--expense-vat-only')?'PASS: linked expense preserves cash total, item VAT and approval payload; ko/en/vi desktop/mobile.':process.argv.includes('--remarks-only')?'PASS: expense FK remark copy, manual additions, mandatory remark and ko/en/vi desktop/mobile hints.':'PASS: From/To parties, IBT and FXC single-line approvals, both currency amounts/rate/totals, shared date; ko/en/vi desktop/mobile.');
 }finally{await browser?.close();server.kill();unlinkSync(fixture);}

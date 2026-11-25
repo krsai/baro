@@ -4,12 +4,28 @@ import {createRequire} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
-import {ledgerVatAmounts,updateLedgerVat,syncLedgerBankFees,splitLedgerGross} from '../frontend/src/utils/ledgerVat.mjs';
+import {ledgerVatAmounts,updateLedgerVat,syncLedgerBankFees,splitLedgerGross,validLedgerTax,ledgerTaxPayload} from '../frontend/src/utils/ledgerVat.mjs';
+import {ledgerEntryTotals} from '../frontend/src/utils/ledgerEntryTotals.mjs';
+import {syncSingleExpenseAllocations} from '../frontend/src/utils/ledgerExpenseAllocation.mjs';
 const require=createRequire(import.meta.url);
 const {postLedgerEntry}=require('../backend/dist/services/bankLedger');
 const {readLedgerEdit,ledgerEntryRevision}=require('../backend/dist/services/bankLedgerEdit');
 const {requestChangeApproval,decideChangeApproval}=require('../backend/dist/services/changeApprovals');
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
+test('linking expense items preserves the new cash amount and validates VAT only on allocations',()=>{
+ const account={id:'v',currencyCode:'VND'},code={id:1,code:'ELEE'};
+ for(const previous of [{amount:''},{amount:'100',subtotal:'100',vatRate:'8',vatAmount:'8'}]){
+  const row=updateLedgerVat({entryKind:'BANK',clientKey:'parent',accountId:'v',direction:'OUT',accountingCodeId:'',evidenceType:'EXPENSE',...previous},{document:{id:22},accountingCodeId:1,taxInclusiveAmount:true,amount:'7050950',expenseItems:[{itemId:'electricity',...splitLedgerGross('6775950','0','VND'),accountingCode:code},{itemId:'water',...splitLedgerGross('275000','0','VND'),accountingCode:{id:2,code:'WTRE'}}]},code,'VND','8');
+  assert.equal(row.amount,'7050950');assert.deepEqual(ledgerTaxPayload(row),{});assert.equal(validLedgerTax(row,code,'VND'),true);
+  assert.ok(row.expenseItems.every(item=>validLedgerTax(item,item.accountingCode,'VND')));
+  assert.deepEqual(ledgerEntryTotals([row],[account]),[{currency:'VND',incoming:'0.00',outgoing:'7050950.00',net:'-7050950.00'}]);
+ }
+ const vatCode={id:3,code:'TESTV'},item={itemId:'taxed',...splitLedgerGross('1080','8','VND'),accountingCode:vatCode};
+ const taxed=updateLedgerVat({entryKind:'BANK',clientKey:'parent',accountId:'v',evidenceType:'EXPENSE',amount:'',accountingCodeId:''},{accountingCodeId:3,amount:'1080',expenseItems:[item]},vatCode,'VND','10');
+ assert.equal(taxed.amount,'1080');assert.deepEqual(ledgerTaxPayload(taxed),{});assert.equal(taxed.expenseItems[0].vatAmount,'80');
+ assert.equal(syncSingleExpenseAllocations([taxed],[account])[0].expenseItems[0].amount,'1080.00');
+ assert.equal(validLedgerTax({...item,vatRate:'10'},vatCode,'VND'),false,'Mismatched allocation VAT is still rejected');
+});
 test('exact VAT split, code restrictions, inherited fee accounts and preserved historical amounts',()=>{
  assert.deepEqual(ledgerVatAmounts('1000','10','VND'),{subtotal:'1000',vatRate:'10',vatAmount:'100',amount:'1100'});
  assert.equal(ledgerVatAmounts('1000','8','VND').amount,'1080');assert.equal(splitLedgerGross('54','8','USD').subtotal,'50.00');assert.equal(splitLedgerGross('0.01','100','USD'),null);
@@ -48,7 +64,7 @@ test('real ledger VAT snapshots: cash totals, approved replacement, allocation F
   assert.equal((await db.bankLedgerEntry.findUnique({where:{id:entry.id}})).voidedAt,null);
   let done;for(const stage of request.policy.resolvedStages)done=await decideChangeApproval(db,org,stage.employeeId,request.id,{decision:'APPROVED'});
   assert.equal((await readLedgerEdit(db,org,done.result.entryIds[0])).vatAmount.toString(),'100');assert.equal((await db.bankLedgerEntry.findUnique({where:{id:entry.id}})).vatAmount.toString(),'80');
-  const expense=await db.$transaction(tx=>registerExpenseRequest(tx,org,s.people.admin.id,{partnerOrgId:s.vendor.id,requestDate:'2026-11-05',clientKey:randomUUID(),items:[{transactionCodeId:v.id,currency:'USD',quantity:'1',unitPrice:'1000',vatRate:'8',details:{evidenceFile:'receipt.pdf',reference:'VAT'}}]}),{timeout:30000});
+  const expense=await db.$transaction(tx=>registerExpenseRequest(tx,org,s.people.admin.id,{partnerOrgId:s.vendor.id,remark:'Taxed expense for VAT verification',requestDate:'2026-11-05',clientKey:randomUUID(),items:[{transactionCodeId:v.id,currency:'USD',quantity:'1',unitPrice:'1000',vatRate:'8',details:{evidenceFile:'receipt.pdf',reference:'VAT'}}]}),{timeout:30000});
   const paid=await postLedgerEntry(db,org,'admin@example.test',s.account.id,body({subtotal:undefined,vatRate:undefined,vatAmount:undefined,evidenceType:'EXPENSE',evidenceNumber:'',expenseItems:[{itemId:expense.items[0].id,amount:'1080',subtotal:'1000',vatRate:'8',vatAmount:'80'}]}));
   const edit=await readLedgerEdit(db,org,paid.id);assert.equal(edit.expenseItems[0].vatAmount,'80');
   const allocation=await db.bankLedgerEvidenceAllocation.findFirst({where:{entryId:paid.id}});assert.equal(allocation.subtotal.toString(),'1000');assert.equal(allocation.expenseItemId,expense.items[0].id);

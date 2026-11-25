@@ -21,6 +21,12 @@ export function ledgerVatAmounts(subtotal,rate,currency){
 export function updateLedgerVat(row,patch,code,currency,defaultRate){
  const next={...row,...patch},codeChanged='accountingCodeId' in patch&&patch.accountingCodeId!==row.accountingCodeId;
  if(row.entryKind&&row.entryKind!=='BANK')return next;
+ // Expense VAT belongs to each allocation. The parent is the actual cash total,
+ // including legacy included fees, and must not be recalculated from old inputs.
+ if(next.evidenceType==='EXPENSE'){
+  delete next.subtotal;delete next.vatRate;delete next.vatAmount;
+  return next;
+ }
  if(['ADJUSTMENT','BANK_FEE'].includes(next.evidenceType)){
   const tax='amount' in patch&&row.subtotal!=null?ledgerVatAmounts(patch.amount,'0',currency):null;
   return {...next,...(tax||{})};
