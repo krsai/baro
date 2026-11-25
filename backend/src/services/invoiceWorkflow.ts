@@ -42,9 +42,16 @@ export async function loadInvoiceBillingCoverage(db: any, orders: any[]) {
 }
 
 // Annotate display rows only. Never remove assignments from persisted board state.
+export async function loadInvoiceExcludedOrderIds(db:any,orgId:number,ids:number[]){
+ const unique=[...new Set(ids.filter(id=>Number.isSafeInteger(id)&&id>0))];
+ if(!unique.length)return new Set<number>();
+ const policies=await db.orderInvoicePolicy.findMany({where:{orgId,excluded:true,workOrderId:{in:unique},order:{sellerOrgId:orgId}},select:{workOrderId:true}});
+ return new Set<number>(policies.map((row:any)=>row.workOrderId));
+}
 export async function annotateAssignmentInvoiceWorkflow(db: any, orgId: number, rows: any[], loadProgress: (orgId: number, ids: string[]) => Promise<any[]>) {
-  const visible = rows.map(row => ({ ...row, isManagementClosed: false }));
-  const candidates = rows.filter(row => row.isCompleted === true && row.workOrderId);
+  const excluded=await loadInvoiceExcludedOrderIds(db,orgId,rows.map(row=>row.workOrderId));
+  const visible = rows.map(row => ({ ...row, isManagementClosed: excluded.has(row.workOrderId) }));
+  const candidates = rows.filter(row => row.isCompleted === true && row.workOrderId&&!excluded.has(row.workOrderId));
   const ids = [...new Set(candidates.map(row => row.workOrderId))];
   if (!ids.length) return visible;
   const orders = await db.workOrder.findMany({ where: { id: { in: ids }, sellerOrgId: orgId }, include: { workOrderItems: true, priorCompletions: { where: { canceledAt: null } } } });
@@ -75,5 +82,5 @@ export async function annotateAssignmentInvoiceWorkflow(db: any, orgId: number, 
       }
     }
   }
-  return rows.map(row => ({ ...row, isManagementClosed: row.isCompleted === true && closed.has(row.id) }));
+  return visible.map(row => ({ ...row, isManagementClosed: row.isManagementClosed || row.isCompleted === true && closed.has(row.id) }));
 }

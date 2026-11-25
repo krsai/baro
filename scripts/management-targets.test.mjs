@@ -12,6 +12,24 @@ const {loadAccountOverview}=require('../backend/dist/services/accountOverview');
 const {issueInvoiceDraft}=require('../backend/dist/services/invoiceIssueStore');
 const {createOrderShipment,listShippingOrders}=require('../backend/dist/services/orderShipments');
 const {loadOrderWorkflowStatuses}=require('../backend/dist/services/orderWorkflow');
+const {annotateAssignmentInvoiceWorkflow}=require('../backend/dist/services/invoiceWorkflow');
+
+test('saved invoice exclusions drive assignment management closure and restore on inclusion within seller scope',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),orgId=s.company.id,actorId=s.people.admin.id;
+  await db.organization.update({where:{id:orgId},data:{type:'MANUFACTURER'}});
+  const order=await db.workOrder.create({data:{orgId,sellerOrgId:orgId,buyerOrgId:s.vendor.id,customerId:s.vendor.id,orderId:randomUUID(),orderNumber:'EXCLUDED-ASSIGNMENT',totalQuantity:10}});
+  const rows=[{id:'historical',workOrderId:order.id,isCompleted:false,isProgressUnknown:true}];
+  const annotate=scope=>annotateAssignmentInvoiceWorkflow(db,scope,rows,()=>{throw Error('Exclusion must not invent production completion');});
+  await saveManagementTargets(db,orgId,actorId,'INVOICE',{rows:[{id:order.id,excluded:true,revision:0,clientKey:randomUUID()}]});
+  assert.equal((await annotate(orgId))[0].isManagementClosed,true);assert.equal((await annotate(orgId))[0].isCompleted,false);
+  assert.equal((await annotate(s.other.id))[0].isManagementClosed,false);
+  await saveManagementTargets(db,orgId,actorId,'INVOICE',{rows:[{id:order.id,excluded:false,revision:1,clientKey:randomUUID()}]});
+  assert.equal((await annotate(orgId))[0].isManagementClosed,false);
+  assert.equal((await db.workOrder.findUnique({where:{id:order.id}})).updatedAt.toISOString(),order.updatedAt.toISOString());
+  assert.equal(await db.invoice.count(),0);assert.equal(await db.orderInvoicePolicyEvent.count(),2);
+ }finally{await f.close();}
+});
 
 test('legacy differing payroll flags stay intact and exclude both uses until an explicit unified change',async()=>{
  let seed,snapshot,before;

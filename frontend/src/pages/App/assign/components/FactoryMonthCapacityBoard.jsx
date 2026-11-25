@@ -614,7 +614,7 @@ const FactoryMonthCapacityBoard = ({
       ...row,
       progressUnknownAssignments: [...new Map([
         ...(row.progressUnknownAssignments || []), ...(row.assignments || []), ...(row.queuedAssignments || []), ...(row.reviewRequiredAssignments || []),
-      ].filter(assignment => assignment.isProgressUnknown && !assignment.isCompleted)
+      ].filter(assignment => assignment.isProgressUnknown && !assignment.isCompleted && !assignment.isManagementClosed)
         .map(assignment => [assignment.id, {...assignment,hasVisibleCard:[...(row.queuedAssignments||[]),...(row.reviewRequiredAssignments||[])].some(card=>String(card.id)===String(assignment.id))}])).values()],
       queuedAssignments: filterAssignmentsBySearchTerm(row.queuedAssignments, lowerSearchTerm, focusedId),
       reviewRequiredAssignments: filterAssignmentsBySearchTerm(

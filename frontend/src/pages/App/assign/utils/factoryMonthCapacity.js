@@ -310,6 +310,10 @@ const buildFactoryScopeQueueForecast = ({
   let zeroQuantityOverflowCount = 0;
 
   (Array.isArray(assignments) ? assignments : []).forEach((assignment) => {
+    if (assignment?.isManagementClosed) {
+      completedAssignments.push({...assignment,queuePosition:++completedCount,queueStatus:'completed',remainingStTotalSeconds:0,estimatedRemainingWorkDays:0,forecastStartDateKey:null,forecastEndDateKey:null});
+      return;
+    }
     // A style dropped from its order while already worked is kept at
     // quantity 0 instead of being deleted (AGENTS.md 40번). It never counts
     // as queued/review/ready/completed capacity - it sits in its own
@@ -464,6 +468,7 @@ export const resolvePlanningMonthKeys = ({
 };
 
 const resolveAssignmentForecastStTotalSeconds = (assignment) => {
+  if(assignment?.isManagementClosed)return 0;
   if (Boolean(assignment?.isCompleted)) {
     return assignment?.remainingStTotalSeconds != null
       ? Math.max(0, Math.round(Number(assignment.remainingStTotalSeconds) || 0))
@@ -709,21 +714,21 @@ export const buildFactoryMonthCapacityBoardRows = ({
     // covered (e.g. backendRows fetch failed outright for this line).
     const liveBoardRemainingBacklogStSeconds = assignmentsForFactoryScope.reduce(
       (sum, assignment) => {
-        if (assignment?.isCompleted) return sum;
+        if (assignment?.isCompleted||assignment?.isManagementClosed) return sum;
         return sum + Math.max(0, resolveAssignmentForecastStTotalSeconds(assignment) || 0);
       },
       0
     );
     const liveBoardStUnknownAssignmentCount = assignmentsForFactoryScope.reduce(
       (count, assignment) => {
-        if (assignment?.isCompleted) return count;
+        if (assignment?.isCompleted||assignment?.isManagementClosed) return count;
         return Boolean(assignment?.isStUnknown) ? count + 1 : count;
       },
       0
     );
     const liveBoardProgressUnknownAssignmentCount = assignmentsForFactoryScope.reduce(
       (count, assignment) => {
-        if (assignment?.isCompleted) return count;
+        if (assignment?.isCompleted||assignment?.isManagementClosed) return count;
         return Boolean(assignment?.isProgressUnknown) ? count + 1 : count;
       },
       0

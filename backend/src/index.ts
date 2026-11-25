@@ -48,7 +48,7 @@ import {saveNewPartnerBankAccounts} from './services/newPartnerBankAccounts';
 import {registerPartnerEditorRoutes} from './services/partnerEditor';
 import {registerCompanyConnectionRoutes,connectPartnerCompany,assertPartnerProfileEditable,linkedPartnerCompany} from './services/companyConnections';
 import { displayProductionProgress } from './services/productionProgress';
-import { loadInvoiceBillingCoverage, billingCoversProduction, annotateAssignmentInvoiceWorkflow } from './services/invoiceWorkflow';
+import { loadInvoiceBillingCoverage, billingCoversProduction, annotateAssignmentInvoiceWorkflow, loadInvoiceExcludedOrderIds } from './services/invoiceWorkflow';
 import { loadOrderWorkflowStatuses, orderWorkflowStatus, orderAssignmentPlans } from "./services/orderWorkflow";
 import { assignmentCardNeedsWrite } from "./utils/assignmentCardWrite";
 import { annotateProcessVersionProtection } from "./services/processVersionProtection";
@@ -20735,6 +20735,7 @@ const buildFactoryMonthCapacityRows = async ({
     ],
     context: "buildFactoryMonthCapacityRows",
   });
+  const invoiceExcludedOrderIds = await loadInvoiceExcludedOrderIds(prisma,orgId,plans.map(plan=>plan.workOrderId??plan.assignmentCard?.workOrderId));
   const invalidProcessPlanIds = await invalidAssignmentProcessRefIds(prisma, orgId, plans);
   const stateAssignmentsByExternalId = new Map<string, any>();
   const workRows = await loadAssignmentPlanProgressWorkRows({
@@ -21049,13 +21050,14 @@ const buildFactoryMonthCapacityRows = async ({
         factoryScopeLatestActualCoverageEndDateKeyByFactoryId.set(factoryId, coverageEndDate);
       }
     });
+    const invoiceExcluded=invoiceExcludedOrderIds.has(plan.workOrderId??plan.assignmentCard?.workOrderId);
     if (
       plannedQuantity == null ||
       plannedQuantity <= 0 ||
       plannedStTotalSeconds == null ||
       plannedStTotalSeconds <= 0
     ) {
-      if (plan?.isCompleted !== true) {
+      if (plan?.isCompleted !== true&&!invoiceExcluded) {
         factoryScopeStUnknownAssignmentCountByFactoryId.set(
           factoryId,
           (factoryScopeStUnknownAssignmentCountByFactoryId.get(factoryId) || 0) + 1
@@ -21156,13 +21158,13 @@ const buildFactoryMonthCapacityRows = async ({
     // (that is indistinguishable from "0% done" and re-inflates the forecast). Exclude
     // it from the backlog sum and surface it as a diagnostic instead.
     const isProgressUnknown =
-      plan?.isCompleted !== true &&
+      !invoiceExcluded && plan?.isCompleted !== true &&
       (hasInvalidProcessReferences || isStSnapshotMissing ||
         (progressRatio == null &&
           exactRemainingStTotalSeconds == null &&
           cumulativeTotalDone > 0));
     const remainingStTotalSeconds =
-      plan?.isCompleted === true
+      invoiceExcluded || plan?.isCompleted === true
         ? 0
         : isProgressUnknown
           ? null

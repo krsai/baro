@@ -10,7 +10,23 @@ const order={id:1,orderId:'order-one',sellerOrgId:1,buyerOrgId:2,workOrderItems:
 const statement={workOrderId:1,sourceOrderId:'order-one',billingPercentage:'100',invoice:{sellerOrgId:1,buyerOrgId:2,status:'ISSUED'},lines:[{workOrderItemId:5,sourceItemId:5,styleId:7,size:'S',quantity:40},{workOrderItemId:5,sourceItemId:5,styleId:7,size:'M',quantity:60}]};
 const plans=[{externalId:'a',workOrderId:1,styleId:7,assignmentQuantity:40,orgId:1,isCompleted:true},{externalId:'b',workOrderId:1,styleId:7,assignmentQuantity:60,orgId:1,isCompleted:true}];
 const progress=plans.map(plan=>({id:plan.externalId,workOrderId:1,styleId:7,plannedQuantity:plan.assignmentQuantity,producedQuantity:plan.assignmentQuantity,isCompleted:true}));
-function fixture(statements=[statement],rows=progress){return {invoiceOrder:{findMany:async()=>statements},workOrder:{findMany:async()=>[order]},assignmentPlan:{findMany:async()=>plans},progress:async(_org,ids)=>rows.filter(row=>ids.includes(row.id))};}
+function fixture(statements=[statement],rows=progress){return {orderInvoicePolicy:{findMany:async()=>[]},invoiceOrder:{findMany:async()=>statements},workOrder:{findMany:async()=>[order]},assignmentPlan:{findMany:async()=>plans},progress:async(_org,ids)=>rows.filter(row=>ids.includes(row.id))};}
+
+test('invoice exclusions close only display management, including unknown progress, and reverse on inclusion',async()=>{
+ const db=fixture([]),rows=[{id:'excluded',workOrderId:1,styleId:7,isCompleted:false,isProgressUnknown:true},{id:'other',workOrderId:2,styleId:7,isCompleted:false}];
+ let excluded=true;
+ db.orderInvoicePolicy.findMany=async({where})=>{assert.equal(where.orgId,1);assert.equal(where.order.sellerOrgId,1);assert.equal(where.excluded,true);return excluded?[{workOrderId:1}]:[];};
+ db.invoiceOrder.findMany=async()=>{throw Error('Excluded assignments need no invoice');};
+ const result=await annotateAssignmentInvoiceWorkflow(db,1,rows,()=>{throw Error('Excluded assignments need no production recalculation');});
+ assert.equal(result[0].isManagementClosed,true);assert.equal(result[0].isCompleted,false);assert.equal(result[0].isProgressUnknown,true);assert.equal(result[1].isManagementClosed,false);assert.equal(rows[0].isManagementClosed,undefined);
+ excluded=false;assert.equal((await annotateAssignmentInvoiceWorkflow(db,1,rows,db.progress))[0].isManagementClosed,false);
+});
+
+test('excluded assignments leave the forecast queue without fabricating production completion',async()=>{
+ const {buildFactoryMonthCapacityBoardRows}=await import('../frontend/src/pages/App/assign/utils/factoryMonthCapacity.js');
+ const row=buildFactoryMonthCapacityBoardRows({factoryScopes:[{id:'1',name:'Factory'}],assignments:[{id:'excluded',factoryId:'1',quantity:100,isManagementClosed:true,isCompleted:false,isProgressUnknown:true,remainingStTotalSeconds:500}],planningMonthKeys:['2026-11'],visibleMonthKeys:['2026-11'],holidaySet:new Set(),todayDateKey:'2026-11-01',backendRows:[]})[0];
+ assert.equal(row.progressUnknownAssignmentCount,0);assert.equal(row.queuedAssignments.length,0);assert.equal(row.reviewRequiredAssignments.length,0);assert.equal(row.completedAssignments[0].isCompleted,false);assert.equal(row.completedAssignments[0].isManagementClosed,true);assert.equal(row.completedAssignments[0].remainingStTotalSeconds,0);
+});
 test('100% of all original item/size FKs moves production-complete orders to collection without requiring payment',async()=>{
  const db=fixture();const statuses=await loadOrderWorkflowStatuses(db,[order],db.progress);assert.equal(statuses.get(1),'COLLECTION');
  const result=await annotateAssignmentInvoiceWorkflow(db,1,progress,db.progress);assert.ok(result.every(row=>row.isManagementClosed));assert.equal(progress.some(row=>'isManagementClosed' in row),false);
@@ -60,7 +76,7 @@ test('30% and 100% advances can be issued before production finishes without clo
   const plan={externalId:'a',workOrderId:1,styleId:7,orgId:1,assignmentQuantity:100,_count:{workRecords:1}};
   const rows=()=>[{id:'a',workOrderId:1,styleId:7,plannedQuantity:100,producedQuantity:finished?100:started?50:0,isCompleted:finished}];
   const db={invoiceDraft:{findFirst:async()=>({id:'draft',revision:1,buyerOrgId:2,content})},workOrder:{findMany:async()=>[advanceOrder]},orgRelationship:{findFirst:async()=>null},
-   orderInvoicePolicy:{findFirst:async()=>null},
+   orderInvoicePolicy:{findFirst:async()=>null,findMany:async()=>[]},
    transactionCode:{findFirst:async()=>({id:91,isActive:true,base:{isActive:true,code:'CMT',cashDirection:'IN',variants:[{id:1,isActive:true,isEnabled:true,taxTreatmentId:1}]},taxTreatmentId:1,taxTreatment:{code:'EXEMPT',suffix:'E'}})},
    assignmentPlan:{findMany:async()=>[{...plan,isCompleted:finished,_count:{workRecords:started?1:0}}]},
    organizationBankAccount:{findMany:async()=>[]},

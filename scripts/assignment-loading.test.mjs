@@ -53,12 +53,12 @@ test('actual style-details route reads scoped relational processes once without 
 });
 test('incomplete assignments cannot close even with a full advance invoice and skip all billing lookup work',async()=>{
  const rows=[{id:'a',workOrderId:1,styleId:7,isCompleted:false}];
- const result=await annotateAssignmentInvoiceWorkflow({},1,rows,()=>{throw Error('Unexpected progress read');});
+ const result=await annotateAssignmentInvoiceWorkflow({orderInvoicePolicy:{findMany:async()=>[]}},1,rows,()=>{throw Error('Unexpected progress read');});
  assert.deepEqual(result,[{...rows[0],isManagementClosed:false}]);assert.equal(rows[0].isManagementClosed,undefined);
 });
 test('completed but unbilled work skips sibling progress calculation',async()=>{
  const rows=[{id:'a',workOrderId:1,styleId:7,isCompleted:true}];
- const db={workOrder:{findMany:async()=>[{id:1,orderId:'o',sellerOrgId:1,buyerOrgId:2,workOrderItems:[{id:5,styleId:7,totalQuantity:100}]}]},invoiceOrder:{findMany:async({where})=>{assert.equal(where.billingPercentage,100);return [];}}};
+ const db={orderInvoicePolicy:{findMany:async()=>[]},workOrder:{findMany:async()=>[{id:1,orderId:'o',sellerOrgId:1,buyerOrgId:2,workOrderItems:[{id:5,styleId:7,totalQuantity:100}]}]},invoiceOrder:{findMany:async({where})=>{assert.equal(where.billingPercentage,100);return [];}}};
  assert.equal((await annotateAssignmentInvoiceWorkflow(db,1,rows,()=>{throw Error('Unexpected sibling calculation');}))[0].isManagementClosed,false);
 });
 test('employee and outsourced work records are fetched concurrently without changing their provenance',async()=>{
