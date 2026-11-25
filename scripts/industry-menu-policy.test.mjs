@@ -35,7 +35,7 @@ test('approval management gates use their independent permission while expense f
 test('subscriber profiles use two explicit company categories and bypass old partner classifications',async()=>{
  let reads=0;
  const db={systemSetting:{findUnique:async()=>({value:{revision:3,industries:{9:['DASHBOARD','BUSINESS','STYLE']},subscribers:{MANUFACTURER:['DASHBOARD','BUSINESS','STYLE'],SERVICE:['DASHBOARD','BUSINESS','FREIGHT']}}})},partnerClassification:{findUnique:async()=>{reads++;throw Error('legacy classification read');}}};
- assert.deepEqual(await companyIndustryMenuFeatures(db,1,'SERVICE'),[...COMMON_MENU_FEATURES,'FREIGHT','SHIPPING_REQUEST']);
+ assert.deepEqual(await companyIndustryMenuFeatures(db,1,'SERVICE'),[...COMMON_MENU_FEATURES,'FREIGHT','SHIPPING_REQUEST','PRODUCTION_STATUS']);
  assert.deepEqual(await companyIndustryMenuFeatures(db,1,'MANUFACTURER'),[...COMMON_MENU_FEATURES,'STYLE','SHIPPING_REQUEST']);
  assert.equal(reads,0);
  for(const subscribers of [{BRAND:['DASHBOARD','BUSINESS']},{SERVICE:['DASHBOARD','BUSINESS','STYLE']},{MANUFACTURER:['DASHBOARD','BUSINESS','FREIGHT']},{SERVICE:['FREIGHT']}])

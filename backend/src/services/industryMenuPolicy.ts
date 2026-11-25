@@ -13,7 +13,8 @@ export async function readIndustryMenuPolicy(db:any){
  const row=await db.systemSetting.findUnique({where:{key:INDUSTRY_MENU_KEY}});
  const subscribers=row?.value?.subscribers?Object.fromEntries(Object.entries(row.value.subscribers).map(([type,features]:any)=>[type,[...new Set([...features,...(!row.value.approvalSettingsSplit&&features.includes('OUTSOURCING_RECORD')?['APPROVAL_SETTINGS']:[])])]])):undefined;
  if(subscribers&&!row?.value?.menuSplitVersion)for(const [type,features] of Object.entries(subscribers) as [string,string[]][])for(const [target,source] of Object.entries(MENU_SPLIT_SOURCES)){const original=target==='SHIPPING_REQUEST'?(type==='SERVICE'?'FREIGHT':type==='BRAND'?'ORDER':'CUSTOMER'):source;const allowed=features.includes(original)||!row.value.fullScopeTypes?.includes(type)&&COMMON_MENU_FEATURES.includes(original);const index=features.indexOf(target);if(index>=0)features.splice(index,1);if(allowed)features.push(target);}
- return {revision:row?.value?.revision??0,industries:row?.value?.industries??{},...(row?.value?.menuSplitVersion?{menuSplitVersion:row.value.menuSplitVersion}:{}),...(row?.value?.approvalSettingsSplit?{approvalSettingsSplit:true}:{}),...(row?.value?.fullScopeTypes?{fullScopeTypes:row.value.fullScopeTypes}:{}),...(row?.value?.subscribers?{subscribers}:{})};
+ if(subscribers?.SERVICE&&!row?.value?.freightStatusSplit){const features=subscribers.SERVICE;if(features.includes('FREIGHT')&&!features.includes('PRODUCTION_STATUS'))features.push('PRODUCTION_STATUS');}
+ return {...(row?.value?.freightStatusSplit?{freightStatusSplit:true}:{}),revision:row?.value?.revision??0,industries:row?.value?.industries??{},...(row?.value?.menuSplitVersion?{menuSplitVersion:row.value.menuSplitVersion}:{}),...(row?.value?.approvalSettingsSplit?{approvalSettingsSplit:true}:{}),...(row?.value?.fullScopeTypes?{fullScopeTypes:row.value.fullScopeTypes}:{}),...(row?.value?.subscribers?{subscribers}:{})};
 }
 export async function companyIndustryMenuFeatures(db:any,orgId:number,orgType:string){
  const policy=await readIndustryMenuPolicy(db);
@@ -25,6 +26,7 @@ export async function companyIndustryMenuFeatures(db:any,orgId:number,orgType:st
  const selected=ids.length?ids.flatMap((id:number)=>policy.industries[String(id)]??defaults):defaults;
  if(orgType==='BRAND')return ['STYLE','ORDER','PRODUCTION_STATUS','SHIPPING_REQUEST'].filter(feature=>selected.includes(feature)||['PRODUCTION_STATUS','SHIPPING_REQUEST'].includes(feature)&&selected.includes('ORDER'));
  const effective=[...new Set([...COMMON_MENU_FEATURES,...selected])];
+ if(orgType==='SERVICE'&&effective.includes('FREIGHT')&&!policy.freightStatusSplit&&!effective.includes('PRODUCTION_STATUS'))effective.push('PRODUCTION_STATUS');
  for(const [target,source] of Object.entries(MENU_SPLIT_SOURCES))if(effective.includes(target==='SHIPPING_REQUEST'?(orgType==='SERVICE'?'FREIGHT':'CUSTOMER'):source)&&!effective.includes(target))effective.push(target);
  return effective;
 }
@@ -56,7 +58,7 @@ export async function saveIndustryMenuPolicy(db:any,input:any,email:string){
   await tx.$queryRawUnsafe('SELECT key FROM "SystemSetting" WHERE key=$1 FOR UPDATE',INDUSTRY_MENU_KEY);
   const current=await readIndustryMenuPolicy(tx);
   if(current.revision!==input.revision)throw createHttpError(409,'INDUSTRY_MENU_POLICY_CHANGED');
-  const value={...((input.fullScopeTypes??current.fullScopeTypes)?{fullScopeTypes:input.fullScopeTypes??current.fullScopeTypes}:{}),menuSplitVersion:19,approvalSettingsSplit:true,revision:current.revision+1,industries:Object.fromEntries(entries),...((subscribers??current.subscribers)?{subscribers:subscribers??current.subscribers}:{})};
+  const value={freightStatusSplit:true,...((input.fullScopeTypes??current.fullScopeTypes)?{fullScopeTypes:input.fullScopeTypes??current.fullScopeTypes}:{}),menuSplitVersion:19,approvalSettingsSplit:true,revision:current.revision+1,industries:Object.fromEntries(entries),...((subscribers??current.subscribers)?{subscribers:subscribers??current.subscribers}:{})};
   await tx.systemSetting.update({where:{key:INDUSTRY_MENU_KEY},data:{value,updatedBy:email}});
   return value;
  });
@@ -66,6 +68,7 @@ export async function saveIndustryMenuPolicy(db:any,input:any,email:string){
 // lookups keep their existing permissions so permitted forms can still resolve FKs.
 export function industryMenuApiFeature(path:string){
  const rules:[RegExp,string][]=[
+  [/^\/logistics-status-reports(?:\/|$)/,'PRODUCTION_STATUS'],
   [/^\/customer-production-reports(?:\/|$)/,'PRODUCTION_STATUS'],
   [/^\/shipping-requests(?:\/|$)/,'SHIPPING_REQUEST'],
   [/^\/orders\/(?:shipments(?:\/|$)|\d+\/(?:shipments|shipping-policy)(?:\/|$))/,'ORDER_SHIPMENTS'],

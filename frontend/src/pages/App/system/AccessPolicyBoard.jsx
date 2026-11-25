@@ -159,7 +159,7 @@ function AccessPolicyBoard(){
  const industryLabel=type==='MANUFACTURER'?t.factory:t.logistics;
  return <React.Fragment key={type}>
  <TableCell align="center" sx={{borderLeft:1,borderColor:'divider'}}><Checkbox size="small" checked={enabled} title={!supported?layout.unsupported:row.fixedAccess?actionText.always:undefined} disabled={locked||!supported||row.disabled||row.fixedAccess} onChange={(_,checked)=>features.forEach(feature=>menus.toggle(type,feature,checked))} slotProps={{input:{'aria-label':industryLabel+' '+row.label+' '+layout.provided}}}/></TableCell>
- {roles.map((role,index)=><TableCell key={role} align="center"><Checkbox size="small" checked={supported&&(row.fixedAccess||features.every(feature=>policy?.[type]?.[role]?.includes(feature)))} disabled={locked||unavailable||row.fixedAccess||(role==='WORKER'&&features.some(feature=>['FREIGHT','INVOICE','SHIPPING_REQUEST','ORDER_SHIPMENTS'].includes(feature)))} onChange={(_,checked)=>toggleRole(type,features,role,checked)} slotProps={{input:{'aria-label':industryLabel+' '+row.label+' '+labels[index]}}}/></TableCell>)}
+ {roles.map((role,index)=><TableCell key={role} align="center"><Checkbox size="small" checked={supported&&(row.fixedAccess||features.every(feature=>policy?.[type]?.[role]?.includes(feature)))} disabled={locked||unavailable||row.fixedAccess||(role==='WORKER'&&features.some(feature=>(['FREIGHT','INVOICE','SHIPPING_REQUEST','ORDER_SHIPMENTS'].includes(feature)||type==='SERVICE'&&feature==='PRODUCTION_STATUS')))} onChange={(_,checked)=>toggleRole(type,features,role,checked)} slotProps={{input:{'aria-label':industryLabel+' '+row.label+' '+labels[index]}}}/></TableCell>)}
  </React.Fragment>;
  })}
  </TableRow>;

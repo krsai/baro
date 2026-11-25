@@ -1,3 +1,4 @@
+import {registerLogisticsStatusRoutes} from './services/logisticsStatus';
 import {createWorkspaceEvents} from './services/workspaceEvents';
 import {savePartnerContacts} from './services/partnerContacts';
 import {companyDocumentContact,entityDocumentContactUpdate,companyDocumentContactUpdate,entityDocumentContactBaseline} from './services/companyDocumentContact';
@@ -1337,7 +1338,7 @@ const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
 // re-apply ALL legacy defaults (including outsourcing-
 // record/etc auto-add) on every load, silently reverting saved toggles -
 // this is exactly the bug that motivated this comment.
-const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 19;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 20;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
   "INVENTORY_MATERIALS",
@@ -1613,6 +1614,7 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
   }
   if(sourceSchemaVersion<18)for(const roles of Object.values(policy))for(const features of Object.values(roles)){const index=features.indexOf('APPROVAL_SETTINGS');if(index>=0)features.splice(index,1);if(features.includes('OUTSOURCING_RECORD'))features.push('APPROVAL_SETTINGS');}
   if(sourceSchemaVersion<19)for(const [type,roles] of Object.entries(policy))for(const features of Object.values(roles))for(const [target,source] of Object.entries({INVENTORY_MATERIALS:'INVENTORY',INVENTORY_STOCK:'INVENTORY',INVENTORY_MOVEMENTS:'INVENTORY',INVENTORY_SETTINGS:'INVENTORY',PRODUCTION_STATUS:'ORDER',ORDER_SHIPMENTS:'ORDER',SHIPPING_REQUEST:'CUSTOMER',REVENUE_FORECAST:'REVENUE_ANALYSIS'})){const feature=target as RoleAccessPolicyFeature,old=features.indexOf(feature),granted=features.includes((target==='SHIPPING_REQUEST'?(type==='SERVICE'?'FREIGHT':type==='BRAND'?'ORDER':'CUSTOMER'):source) as RoleAccessPolicyFeature);if(old>=0)features.splice(old,1);if(granted)features.push(feature);}
+  if(sourceSchemaVersion<20)for(const features of Object.values(policy.SERVICE)){const index=features.indexOf('PRODUCTION_STATUS');if(index>=0)features.splice(index,1);if(features.includes('FREIGHT'))features.push('PRODUCTION_STATUS');}
   return policy;
 };
 const serializeRoleAccessPolicy = (
@@ -27645,6 +27647,7 @@ registerTransportExchangeRoutes(app,prisma,{requireOrgRole,actorId:getCurrentReq
 registerShippingRequestRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerStyleProductRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerFreightRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
+registerLogisticsStatusRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerChangeApprovalRoutes(app,prisma,{requireOrgRole,canAccess:hasRoleAccessPolicyFeature,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting,appendQuantityRemark:appendWorkLogQuantityRemark,syncProduction:async(orgId:number,assignmentPlanIds:number[])=>trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({orgId,assignmentPlanIds,mode:'update'})});
 registerWorkTimeRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerEmployeeLeaveRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});

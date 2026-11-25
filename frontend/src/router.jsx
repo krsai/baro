@@ -15,7 +15,8 @@ const lazyImportWithRetry = (importer) => React.lazy(importer);
 
 const MainLayout = lazyImportWithRetry(() => import('./layouts/MainLayout'));
 const BrandSewingWorkspace = lazyImportWithRetry(() => import('./pages/App/BrandSewingWorkspace'));
-function SewingBrandPage({mode,children}){const {activeOrgType}=useAuth();return activeOrgType==='BRAND'?<BrandSewingWorkspace mode={mode}/>:children;}
+const LogisticsStatusBoard = lazyImportWithRetry(() => import('./pages/App/LogisticsStatusBoard'));
+function SewingBrandPage({mode,children}){const {activeOrgType}=useAuth();if(activeOrgType==='SERVICE'&&mode==='progress')return <LogisticsStatusBoard/>;return activeOrgType==='BRAND'?<BrandSewingWorkspace mode={mode}/>:children;}
 const FreightWorkspace = lazyImportWithRetry(() => import('./pages/App/FreightWorkspace'));
 const AccountOverview = lazyImportWithRetry(() => import('./pages/App/AccountOverview'));
 const BankLedgerEntry = lazyImportWithRetry(() => import('./pages/App/BankLedgerEntry'));

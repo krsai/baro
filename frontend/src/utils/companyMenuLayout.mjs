@@ -33,7 +33,8 @@ export function organizeCompanyMenu(items, translate, orgType) {
   const material=leaves.get('/inventory/materials'),reference=leaves.get('/inventory/settings');
   if(material&&reference){leaves.set(material.path,{...material,mergedEntry:true,accessChildren:[material,reference]});used.add(reference.path);}
   const result = [...items.filter(item => !item.isParent && !['/shipping','/transport-exchange','/freight'].includes(item.path))];
-  for (const [key, labelKey, paths] of GROUPS) {
+  for (const [key, labelKey, sourcePaths] of GROUPS) {
+    const paths=orgType==='SERVICE'?key==='ORDER'?sourcePaths.filter(path=>path!=='/customer-production-report'):key==='LOGISTICS'?[...sourcePaths,'/customer-production-report']:sourcePaths:sourcePaths;
     if(orgType==='SERVICE'&&key==='INVENTORY'){paths.forEach(path=>used.add(path));continue;}
     const source = groups.get(key);
     const children = paths.map(path => {

@@ -53,7 +53,7 @@ export const ACCESS_FEATURE_KEYS = {
   SUBSCRIPTION: 'SUBSCRIPTION',
 };
 
-export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 19;
+export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 20;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND, ORG_TYPE_KEYS.SERVICE];
 const POLICY_ORG_ROLES = [
@@ -331,6 +331,7 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
   }
   if(sourceSchemaVersion<18)for(const roles of Object.values(base))for(const features of Object.values(roles)){const index=features.indexOf('APPROVAL_SETTINGS');if(index>=0)features.splice(index,1);if(features.includes('OUTSOURCING_RECORD'))features.push('APPROVAL_SETTINGS');}
   if(sourceSchemaVersion<19)for(const [type,roles] of Object.entries(base))for(const features of Object.values(roles))for(const [target,source] of Object.entries(MENU_SPLIT_SOURCES)){const old=features.indexOf(target);const granted=features.includes(target==='SHIPPING_REQUEST'?(type==='SERVICE'?'FREIGHT':type==='BRAND'?'ORDER':'CUSTOMER'):source);if(old>=0)features.splice(old,1);if(granted)features.push(target);}
+  if(sourceSchemaVersion<20)for(const features of Object.values(base.SERVICE)){const index=features.indexOf('PRODUCTION_STATUS');if(index>=0)features.splice(index,1);if(features.includes('FREIGHT'))features.push('PRODUCTION_STATUS');}
   return base;
 };
 

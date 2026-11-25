@@ -151,6 +151,8 @@ const canAccessFeatureByContext = (featureKey, context) => {
   const featureSet = resolveFeatureSetForContext(context);
 
   switch (featureKey) {
+    case FEATURE_KEYS.PRODUCTION_STATUS:
+      return isOrgMember&&featureSet.has(featureKey)&&(context.orgType!=='SERVICE'||hasOrgRole(context,'ADMIN','ACCOUNTANT','OPERATOR'));
     case FEATURE_KEYS.FREIGHT:
       return isOrgMember&&hasOrgRole(context,'ADMIN','ACCOUNTANT','OPERATOR')&&featureSet.has(featureKey);
     case FEATURE_KEYS.ACCOUNT_OVERVIEW:

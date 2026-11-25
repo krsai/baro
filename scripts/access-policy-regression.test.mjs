@@ -81,7 +81,7 @@ test('profile editor preserves saved logistics and archived brand roles instead 
 test('freight is independently configurable, defaults to administrators on upgrade and rejects SYSTEM/worker access',()=>{
  assert.equal(resolveFeatureByPath('/freight'),'FREIGHT');
  const legacy=sanitizeRoleAccessPolicy({__schemaVersion:15,SERVICE:{ADMIN:[],OPERATOR:[],ACCOUNTANT:[],WORKER:[]}});
- assert.deepEqual(legacy.SERVICE.ADMIN,['WORK_TIME','FREIGHT','SHIPPING_REQUEST']);assert.deepEqual(legacy.SERVICE.OPERATOR,['WORK_TIME']);
+ assert.deepEqual(legacy.SERVICE.ADMIN,['WORK_TIME','FREIGHT','SHIPPING_REQUEST','PRODUCTION_STATUS']);assert.deepEqual(legacy.SERVICE.OPERATOR,['WORK_TIME']);
  for(const role of ['ADMIN','OPERATOR','ACCOUNTANT','WORKER']){
   const state={isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'SERVICE',orgRole:role,accessPolicy:withCurrentPolicyVersion({SERVICE:{[role]:['FREIGHT']}})}};
   assert.equal(canAccessPath('/freight',state),role!=='WORKER');

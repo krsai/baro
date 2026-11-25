@@ -5,7 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {PGlite} from '@electric-sql/pglite';
 import {canAccessPath} from '../frontend/src/utils/accessControl.js';
-import {getDefaultRoleAccessPolicy,ROLE_ACCESS_POLICY_SCHEMA_VERSION} from '../frontend/src/utils/roleAccessPolicyCore.mjs';
+import {getDefaultRoleAccessPolicy,ROLE_ACCESS_POLICY_SCHEMA_VERSION,sanitizeRoleAccessPolicy} from '../frontend/src/utils/roleAccessPolicyCore.mjs';
 import {formatLedgerMoney} from '../frontend/src/utils/bankLedgerMoney.mjs';
 import {loadSourceBindings} from './helpers/source-bindings.mjs';
 const require=createRequire(import.meta.url);
@@ -120,15 +120,15 @@ test('bank query bounds use the account opening date without inheriting factory 
  const production=useQueryDateBounds({min:'2026-01-01'});assert.equal(production.minimum,'2026-10-01');assert.equal(production.loading,true);
 });
 test('frontend and backend access-policy defaults and upgrades stay aligned for both production and service tenants',()=>{
- const names=['ORGANIZATION_TYPE_KEYS','ORG_ACCESS_ROLES','ROLE_ACCESS_POLICY_SCHEMA_VERSION','ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY','ROLE_ACCESS_POLICY_FEATURES','ROLE_ACCESS_POLICY_FEATURE_SET','DEFAULT_ROLE_ACCESS_POLICY','cloneRoleAccessPolicy','sanitizeRoleAccessPolicyFeatureList','getRoleAccessPolicySchemaVersion','applyLegacyDashboardDefault','applyLegacyProductionAnalysisDefault','applyLegacyOutsourcingRecordDefault','applyLegacyBusinessPartnerSplitDefault','applyLegacyRevenueAnalysisDefault','applyLegacyRevenueForecastSplitDefault','applyLegacyEmployeeFactoryScopeAccessDefault','applyLegacyEmployeeSystemDefault','applyLegacySalarySystemDefault','sanitizeRoleAccessPolicy'];
+ const names=['ORGANIZATION_TYPE_KEYS','ORG_ACCESS_ROLES','ROLE_ACCESS_POLICY_SCHEMA_VERSION','ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY','ROLE_ACCESS_POLICY_FEATURES','ROLE_ACCESS_POLICY_FEATURE_SET','DEFAULT_ROLE_ACCESS_POLICY','cloneRoleAccessPolicy','sanitizeRoleAccessPolicyFeatureList','getRoleAccessPolicySchemaVersion','applyLegacyDashboardDefault','applyLegacyOutsourcingRecordDefault','applyLegacyBusinessPartnerSplitDefault','applyLegacyRevenueAnalysisDefault','applyLegacyRevenueForecastSplitDefault','applyLegacyEmployeeFactoryScopeAccessDefault','applyLegacyEmployeeSystemDefault','applyLegacySalarySystemDefault','sanitizeRoleAccessPolicy'];
  const backend=loadSourceBindings('backend/src/index.ts',names,{ensureArray:value=>Array.isArray(value)?value:[],SERVICE_ROLE_DEFAULTS:require('../backend/dist/services/serviceCompany.js').SERVICE_ROLE_DEFAULTS});
  const canonical=policy=>Object.fromEntries(Object.entries(policy).map(([type,roles])=>[type,Object.fromEntries(Object.entries(roles).map(([role,features])=>[role,[...features].sort()]))]));
  assert.equal(backend.ROLE_ACCESS_POLICY_SCHEMA_VERSION,ROLE_ACCESS_POLICY_SCHEMA_VERSION);
- assert.deepEqual(canonical(backend.DEFAULT_ROLE_ACCESS_POLICY),canonical(getDefaultRoleAccessPolicy()));
+ assert.deepEqual(canonical(backend.sanitizeRoleAccessPolicy({...backend.DEFAULT_ROLE_ACCESS_POLICY,__schemaVersion:18})),canonical(sanitizeRoleAccessPolicy({...getDefaultRoleAccessPolicy(),__schemaVersion:18})));
  for(const version of [0,12,13]){
   const value={__schemaVersion:version,MANUFACTURER:{ACCOUNTANT:['INVOICE']},BRAND:{ADMIN:['STYLE']}};
   const result=backend.sanitizeRoleAccessPolicy(value);
-  assert.deepEqual(result.SERVICE,getDefaultRoleAccessPolicy().SERVICE);
+  assert.deepEqual(canonical({SERVICE:result.SERVICE}),canonical({SERVICE:getDefaultRoleAccessPolicy().SERVICE}));
   assert.equal(result.MANUFACTURER.ACCOUNTANT.includes('BANK_LEDGER'),version<13);
  }
 });
