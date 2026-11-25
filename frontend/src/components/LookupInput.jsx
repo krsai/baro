@@ -61,7 +61,8 @@ export default function LookupInput({options=[],getOptionDisabled=()=>false,valu
   onChange={event=>{skipBlur.current=false;setInput(event.target.value,event,'input');onEdit?.(event.target.value);}}
   onFocus={event=>{skipBlur.current=false;onFocus?.(event);}}
   onBlur={event=>{if(event.target.matches('input')&&!disabled&&!skipBlur.current&&!composing.current&&!event.nativeEvent?.isComposing){const selected=value&&normalizeLookupText(input)===normalizeLookupText(text),match=resolve(input);if(!selected&&match)choose(match,event);else if(!selected&&value){preserveDraft.current=true;onChange(null,event);}}skipBlur.current=false;onBlur?.(event);}}
-  onKeyDown={event=>{keyDown(event);if(!event.defaultPrevented){inputProps.onKeyDown?.(event);if(!event.defaultPrevented)customKeyDown?.(event);}}}
+  onKeyDownCapture={keyDown}
+  onKeyDown={event=>{if(!event.defaultPrevented){inputProps.onKeyDown?.(event);if(!event.defaultPrevented)customKeyDown?.(event);}}}
   inputProps={{...inputProps,title:inputProps.title??input,onKeyDown:undefined,'aria-label':inputProps['aria-label']||label,'aria-haspopup':'dialog',spellCheck:false}}
   slotProps={{...slotProps,input:lookupInputProps,inputLabel:state=>({...InputLabelProps,...(typeof labelSlot==='function'?labelSlot(state):labelSlot),shrink:true,...(typeof label==='string'?{title:label}:{})})}}/></SelectedValues.Provider>;
 }
