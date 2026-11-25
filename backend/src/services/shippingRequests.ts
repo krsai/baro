@@ -26,7 +26,7 @@ const requestFields=(input:any)=>{
  if(!value.data.workScope)fail('TRANSPORT_REQUIRED');
  return value;
 };
-const projection=(row:any)=>({id:row.id,number:row.number,ownerOrgId:row.orgId,company:row.company,receiptStatus:row.receiptStatus,version:row.version,updatedAt:row.updatedAt,createdAt:row.createdAt,request:row.requestSnapshot?transportSnapshot(row.requestSnapshot):null,shared:row.sharedSnapshot?transportSnapshot(row.sharedSnapshot):null});
+const projection=(row:any)=>({id:row.id,number:row.number,ownerOrgId:row.orgId,requestCreatedByOrgId:row.requestCreatedByOrgId,company:row.company,receiptStatus:row.receiptStatus,version:row.version,updatedAt:row.updatedAt,createdAt:row.createdAt,request:row.requestSnapshot?transportSnapshot(row.requestSnapshot):null,shared:row.sharedSnapshot?transportSnapshot(row.sharedSnapshot):null});
 async function memberJob(tx:any,orgId:number,id:string,lock=false){
  const row=(await tx.$queryRawUnsafe(`SELECT j.*,o.name AS company FROM "FreightJob" j JOIN "Organization" o ON o.id=j."orgId" WHERE j.id=$1 AND (j."orgId"=$2 OR j."requesterOrgId"=$2)${lock?' FOR UPDATE OF j':''}`,id,orgId))[0];
  if(!row)fail('SHIPPING_NOT_FOUND',404);return row;
@@ -34,7 +34,7 @@ async function memberJob(tx:any,orgId:number,id:string,lock=false){
 export async function listShippingRequests(db:any,orgId:number,actorId:number){
  const org=await actor(db,orgId,actorId);
  if(org.type==='SERVICE')return db.$queryRawUnsafe('SELECT j.* FROM "FreightJob" j WHERE j."orgId"=$1 ORDER BY j."createdAt" DESC,j.id LIMIT 500',orgId);
- const rows=await db.$queryRawUnsafe('SELECT j.id,j.number,j."orgId",j."receiptStatus",j.version,j."updatedAt",j."createdAt",j."requestSnapshot",j."sharedSnapshot",o.name AS company FROM "FreightJob" j JOIN "Organization" o ON o.id=j."orgId" WHERE j."requesterOrgId"=$1 ORDER BY j."createdAt" DESC,j.id LIMIT 500',orgId);
+ const rows=await db.$queryRawUnsafe('SELECT j.id,j.number,j."orgId",j."requestCreatedByOrgId",j."receiptStatus",j.version,j."updatedAt",j."createdAt",j."requestSnapshot",j."sharedSnapshot",o.name AS company FROM "FreightJob" j JOIN "Organization" o ON o.id=j."orgId" WHERE j."requesterOrgId"=$1 ORDER BY j."createdAt" DESC,j.id LIMIT 500',orgId);
  return rows.map(projection);
 }
 export async function lookupShippingParties(db:any,orgId:number,actorId:number,input:any){
@@ -100,15 +100,20 @@ export async function submitShippingRequest(db:any,orgId:number,actorId:number,i
  });
 }
 export async function actOnShippingRequest(db:any,orgId:number,actorId:number,id:string,input:any){
- if(!['EDIT','ACCEPT','PUBLISH'].includes(input.action)||!Number.isSafeInteger(input.version)||Object.keys(input).some(key=>!['action','version','mode','data'].includes(key)))fail('SHIPPING_INVALID');
+ if(!['EDIT','ACCEPT','PUBLISH','REJECT'].includes(input.action)||!Number.isSafeInteger(input.version)||Object.keys(input).some(key=>!['action','version','mode','data'].includes(key)))fail('SHIPPING_INVALID');
  return retryEditTransaction(db,async (tx:any)=>{
   await actor(tx,orgId,actorId);const row=await memberJob(tx,orgId,id,true),owner=row.orgId===orgId;
   if(input.action==='ACCEPT'&&owner&&row.receiptStatus==='ACCEPTED'&&row.version===input.version+1)return {id,version:row.version};
+  if(input.action==='REJECT'&&owner&&row.receiptStatus==='REJECTED'&&row.version===input.version+1)return {id,version:row.version,receiptStatus:'REJECTED'};
   if(row.version!==input.version)fail('SHIPPING_CHANGED',409);
   if(!owner&&(input.action!=='EDIT'||row.receiptStatus!=='PENDING'))fail('SHIPPING_ACCESS_DENIED',403);
   await tx.$queryRawUnsafe("SELECT set_config('baro.shipping_actor_org',$1,true),set_config('baro.shipping_actor_id',$2,true)",String(orgId),String(actorId));
   let updated;
-  if(input.action==='ACCEPT'&&owner&&row.receiptStatus==='PENDING'){
+  if(input.action==='REJECT'&&owner){
+   await freightForwarder(tx,orgId,actorId);
+   if(row.receiptStatus!=='ACCEPTED'||row.status!=='DRAFT'||(await tx.$queryRawUnsafe('SELECT baro_shipping_has_dependents($1) AS blocked',id))[0].blocked)fail('SHIPPING_REJECT_BLOCKED',409);
+   updated=await tx.$queryRawUnsafe(`UPDATE "FreightJob" SET "receiptStatus"='REJECTED',"updatedByEmployeeId"=$1,version=version+1,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$2 RETURNING *`,actorId,id);
+  }else if(input.action==='ACCEPT'&&owner&&row.receiptStatus==='PENDING'){
    updated=await tx.$queryRawUnsafe(`UPDATE "FreightJob" SET "receiptStatus"='ACCEPTED',"updatedByEmployeeId"=$1,version=version+1,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$2 RETURNING *`,actorId,id);
   }else if(input.action==='PUBLISH'&&owner&&row.receiptStatus==='ACCEPTED'){
    const snapshot=transportSnapshot(row);
@@ -123,7 +128,25 @@ export async function actOnShippingRequest(db:any,orgId:number,actorId:number,id
    const nextData:any={...privateData,...value.data};if(!owner)for(const role of ['shipper','consignee','notify'])if(JSON.stringify(oldPublic[role+'Party'])!==JSON.stringify(value.data[role+'Party'])||oldPublic[role]!==value.data[role])delete nextData[role+'Id'];if(value.data.customerRole){for(const role of ['shipper','consignee','notify'])if(role!==value.data.customerRole&&nextData[role+'Id']===row.customerId)delete nextData[role+'Id'];nextData[value.data.customerRole+'Id']=row.customerId;}
    updated=await tx.$queryRawUnsafe(`UPDATE "FreightJob" SET mode=$1,service=$7,data=$2::jsonb,"requestSnapshot"=$3::jsonb,"updatedByEmployeeId"=CASE WHEN $5 THEN $6::integer ELSE "updatedByEmployeeId" END,version=version+1,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$4 RETURNING *`,value.mode,JSON.stringify(nextData),JSON.stringify(value),id,owner,actorId,value.data.transportService||row.service);
   }else fail('SHIPPING_ACTION_INVALID',409);
-  return {id,version:updated[0].version};
+  return {id,version:updated[0].version,...(input.action==='REJECT'?{receiptStatus:'REJECTED'}:{})};
+ });
+}
+export async function deleteRejectedShippingRequest(db:any,orgId:number,actorId:number,id:string,input:any){
+ if(!input||!Number.isSafeInteger(input.version)||Object.keys(input).some(key=>key!=='version'))fail('SHIPPING_INVALID');
+ return retryEditTransaction(db,async(tx:any)=>{
+  await actor(tx,orgId,actorId);
+  const matches=await tx.$queryRawUnsafe('SELECT * FROM "FreightJob" WHERE id=$1 AND ("orgId"=$2 OR "requesterOrgId"=$2) FOR UPDATE',id,orgId);
+  if(!matches.length)return {id,deleted:true};
+  const row=matches[0];
+  if((row.requestCreatedByOrgId??row.orgId)!==orgId)fail('SHIPPING_ACCESS_DENIED',403);
+  if(row.version!==input.version)fail('SHIPPING_CHANGED',409);
+  if(row.receiptStatus!=='REJECTED'||row.status!=='DRAFT'||(await tx.$queryRawUnsafe('SELECT baro_shipping_has_dependents($1) AS blocked',id))[0].blocked)fail('SHIPPING_DELETE_BLOCKED',409);
+  await tx.$queryRawUnsafe("SELECT set_config('baro.shipping_actor_org',$1,true),set_config('baro.shipping_actor_id',$2,true),set_config('baro.shipping_delete_job',$3,true),set_config('baro.shipping_delete_version',$4,true)",String(orgId),String(actorId),id,String(input.version));
+  // Explicit permanent deletion: no tombstone, backup, audit copy or retry receipt.
+  await tx.$executeRawUnsafe('DELETE FROM "ShippingRequestEvent" WHERE "jobId"=$1 AND "orgId"=$2',id,row.orgId);
+  await tx.$executeRawUnsafe('DELETE FROM "FreightAudit" WHERE "sourceId"=$1 AND "orgId"=$2 AND entity IN (\'jobs\',\'operation-details\',\'progress\',\'document-setup\')',id,row.orgId);
+  await tx.$executeRawUnsafe('DELETE FROM "FreightJob" WHERE id=$1 AND "orgId"=$2',id,row.orgId);
+  return {id,deleted:true};
  });
 }
 export async function shippingCharges(db:any,orgId:number,actorId:number,id:string){
@@ -170,6 +193,7 @@ export function registerShippingRequestRoutes(app:any,db:any,gates:any){
  };
  const route=(method:string,path:string,work:any)=>app[method]('/shipping-requests'+path,async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await work(scope,req));});
  route('get','',({orgId,actorId}:any)=>listShippingRequests(db,orgId,actorId));
+ route('delete','/:id',({orgId,actorId}:any,req:any)=>deleteRejectedShippingRequest(db,orgId,actorId,req.params.id,req.body));
  route('get','/options',async({orgId,actorId,org}:any)=>({self:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true,country:true,address:true,phone:true,email:true,representative:true}}).then((row:any)=>row?{...row,contactName:row.representative}:row),customers:await freightOptions(db,orgId,actorId),forwarders:org.type==='SERVICE'?[]:(await transportPartners(db,orgId)).filter((p:any)=>p.type==='SERVICE')}));
  route('get','/parties',({orgId,actorId}:any,req:any)=>lookupShippingParties(db,orgId,actorId,req.query));
  route('get','/presets',(scope:any,req:any)=>listShippingPresets(db,scope,Number(req.query.customerId),String(req.query.kind)));

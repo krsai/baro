@@ -70,7 +70,7 @@ test('one owner job from submission through receipt; actual Prisma types, privac
   const history=await db.$queryRawUnsafe('SELECT * FROM "ShippingRequestEvent" WHERE "jobId"=$1 ORDER BY version',sent.id);
   assert.equal(history[0].actorOrgId,customerOrg);assert.equal(history[2].actorOrgId,forwarder);
   await assert.rejects(db.$executeRawUnsafe('DELETE FROM "ShippingRequestEvent" WHERE id=$1',history[0].id),/SHIPPING_HISTORY_IMMUTABLE/);
-  await assert.rejects(db.$executeRawUnsafe('DELETE FROM "FreightJob" WHERE id=$1',sent.id),/FREIGHT_HISTORY_IMMUTABLE/);
+  await assert.rejects(db.$executeRawUnsafe('DELETE FROM "FreightJob" WHERE id=$1',sent.id),/SHIPPING_DELETE_BLOCKED/);
   await assert.rejects(readShippingRequest(db,customerOrg,s.people.junior.id,'unknown'),/SHIPPING_NOT_FOUND/);
   await assert.rejects(readShippingRequest(db,forwarder,employee,sent.id),/ACTIVE_EMPLOYEE_REQUIRED/);
   const routes=new Map();let policy={MANUFACTURER:{ADMIN:[]}},context={organization:{id:customerOrg,type:'MANUFACTURER'},employee:{orgRole:'ADMIN'}};

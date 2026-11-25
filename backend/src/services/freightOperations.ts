@@ -164,10 +164,9 @@ export async function saveFreight(db:any,orgId:number,actorId:number,type:keyof 
   }else{
    let number=type==='masters'?(value as any).number:`DSP-${sourceId.slice(0,8).toUpperCase()}`;
    if(type==='jobs'){
-    // Job history cannot be physically deleted. Serialize company numbering,
-    // including cancelled jobs, instead of relying on a short UUID collision.
+    // Serialize numbering using the highest saved suffix, including gaps after deletion.
     await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))::text',`freight-job-number:${orgId}`);
-    const count=await tx.$queryRawUnsafe('SELECT count(*)::integer AS count FROM "FreightJob" WHERE "orgId"=$1',orgId);
+    const count=await tx.$queryRawUnsafe(`SELECT COALESCE(max(CASE WHEN number ~ '^JOB-[0-9]+$' THEN substring(number from 5)::bigint ELSE 0 END),0)::integer AS count FROM "FreightJob" WHERE "orgId"=$1`,orgId);
     number=`JOB-${String(count[0].count+1).padStart(6,'0')}`;
    }
    const values:any={id:sourceId,orgId,clientKey,requestHash,...value,...(type!=='masters'?{number}:{}),createdByEmployeeId:actorId,updatedByEmployeeId:actorId};
@@ -180,8 +179,8 @@ export async function listFreight(db:any,orgId:number,actorId:number,type:keyof 
  await freightActor(db,orgId,actorId);if(!tables[type])fail('FREIGHT_NOT_FOUND',404);
  const search=optional(input.search,160),offset=Number(input.offset||0);if(!Number.isSafeInteger(offset)||offset<0||offset>100000)fail('FREIGHT_INVALID_INPUT');
  const sort=input.sort||'createdAt',direction=input.sortDirection||'desc';if(!['createdAt','mode'].includes(sort)||!['asc','desc'].includes(direction)||sort==='mode'&&type!=='jobs')fail('FREIGHT_INVALID_INPUT');
- const source=input.source||'',status=input.status||'';if(!['','CUSTOMER','FORWARDER'].includes(source)||!['','DRAFT','BOOKED','IN_TRANSIT','ARRIVED','DELIVERED','CANCELLED'].includes(status)||(source||status)&&type!=='jobs')fail('FREIGHT_INVALID_INPUT');
- const filter=type==='jobs'?` AND ($4='' OR q.status=$4) AND ($5='' OR CASE WHEN q."requestCreatedByOrgId" IS NOT NULL AND q."requestCreatedByOrgId"<>q."orgId" THEN 'CUSTOMER' ELSE 'FORWARDER' END=$5)`:'';
+ const source=input.source||'',status=input.status==='DRAFT'?'ACCEPTED':input.status||'';if(!['','CUSTOMER','FORWARDER'].includes(source)||!['','PENDING','ACCEPTED','REJECTED','DRAFT','BOOKED','IN_TRANSIT','ARRIVED','DELIVERED','CANCELLED'].includes(status)||(source||status)&&type!=='jobs')fail('FREIGHT_INVALID_INPUT');
+ const filter=type==='jobs'?` AND ($4='' OR CASE WHEN q."receiptStatus" IN ('PENDING','REJECTED') THEN q."receiptStatus" WHEN q."receiptStatus"='ACCEPTED' AND q.status='DRAFT' THEN 'ACCEPTED' ELSE q.status END=$4) AND ($5='' OR CASE WHEN q."requestCreatedByOrgId" IS NOT NULL AND q."requestCreatedByOrgId"<>q."orgId" THEN 'CUSTOMER' ELSE 'FORWARDER' END=$5)`:'';
  const order=sort==='mode'?"CASE WHEN q.service='EXPRESS' THEN 'EXPRESS' WHEN q.mode='SEA' THEN COALESCE(q.data->>'shipmentType','SEA') ELSE q.mode END":'q."createdAt"';
  const result=await db.$queryRawUnsafe(`SELECT q.*,${type==='jobs'?'(SELECT m.number FROM "FreightMaster" m WHERE m.id=q."masterId" AND m."orgId"=q."orgId") AS "masterNumber",':''}count(*) OVER()::integer AS "totalCount" FROM "${tables[type]}" q WHERE "orgId"=$1 AND ($2='' OR concat_ws(' ',number,data->>'origin',data->>'destination',data->'customer'->>'name',data->>'actualRequesterName',data->>'actualRequesterPhone'${type==='jobs'?',"houseNumber"':''}) ILIKE '%'||replace(replace(replace($2,'\\','\\\\'),'%','\\%'),'_','\\_')||'%') ${filter} ORDER BY ${order} ${direction.toUpperCase()},q."createdAt" DESC,q.id LIMIT 50 OFFSET $3`,orgId,search,offset,...(type==='jobs'?[status,source]:[]));
  return {rows:result.map(({totalCount,...row}:any)=>row),total:result[0]?.totalCount||0,offset};
