@@ -170,7 +170,20 @@ const Login = () => {
         <section className="lineos-login-card" aria-labelledby="lineos-login-heading">
           <h2 id="lineos-login-heading">{loginCopy.welcome}</h2>
           <p className="lineos-login-subtitle">{loginCopy.subtitle}</p>
-          <ToggleButtonGroup data-focus-next="group" exclusive fullWidth value={loginCompany} onChange={(_event,value)=>{if(value)setLoginCompany(value);}} disabled={isLoginLocked} aria-label={languageCode==='ko'?'로그인 회사':languageCode==='vi'?'Công ty đăng nhập':'Login company'} sx={{mb:2,p:0.5,borderRadius:2,bgcolor:'action.hover','& .MuiToggleButtonGroup-grouped':{flex:1,minWidth:0,border:0,borderRadius:'6px !important',minHeight:44,px:0.5,fontSize:{xs:'0.65rem',sm:'0.75rem'},fontWeight:600,whiteSpace:'nowrap'},'& .Mui-selected':{bgcolor:'background.paper',color:'primary.main',boxShadow:'0 1px 4px #20395020'},'& .Mui-selected:hover':{bgcolor:'background.paper'}}}>
+          <ToggleButtonGroup data-focus-next="group" exclusive fullWidth value={loginCompany} onChange={(_event,value)=>{if(value)setLoginCompany(value);}} disabled={isLoginLocked} aria-label={languageCode==='ko'?'로그인 회사':languageCode==='vi'?'Công ty đăng nhập':'Login company'} sx={{
+            mb: 2, p: '4px', gap: '4px', borderRadius: '10px', bgcolor: 'action.hover',
+            '&&': { height: 'auto' },
+            '&& .MuiToggleButtonGroup-grouped': {
+              flex: 1, minWidth: 0, m: 0, border: 0, borderRadius: '6px',
+              height: 44, minHeight: 44, px: 0.5,
+              fontSize: { xs: '0.65rem', sm: '0.75rem' }, fontWeight: 600, whiteSpace: 'nowrap',
+              '&.Mui-selected': {
+                bgcolor: 'background.paper', color: 'primary.main', boxShadow: '0 1px 4px #20395020',
+                '&:hover': { bgcolor: 'background.paper' },
+              },
+              '&.Mui-focusVisible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: '-2px' },
+            },
+          }}>
             {LOGIN_COMPANIES.map(company=><ToggleButton key={company.key} value={company.key}>{company.label}</ToggleButton>)}
           </ToggleButtonGroup>
           <Button fullWidth variant="outlined" className="lineos-google-button" startIcon={isLoginLocked ? <CircularProgress size={18} color="inherit" /> : <GoogleMark />} onClick={handleGoogleLogin} disabled={isLoginLocked || !isSupabaseConfigured}>
