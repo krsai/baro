@@ -503,9 +503,20 @@ const theme = createTheme(baseTheme, {
       '&.Mui-focused .MuiOutlinedInput-notchedOutline': { border: '2px solid ' + ui.color.primary },
       '&.Mui-error .MuiOutlinedInput-notchedOutline': { borderColor: baseTheme.palette.error.main },
       '&.Mui-disabled': { backgroundColor: ui.color.header },
-    }, input: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight, padding: ui.control.inputPadding, '&.MuiInputBase-inputMultiline': { padding: 0 } },
+    }, input: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight, height: ui.control.lineHeight, padding: ui.control.inputPadding, '&.MuiInputBase-inputMultiline': { height: 'auto', padding: 0 } },
     } },
-    MuiInputLabel: { styleOverrides: { root: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight } } },
+    MuiInputLabel: { styleOverrides: { root: {
+      fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight,
+      '&.MuiInputLabel-outlined:not(.MuiInputLabel-shrink)': { transform: `translate(14px, ${(ui.control.height - 20) / 2}px) scale(1)`, '@media (pointer:coarse)': { transform: `translate(14px, ${(Math.max(36, ui.control.height) - 20) / 2}px) scale(1)` } },
+    } } },
+    MuiToggleButtonGroup: { styleOverrides: { root: {
+      boxSizing: 'border-box', height: ui.control.height, padding: 2, alignItems: 'center',
+      '& .MuiToggleButtonGroup-grouped': { boxSizing: 'border-box', height: '100%', minHeight: 0, paddingTop: 0, paddingBottom: 0 },
+      '&.MuiToggleButtonGroup-vertical': { height: 'auto', '& .MuiToggleButtonGroup-grouped': { height: ui.control.height } },
+      '@media (pointer:coarse)': { height: Math.max(36, ui.control.height), '&.MuiToggleButtonGroup-vertical': { height: 'auto' } },
+    } } },
+    MuiToggleButton: { styleOverrides: { root: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight, minHeight: ui.control.height, paddingTop: 0, paddingBottom: 0 } } },
+    MuiFormControlLabel: { styleOverrides: { root: { minHeight: ui.control.height, alignItems: 'center', marginTop: 0, marginBottom: 0 }, label: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight } } },
     MuiInputBase: { styleOverrides: { root: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight } } },
     MuiMenu: { styleOverrides: { paper: { border: `1px solid ${ui.color.border}`, boxShadow: '0 8px 24px rgba(16, 24, 40, 0.08)' } } },
     MuiMenuItem: { defaultProps: { onMouseMove: event => { if (!event.buttons && event.currentTarget.getAttribute('aria-disabled') !== 'true' && document.activeElement !== event.currentTarget) event.currentTarget.focus({ preventScroll: true }); } }, styleOverrides: { root: {
