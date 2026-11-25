@@ -1,3 +1,4 @@
+import LocalizedDateField from './LocalizedDateField';
 import React from 'react';
 import {Box,MenuItem,Stack,TextField,Typography,Table,TableBody,TableCell,TableHead,TableRow,TableContainer} from '@mui/material';
 import Alert from "./AppNotice";
@@ -29,7 +30,7 @@ export default function ExpensePaymentSchedule({rows=[],onChange,languageCode,di
   {showMode&&<ExpensePaymentMode rows={rows} onChange={onChange} languageCode={languageCode} disabled={disabled} currencies={currencies} defaultDate={defaultDate}/>}
   {rows.length>0&&<><Typography fontWeight={700}>{t.title}</Typography>{rows.map((row,index)=><Box key={row.id} sx={{display:'flex',gap:1,flexWrap:'wrap',alignItems:'center'}}>
    <TextField size="small" label={t.label} value={row.label} disabled={disabled} inputProps={{maxLength:100}} sx={{width:180}} onChange={event=>change(row.id,{label:event.target.value})}/>
-   <TextField size="small" type="date" label={t.date} value={row.scheduledDate} disabled={disabled} slotProps={{inputLabel:{shrink:true}}} onChange={event=>change(row.id,{scheduledDate:event.target.value})}/>
+   <LocalizedDateField size="small" type="date" label={t.date} value={row.scheduledDate} disabled={disabled} slotProps={{inputLabel:{shrink:true}}} onChange={event=>change(row.id,{scheduledDate:event.target.value})}/>
    <TextField select size="small" label={t.currency} value={row.currency} disabled={disabled} sx={{width:100}} onChange={event=>change(row.id,{currency:event.target.value,amount:''})}>{[...new Set([...currencies,row.currency])].map(code=><MenuItem key={code} value={code}>{code}</MenuItem>)}</TextField>
    <DecimalAmountField size="small" label={t.amount} currencyCode={row.currency} value={row.amount} disabled={disabled} onValueChange={amount=>change(row.id,{amount})}/>
    <AddActionButton aria-label={t.add} disabled={disabled||rows.length>=50} onClick={()=>onChange([...rows.slice(0,index+1),newRow(t.installment),...rows.slice(index+1)])}/>

@@ -1,3 +1,4 @@
+import LocalizedDateField from '../../../components/LocalizedDateField';
 import PersonalPhoneField from '../../../components/PersonalPhoneField';
 import {titleCaseWords} from '../../../utils/humanTextCase.mjs';
 import Dialog from '../../../components/AppDialog';
@@ -1692,7 +1693,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 ))}
               </TextField>
               {drawerMode==='edit'&&employeeByMembership.get(selectedMemberId)?.id&&<Button variant="outlined" disabled={isDrawerSaving||isDrawerDirty} onClick={()=>setTenureOpen(true)}>{(tenureRecognitionText[languageCode]||tenureRecognitionText.en).title}</Button>}
-              <TextField
+              <LocalizedDateField
                 size="small"
                 type="date"
                 label={tenantText('joinedAtLabel', languageCode)}
@@ -1704,7 +1705,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 disabled={isDrawerSaving}
                 InputLabelProps={{ shrink: true }}
               />
-              <TextField
+              <LocalizedDateField
                 size="small"
                 type="date"
                 label={tenantText('leftAtLabel', languageCode)}

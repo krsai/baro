@@ -1,3 +1,4 @@
+import LocalizedDateField from '../../../components/LocalizedDateField';
 import Dialog from '../../../components/AppDialog';
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import {keyboardAction} from '../../../utils/keyboardPolicy.mjs';
@@ -3520,7 +3521,7 @@ const OrderList = () => {
                 )}
               />
             </Box>
-            <TextField
+            <LocalizedDateField
               name="dueDate"
               label={orderPageText.dueDate}
               type="date"

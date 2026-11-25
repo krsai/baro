@@ -1,3 +1,4 @@
+import LocalizedDateField from '../../../components/LocalizedDateField';
 import EntityCountryPhoneFields from '../../../components/EntityCountryPhoneFields';
 import TableStatusRow from '../../../components/TableStatusRow';
 import EntityPhoneField from '../../../components/EntityPhoneField';
@@ -448,7 +449,7 @@ const OrganizationSubscriptionBoard = () => {
                                     />
                                   </Grid>
                                   <Grid item xs={12} md={3}>
-                                    <TextField
+                                    <LocalizedDateField
                                       fullWidth
                                       size="small"
                                       type="date"
@@ -628,7 +629,7 @@ const OrganizationSubscriptionBoard = () => {
                   />
                 </Grid>
                 <Grid item xs={12} md={3}>
-                  <TextField
+                  <LocalizedDateField
                     fullWidth
                     type="date"
                     label={getPageMessage('activeEndsAt', languageCode)}

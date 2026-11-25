@@ -1,3 +1,4 @@
+import LocalizedDateField from '../../components/LocalizedDateField';
 import TableStatusRow from '../../components/TableStatusRow';
 import GlobalNotice from "../../components/AppNotice";
 import {activateOnKeyboard} from '../../utils/keyboardPolicy.mjs';
@@ -1046,7 +1047,7 @@ const QcReview = () => {
                               onClick={(event) => event.stopPropagation()}
                             >
                               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.75}>
-                                <TextField
+                                <LocalizedDateField
                                   size="small"
                                   type="date"
                                   label={copy.inspectedOn}

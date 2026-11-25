@@ -13,7 +13,7 @@ import {
   writeLanguageOverride,
 } from '../utils/appLanguage';
 
-const LanguageContext = createContext(null);
+export const LanguageContext = createContext(null);
 
 const resolveDefaultLanguageCode = () => normalizeLanguageCode(getDefaultLanguageCode());
 

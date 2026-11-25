@@ -4,6 +4,9 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
+import { useContext } from 'react';
+import { LanguageContext } from '../context/LanguageContext';
+import { enUS, koKR, viVN } from '@mui/x-date-pickers/locales';
 import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
 import 'dayjs/locale/vi';
@@ -14,10 +17,13 @@ const CustomDatePicker = ({
   slotProps,
   monthOnly = false,
   allowEmpty = false,
-  adapterLocale = 'ko',
+  adapterLocale,
   localeText,
   ...props
 }) => {
+  const language = useContext(LanguageContext);
+  const resolvedLocale = adapterLocale || language?.languageCode || 'ko';
+  const translations = {en: enUS, ko: koKR, vi: viVN}[resolvedLocale] || enUS;
   const { minDate, maxDate, format, onOpen, onAccept, ...pickerProps } = props;
   const fieldRoot=useRef(null),opener=useRef(null);
   const parsedValue = value ? dayjs(value) : null;
@@ -65,8 +71,8 @@ const CustomDatePicker = ({
   return (
     <LocalizationProvider
       dateAdapter={AdapterDayjs}
-      adapterLocale={adapterLocale}
-      localeText={localeText}
+      adapterLocale={resolvedLocale}
+      localeText={{...translations.components.MuiLocalizationProvider.defaultProps.localeText, ...localeText}}
     >
       <DatePicker
         {...pickerProps}

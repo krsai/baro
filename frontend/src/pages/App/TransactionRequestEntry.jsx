@@ -1,3 +1,4 @@
+import LocalizedDateField from '../../components/LocalizedDateField';
 import {accountingRemarkText} from '../../constants/accountingRemark';
 import {materialItemText} from '../../constants/materialItems';
 import useWorkspaceRefreshOnEvent from '../../hooks/useWorkspaceRefreshOnEvent';
@@ -260,7 +261,7 @@ export default function TransactionRequestEntry() {
             onSaved={saved=>{if(organizationRef.current===activeOrgId&&mountedRef.current)setData(current=>({...current,partners:current.partners.map(row=>row.id===saved.id?saved:row)}));}}/>
           <ReadOnlyField data-entry-field="date" label={labels.date} value={form.requestDate||today()}/>
           <ReadOnlyField data-entry-field="number" label={(documentNumberText[languageCode]||documentNumberText.en).expense} value={form.managementNumber||(!editing?FORM_TEXT[languageCode]?.auto||FORM_TEXT.en.auto:'')}/>
-          <TextField data-entry-field="date" fullWidth size="small" type="date" label={(cashScheduleText[languageCode]||cashScheduleText.en).payment} value={form.scheduledPaymentDate||''} disabled={disabled||form.paidCorrectionOnly} slotProps={{inputLabel:{shrink:true}}} onChange={event=>update({scheduledPaymentDate:event.target.value})}/>
+          <LocalizedDateField data-entry-field="date" fullWidth size="small" type="date" label={(cashScheduleText[languageCode]||cashScheduleText.en).payment} value={form.scheduledPaymentDate||''} disabled={disabled||form.paidCorrectionOnly} slotProps={{inputLabel:{shrink:true}}} onChange={event=>update({scheduledPaymentDate:event.target.value})}/>
           </Stack>
         </DocumentEntryHeader>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}><Typography variant="subtitle2">{lookup.details} · {form.items.length} {labels.count}</Typography>{loading && <CircularProgress size={20} />}</Stack>

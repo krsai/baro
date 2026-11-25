@@ -1,3 +1,4 @@
+import LocalizedDateField from '../../../../components/LocalizedDateField';
 import EntityCountryPhoneFields from '../../../../components/EntityCountryPhoneFields';
 import EntityPhoneField from '../../../../components/EntityPhoneField';
 import Dialog from '../../../../components/AppDialog';
@@ -588,7 +589,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
                 </TextField>
               </Grid>
               <Grid item xs={12}>
-                <TextField
+                <LocalizedDateField
                   fullWidth
                   size="small"
                   label={extraText.managementStartDate}

@@ -1,3 +1,4 @@
+import LocalizedDateField from '../../../components/LocalizedDateField';
 import TableStatusRow from '../../../components/TableStatusRow';
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -307,7 +308,7 @@ const OnboardingBoard = () => {
                           companySubscriptionStatuses[row.id] ||
                           ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.TRIAL
                         ) === ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.ACTIVE ? (
-                          <TextField
+                          <LocalizedDateField
                             fullWidth
                             size="small"
                             type="date"

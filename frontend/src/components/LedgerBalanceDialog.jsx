@@ -1,3 +1,4 @@
+import LocalizedDateField from './LocalizedDateField';
 import Dialog from './AppDialog';
 import AccountingOpeningPanel from './AccountingOpeningPanel';
 import AccountingOpeningHistory from './AccountingOpeningHistory';
@@ -46,7 +47,7 @@ export default function LedgerBalanceDialog({orgId,languageCode,onClose,onNotify
  };
  const reasonField=<TextField label={t.reason} required fullWidth multiline minRows={2} value={reason} disabled={locked} inputProps={{maxLength:1000}} onChange={event=>{request.current=null;setReasons(current=>({...current,[tab]:event.target.value}));}}/>;
  return <Dialog open onClose={()=>{if(!locked)onClose();}} fullWidth maxWidth="xl"><DialogTitle component="div"><Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2} useFlexGap flexWrap="wrap"><Typography component="h2" variant="h6">{o.title}</Typography>
-  {tab!=='history'&&<TextField size="small" type="date" label={t.date} value={balanceDate} disabled={locked} sx={{width:180}} slotProps={{inputLabel:{shrink:true}}} onChange={event=>{setBalanceDate(event.target.value);setLoading(true);setOpeningReady(false);}}/>}
+  {tab!=='history'&&<LocalizedDateField size="small" type="date" label={t.date} value={balanceDate} disabled={locked} sx={{width:180}} slotProps={{inputLabel:{shrink:true}}} onChange={event=>{setBalanceDate(event.target.value);setLoading(true);setOpeningReady(false);}}/>}
  </Stack></DialogTitle><Stack sx={{px:3,pb:1}}>
   <Tabs variant="fullWidth" value={tab} onChange={(_,value)=>{setTab(value);if(value==='arap')setOpenedAr(true);if(value==='history')setOpenedHistory(true);}} aria-label={o.title}><Tab value="accounts" label={o.accountTab} disabled={locked}/><Tab value="arap" label={o.arapTab} disabled={locked}/><Tab value="history" label={o.history} disabled={locked}/></Tabs>
  </Stack><DialogContent dividers><Stack spacing={2}>
