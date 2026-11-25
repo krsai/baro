@@ -4,7 +4,8 @@ import {ToggleButton,ToggleButtonGroup} from '@mui/material';
 export default function TransportModeSwitch({label,options,value,onChange,disabled}){
  return <ToggleButtonGroup exclusive role="group" aria-label={label} data-focus-next="group" value={value} disabled={disabled} onChange={(_,next)=>next&&onChange(next)}
   sx={{display:'grid',width:'100%',boxSizing:'border-box',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:.5,
-   '& .MuiToggleButtonGroup-grouped':{m:0,minWidth:0,width:'100%',px:1,minHeight:36,whiteSpace:'normal'},
+   height:'auto',minHeight:'var(--ui-control-height)',gridAutoRows:'minmax(calc(var(--ui-control-height) - 6px), auto)',
+   '& .MuiToggleButtonGroup-grouped':{m:0,minWidth:0,width:'100%',px:1,minHeight:0,whiteSpace:'normal'},
    '& .MuiToggleButtonGroup-grouped:not(:first-of-type)':{ml:0},
    '& .MuiToggleButtonGroup-grouped:last-of-type':{gridColumn:'1 / -1'},
    '@container (min-width: 640px)':{gridTemplateColumns:'repeat(5,minmax(0,1fr))','& .MuiToggleButtonGroup-grouped:last-of-type':{gridColumn:'auto'}}}}>
