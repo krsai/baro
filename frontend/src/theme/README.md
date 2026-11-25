@@ -243,6 +243,3 @@ Dialog의 크기·내부 스크롤은 공통 테마가, 업무 Drawer의 작업 
 취소가 최종 확정된 목록·이력 행은 `data-cancelled={true}`로 표시한다. 공통 테마가 날짜·대상·내역·금액과 중첩 텍스트에 취소선을 적용하며 `data-table-actions` 작업 셀은 제외한다. 표 밖의 취소된 내용은 `data-cancelled-content={true}`를 사용한다. 서버의 최종 `CANCELLED` 또는 취소 시각만 근거로 사용하고 취소 결재 대기·반려·철회·개정 대체(`SUPERSEDED`)를 취소 완료로 취급하지 않는다. 원본 발행·인쇄 snapshot은 변경하지 않는다.
 
 - 개인 정보·직원 상세의 `PersonalPhoneField`는 국가번호를 직접 선택하고 기존 국제번호 `phone` 필드에 저장한다. 국적·회사 국가와 독립이며 기존 원문은 조회만으로 변경하지 않는다.
-
-
-- Route dates: Cargo Ready Date belongs beside the first work route stop. Other dates are stored by route node in internal workDetails; their purpose and ETD/ETA linkage remain undecided. Preserve SR, BL, snapshots and customer sharing scope.
