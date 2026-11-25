@@ -10,6 +10,8 @@
 - SR 보기 구간 화살표 색: 구현·인코딩 검사 완료 / 운영 배포·사용자 인수 미확인. 읽기 전용 화살표를 구간선과 동일한 action.disabled 테마 색으로 통일했다.
 # 작업 상태
 
+- 청구 계좌/자재 배포 복구 확인: 수정 16cc8dcc의 Railway 프런트·백엔드 모두 success, 운영 백엔드 `/ready` 200·ready=true와 프런트 `/invoices/new` 200 확인. 잘못된 Prisma 필드 요구로 막힌 배포를 복구했으며 아래 배포 대기/실패 기록을 갱신한다. 실제 로그인 계정의 계좌 목록 조회·자재 선택·발행 인수는 미확인이다.
+
 - 청구 계좌/자재 백엔드 배포 실패 원인 수정: 구현·백엔드 빌드·실제 생성 Prisma 시작 검사 및 필수 필드 누락 거부·자재/계좌 DB 회귀 5검사·번역/인코딩 통과 / 수정 배포 확인 대기. 사용자가 제공한 Railway 로그에서 SQL 생성 열 InvoiceGeneralLine.materialBaseId/materialVariantId를 Prisma 모델에도 요구한 잘못된 검사로 predeploy가 중단됨을 확인했다. Prisma 필드 검사에서 두 SQL 전용 열만 제외하고 DB 시작 검사·preflight·실제 FK/migration은 유지한다. 아래 로그 확인 대기 상태는 이 원인 확인으로 갱신하며 운영 복구 완료는 배포 결과로 별도 확인한다.
 
 - 청구서 계좌 조회 운영 장애: 미해결 / 사용자 화면의 `/invoices/payment-accounts` 404 확인. GitHub Railway 상태에서 계좌 선택 구현 ae97fe9c는 프런트 success·백엔드 failure, 후속 5ca52a1a도 백엔드 failure여서 운영 반영 완료로 처리하지 않는다. 로컬 백엔드 빌드·계좌/자재 migration 및 회사 범위 6검사·한영베 PC/모바일 주문 청구 계좌 선택/취소/발행 6조합은 통과했다. 운영 `/ready` 200은 기존 서버 생존만 뜻하며 신규 계좌 API 반영 증거가 아니다. 실패 배포 Build/Deploy Logs 확인 대기이며 Railway 연결을 제안했다. 운영 DB 직접 변경·권한 우회·미확인 원인 추정 수정 없음.
