@@ -5,6 +5,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {freightForwarder} from './freightOperations';
+import {parseVolumeInput} from '../utils/volumeFormula';
 
 const fail=(message:string,status=400):never=>{throw createHttpError(status,message);};
 const text=(value:any,max:number)=>typeof value==='string'&&value.trim().length<=max?value.trim():fail('FREIGHT_INVALID_INPUT');
@@ -33,17 +34,19 @@ export async function saveJobOperationDetails(db:any,orgId:number,actorId:number
    fields[key]=value.map((r:any)=>({size:String(r.size),type:String(r.type),count:String(r.count)}));
   }else if(key==='etd'||key==='eta'||key==='plannedDate'||key.startsWith('routeDate')){
    if(value!==null&&(typeof value!=='string'||!/^\d{4}-\d\d-\d\d$/.test(value)||!Number.isFinite(Date.parse(value))||new Date(value).toISOString().slice(0,10)!==value))fail('FREIGHT_INVALID_INPUT');fields[key]=value;
-  }else {fields[key]=text(value,workFieldLimits[key]??(key==='vessel'?160:100));if(['shipper','consignee','origin','destination'].includes(key)&&!fields[key])fail('FREIGHT_REQUIRED');if(['quantity','weightKg','cbm','chargeableWeightKg'].includes(key)&&fields[key]&&!/^\d{1,16}(?:\.\d{1,4})?$/.test(fields[key]))fail('FREIGHT_INVALID_INPUT');}
+  }else {fields[key]=text(value,workFieldLimits[key]??(key==='vessel'?160:100));if(['shipper','consignee','origin','destination'].includes(key)&&!fields[key])fail('FREIGHT_REQUIRED');if(['quantity','weightKg','cbm','chargeableWeightKg'].includes(key)&&fields[key]&&!new RegExp('^\\d{1,16}(?:\\.\\d{1,'+(key==='cbm'?6:4)+'})?$').test(fields[key]))fail('FREIGHT_INVALID_INPUT');}
  }
  const requestHash=hash({version:input.version,fields});
  return retryEditTransaction(db,async(tx:any)=>{
   await freightForwarder(tx,orgId,actorId);const row=await lockedJob(tx,orgId,id);writable(row);
+  if(fields.cbmFormula){const parsed=parseVolumeInput(fields.cbmFormula),cbm=fields.cbm??shippingWorkData(row.data).cbm;if(!fields.cbmFormula.startsWith('=')||!parsed||typeof cbm!=='string'||!/^\d+(?:\.\d+)?$/.test(cbm)||!new Prisma.Decimal(cbm).equals(parsed.cbm))fail('FREIGHT_INVALID_INPUT');}
   if(fields.packages?.some((r:any)=>['lengthM','widthM','heightM'].some(k=>!r[k]))&&row.service!=='EXPRESS')fail('FREIGHT_INVALID_INPUT');
   const prior=await tx.$queryRawUnsafe('SELECT "after" FROM "FreightAudit" WHERE "orgId"=$1 AND entity=\'operation-details\' AND "sourceId"=$2 AND "after"->\'data\'->\'operationEdit\'->>\'id\'=$3',orgId,id,input.requestId);
   if(prior.length){if(prior[0].after.data.operationEdit.hash!==requestHash)fail('FREIGHT_CHANGED',409);return row;}
   if(row.version!==input.version)fail('FREIGHT_CHANGED',409);
   if(fields.assigneeId&&!await tx.employee.findFirst({where:{id:fields.assigneeId,orgId,status:'ACTIVE',orgRole:'OPERATOR'},select:{id:true}}))fail('FREIGHT_ASSIGNEE_SCOPE',403);
   const working=Object.fromEntries(Object.entries(fields).filter(([key])=>Object.hasOwn(workFieldLimits,key)||key==='containers'||key==='packages'));
+  if(Object.hasOwn(fields,'cbm')&&!Object.hasOwn(fields,'cbmFormula')&&shippingWorkData(row.data).cbmFormula)working.cbmFormula='';
   const base=Object.fromEntries(Object.entries(fields).filter(([key])=>!Object.hasOwn(working,key)));
   const data={...row.data,...base,...(Object.keys(working).length?{workDetails:{...row.data.workDetails,...working}}:{}),operationEdit:{id:input.requestId,hash:requestHash}};
   const updated=(await tx.$queryRawUnsafe('UPDATE "FreightJob" SET data=$1::jsonb,version=version+1,"updatedByEmployeeId"=$2,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$3 AND "orgId"=$4 RETURNING *',JSON.stringify(data),actorId,id,orgId))[0];

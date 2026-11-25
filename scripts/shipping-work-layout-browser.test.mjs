@@ -17,6 +17,7 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/shipping-work-layout-test.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const lang of ['ko','en','vi'])for(const width of [1440,390])for(const mode of ['FCL','LCL','AIR','EXPRESS']){
+  if(process.argv.includes('--volume-formula-only')&&mode!=='EXPRESS')continue;
   if(process.argv.includes('--return-locks-only')&&(lang!=='ko'||width!==1440||mode!=='FCL'))continue;
   if(process.argv.includes('--preview-only')&&(lang!=='ko'||width!==1440||mode!=='FCL'))continue;
   if(process.argv.includes('--scope-only')&&(lang!=='ko'||width!==1440||mode!=='LCL'))continue;
@@ -41,7 +42,13 @@ try{
    if(key==='job1/charges'&&req.method()==='POST'){const body=req.postDataJSON();chargeWrites.push(body);if(chargeWrites.length===1)return route.fulfill({headers,status:503,json:{error:'UNCONFIRMED'}});json={...body,version:1};charges.push(json);}
    else if(key==='job1/charges')json={rows:charges,currencies:[{code:'USD'}],parties:[customer]};else json=[];return route.fulfill({headers,json});});
   await page.goto(`http://127.0.0.1:${port}/shipping-work-layout-test.html?theme=${width===390?'standard':'compact'}`);
-  const form=page.getByTestId('shipping-operations-form');await form.waitFor();const main=page.locator('[data-shipping-work-main]'),side=page.locator('[data-shipping-work-side]'),actions=page.locator('[data-shipping-work-actions]');
+  const form=page.getByTestId('shipping-operations-form');await form.waitFor();
+  if(process.argv.includes('--volume-formula-only')){
+   const volume=form.locator('input[name=cbm]');await form.locator('input[name=quantity]').fill('2');await volume.fill('=0.5*0.5*0.3');await form.locator('[name=cargo]').click();assert.equal(await volume.inputValue(),'0.075');assert.equal(await volume.getAttribute('title'),'=0.5*0.5*0.3');await volume.click();assert.equal(await volume.inputValue(),'=0.5*0.5*0.3');await form.locator('[name=cargo]').click();
+   await page.locator('.app-page-header').getByRole('button',{name:t.save,exact:true}).click();await page.waitForFunction(()=>document.querySelector('.app-page-header button')?.disabled);assert.equal(writes.length,1);assert.equal(writes[0].fields.cbm,'0.075');assert.equal(writes[0].fields.cbmFormula,'=0.5*0.5*0.3');assert.equal(job.data.cbm,'88');assert.equal(job.data.workDetails.quantity,'2');
+   await volume.fill('0.15');await form.locator('[name=cargo]').click();assert.equal(await volume.getAttribute('title'),'');await page.locator('.app-page-header').getByRole('button',{name:t.save,exact:true}).click();await page.waitForFunction(()=>document.querySelector('.app-page-header button')?.disabled);assert.equal(writes.length,2);assert.equal(writes[1].fields.cbmFormula,'');assert.equal(job.data.workDetails.cbm,'0.15');assert.equal(job.data.cbm,'88');assert.deepEqual(errors,[]);console.log('PASS private work volume formula',lang,width);await page.close();continue;
+  }
+const main=page.locator('[data-shipping-work-main]'),side=page.locator('[data-shipping-work-side]'),actions=page.locator('[data-shipping-work-actions]');
   const a=await main.boundingBox(),c=await side.boundingBox(),toolbar=await actions.boundingBox();assert.ok(width>1000?a.x+a.width<=c.x+1:a.y<c.y);assert.ok(toolbar.y<a.y);assert.ok(toolbar.width>=a.width);
   const overview=side.locator('section').filter({has:page.getByRole('heading',{name:t.overview,exact:true})}),schedule=side.locator('section').filter({has:page.getByRole('heading',{name:t.schedule,exact:true})});
   assert.equal(await overview.locator('.MuiChip-root,input[name=plannedDate]').count(),0);assert.equal(await schedule.locator('input[name=plannedDate]').count(),1);

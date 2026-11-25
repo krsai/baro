@@ -1,4 +1,4 @@
-export const workFields=['shipper','consignee','notify','origin','destination','placeOfReceipt','placeOfDelivery','cargo','marks','quantity','unit','weightKg','cbm','chargeableWeightKg','freightTerms','incoterms','remark','plannedDate','routeDateORIGIN_DOOR','routeDateORIGIN_TERMINAL','routeDateDESTINATION_TERMINAL','routeDateDESTINATION_DOOR'];
+export const workFields=['shipper','consignee','notify','origin','destination','placeOfReceipt','placeOfDelivery','cargo','marks','quantity','unit','weightKg','cbm','cbmFormula','chargeableWeightKg','freightTerms','incoterms','remark','plannedDate','routeDateORIGIN_DOOR','routeDateORIGIN_TERMINAL','routeDateDESTINATION_TERMINAL','routeDateDESTINATION_DOOR'];
 export function shippingWorkData(data){return {...data,...data.workDetails};}
 // Dimensions are metres. Apply only on explicit action; never replace saved totals on read.
 export function shippingPackageTotals(rows){

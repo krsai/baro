@@ -1,5 +1,6 @@
 import {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
+import {parseVolumeInput} from '../utils/volumeFormula';
 const fail=():never=>{throw createHttpError(400,'SHIPPING_CARGO_INVALID');};
 const number=(value:any,integer=false)=>{if(typeof value!=='string'||!(integer?/^\d{1,8}$/:/^\d{1,10}(\.\d{1,6})?$/).test(value)||!new Prisma.Decimal(value).gt(0))fail();return value;};
 export function validateOogTransition(data:any,previous:any={}){
@@ -10,6 +11,11 @@ export function shippingCargo(data:any,mode:string){
  if(data.cargoSchemaVersion==null)return {};
  if(data.cargoSchemaVersion!==1)fail();
  const result:any={cargoSchemaVersion:1};
+ if(data.cbmFormula!==undefined){
+  if(typeof data.cbmFormula!=='string')fail();
+  if(data.cbmFormula){const parsed=parseVolumeInput(data.cbmFormula);if(!parsed)return fail();if(!data.cbmFormula.startsWith('=')||typeof data.cbm!=='string'||!/^\d+(?:\.\d+)?$/.test(data.cbm)||!new Prisma.Decimal(data.cbm).equals(parsed.cbm))fail();result.cbmFormula=parsed.cbmFormula;}
+  else result.cbmFormula='';
+ }
  const express=mode==='AIR'&&data.transportService==='EXPRESS'&&data.expressCargoVersion===1;
  if(data.expressCargoVersion!=null&&!express)fail();
  if(express){result.expressCargoVersion=1;result.chargeableWeightKg=number(data.chargeableWeightKg);if(typeof data.unit!=='string'||!data.unit.trim()||data.unit.length>30)fail();result.unit=data.unit.trim();}
@@ -60,5 +66,6 @@ export function shippingCargo(data:any,mode:string){
   if(result.cbm&&new Prisma.Decimal(result.cbm).gte('1000000000000'))fail();
   result.weightKg=number(data.weightKg);
  }
+ if(result.cbmFormula&&result.cbm!==undefined&&!new Prisma.Decimal(result.cbm).equals(parseVolumeInput(result.cbmFormula)!.cbm))fail();
  return result;
 }

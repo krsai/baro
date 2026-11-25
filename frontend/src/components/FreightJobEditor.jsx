@@ -1,3 +1,5 @@
+import VolumeInput from './VolumeInput';
+import {parseVolumeInput} from '../utils/volumeFormula.mjs';
 import ShippingLookupInput from './ShippingLookupInput';
 import {shippingEnglishText} from '../utils/shippingEnglish.mjs';
 import {displayEntityPhone} from '../utils/entityPhone.mjs';
@@ -55,7 +57,7 @@ export default function FreightJobEditor({t,options,initial,onClose,onSave,busy,
  const data=(key,val)=>setValue(v=>({...v,data:{...v.data,[key]:val}}));
  const cargoData=patch=>setValue(v=>({...v,data:{...v.data,shipmentType:v.data.shipmentType||(v.mode==='SEA'?'FCL':v.mode),...patch,cargoSchemaVersion:1,...(v.service==='EXPRESS'?{expressCargoVersion:1}:{})}}));
  const close=async()=>{if(partyRole||locationNode||requesterHistory)return;if(!locked&&(!dirty||await dialogs.confirm(x.discard,{purpose:'discard'})))onClose();};
- const field=(key,type='text',cargo=false)=><TextField key={key} fullWidth size="small" label={x[key]||e[key]||t[key]} required={express&&['weightKg','unit','chargeableWeightKg'].includes(key)} type={type} disabled={locked} onFocus={type==='date'?ev=>{try{ev.target.showPicker?.();}catch{/* Native calendar can still be opened with its button. */}}:undefined} value={value.data[key]??''} onChange={ev=>cargo?cargoData({[key]:ev.target.value}):data(key,ev.target.value)} slotProps={{inputLabel:{shrink:type==='date'||undefined},htmlInput:{'aria-label':x[key]||e[key]||t[key],...(key==='unit'?{'data-text-case':'preserve'}:{}),maxLength:key==='cargo'?2000:['origin','destination'].includes(key)?160:key==='dangerousGoodsDetails'?500:1000,...(type==='number'?{min:0,step:'any'}:{})}}}/>;
+ const field=(key,type='text',cargo=false)=>key==='cbm'?<VolumeInput label={x.cbm||e.cbm} value={value.data.cbm||''} formula={value.data.cbmFormula||''} languageCode={languageCode} disabled={locked} onChange={cargoData}/>:<TextField key={key} fullWidth size="small" label={x[key]||e[key]||t[key]} required={express&&['weightKg','unit','chargeableWeightKg'].includes(key)} type={type} disabled={locked} onFocus={type==='date'?ev=>{try{ev.target.showPicker?.();}catch{/* Native calendar can still be opened with its button. */}}:undefined} value={value.data[key]??''} onChange={ev=>cargo?cargoData({[key]:ev.target.value}):data(key,ev.target.value)} slotProps={{inputLabel:{shrink:type==='date'||undefined},htmlInput:{'aria-label':x[key]||e[key]||t[key],...(key==='unit'?{'data-text-case':'preserve'}:{}),maxLength:key==='cargo'?2000:['origin','destination'].includes(key)?160:key==='dangerousGoodsDetails'?500:1000,...(type==='number'?{min:0,step:'any'}:{})}}}/>;
  const allParties=options.customers||[],customer=allParties.find(row=>row.id===value.customerId)||value.data.customer||null;
  const counterparties=allParties.filter(row=>row.id!==orgId&&row.id!==options.self?.id&&!row.isShippingGeneralCustomer);
  const savedGeneral=allParties.find(row=>row.isShippingGeneralCustomer);
@@ -90,7 +92,7 @@ export default function FreightJobEditor({t,options,initial,onClose,onSave,busy,
  const containerValid=containers.every(row=>['20','40','45'].includes(row.size)&&['DC','HQ','OT','OH','FR','FH','RF','RH','TK'].includes(row.type)&&whole(row.count))&&(!value.data.outOfGauge||(oogEligible||legacyOog)&&oogPackages.every(row=>whole(row.quantity)&&['lengthM','widthM','heightM'].every(key=>positive(row[key]))));
  const measurementsValid=(value.data.packages||[]).every(row=>whole(row.quantity)&&['lengthM','widthM','heightM'].every(key=>express&&!row[key]||positive(row[key])));
  const packageValid=measurementsValid&&(declared||packages.every(row=>whole(row.quantity)&&['lengthM','widthM','heightM'].every(key=>express&&!row[key]||positive(row[key]))))&&positive(value.data.weightKg)&&volume<1000000000000&&(!express||positive(value.data.chargeableWeightKg)&&!!value.data.unit?.trim());
- const cargoValid=!value.data.cargoSchemaVersion||!!value.data.cargo?.trim()&&(shipment==='FCL'?containerValid:packageValid)&&dgValid&&hsValid;
+ const cargoValid=parseVolumeInput(value.data.cbmFormula||value.data.cbm||'')!==null&&(!value.data.cargoSchemaVersion||!!value.data.cargo?.trim()&&(shipment==='FCL'?containerValid:packageValid)&&dgValid&&hsValid);
  const nodes=routeNodes(value.mode,value.service),scope=value.data.workScope,valid=nodes.indexOf(scope?.start)>=0&&nodes.indexOf(scope?.end)>nodes.indexOf(scope?.start);
  const locations=routeLocations(value.data,value.mode),routeReady=routeComplete(value.data,value.mode);
  const displayLocations=Object.fromEntries(Object.entries(locations).map(([node,address])=>[node,[address,node.endsWith('TERMINAL')&&value.mode==='SEA'?value.data.routeLocationDetails?.[node]?.label:null].filter(Boolean).join(' · ')]));
