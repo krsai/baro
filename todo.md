@@ -1,4 +1,3 @@
-- SR 조회 구간 시각 정리: 구현·프런트 빌드·번역/인코딩·한영베 PC/모바일 SR 조회/탭/초안 회귀 6조합 통과 / 운영 배포·인수 미확인. 파란 선택 카드·입력 완료 상태·비활성 슬라이더를 읽기 전용 세로 순번/연결선으로 교체하고 중복 출발지/도착지와 상세를 지점별로 통합했다. 저장/API/원본 snapshot 변경 없음.
 - Route date inputs: implemented; backend/frontend builds, 8 regression tests, encoding and i18n checks passed; production deployment and user acceptance unverified. First stop uses existing Cargo Ready Date; other dates remain semantically unassigned.
 - SR 보기 구간 화살표 색: 구현·인코딩 검사 완료 / 운영 배포·사용자 인수 미확인. 읽기 전용 화살표를 구간선과 동일한 action.disabled 테마 색으로 통일했다.
 # 작업 상태
