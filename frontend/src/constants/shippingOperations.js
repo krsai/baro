@@ -4,6 +4,10 @@ export const shippingOperationText={
  vi:{title:'Nghiệp Vụ Vận Chuyển',overview:'Thông Tin Nghiệp Vụ',schedule:'Phụ Trách & Lịch Trình',assignee:'Người Phụ Trách',vessel:'Tên Tàu',voyage:'Chuyến Tàu',flight:'Chuyến Bay',flightNumber:'Số Hiệu Chuyến Bay',etd:'Ngày Đi Dự Kiến',eta:'Ngày Đến Dự Kiến',customer:'Khách Hàng',route:'Tuyến Vận Chuyển',cargo:'Hàng Hóa',parties:'Các Bên Vận Chuyển',shipper:'Shipper',consignee:'Consignee',notify:'Notify Party',request:'Xem Yêu Cầu',received:'Thông Tin Tiếp Nhận',documents:'Chứng Từ Liên Kết',progress:'Tiến Độ',charges:'Nháp Chi Phí',save:'Lưu',retry:'Thử Lại Cùng Yêu Cầu',failed:'Không Thể Lưu. Kiểm Tra Dữ Liệu Và Phiên Bản.',conflict:'Dữ Liệu Đã Thay Đổi. Nội Dung Nhập Được Giữ Lại. Kiểm Tra Bản Mới Nhất.',saved:'Đã Lưu.',close:'Đóng'}
 };
 
+Object.assign(shippingOperationText.ko,{viewSr:'SR 보기',srUnavailable:'저장된 SR 원본이 없습니다.'});
+Object.assign(shippingOperationText.en,{viewSr:'View SR',srUnavailable:'No Saved SR Original Is Available.'});
+Object.assign(shippingOperationText.vi,{viewSr:'Xem SR',srUnavailable:'Không Có Bản Gốc SR Đã Lưu.'});
+
 Object.assign(shippingOperationText.ko,{detail:'운송 상세',returnDetail:'운송 상세로 돌아가기',arAp:'AR/AP 입력',terms:'거래·운임 조건',packageCount:'포장 수량',applyDimensions:'치수 합계 적용'});
 Object.assign(shippingOperationText.en,{detail:'Shipment Details',returnDetail:'Back to Shipment Details',arAp:'AR/AP Entry',terms:'Trade & Freight Terms',packageCount:'Package Count',applyDimensions:'Apply Dimension Totals'});
 Object.assign(shippingOperationText.vi,{detail:'Chi Tiết Vận Chuyển',returnDetail:'Quay Lại Chi Tiết Vận Chuyển',arAp:'Nhập AR/AP',terms:'Điều Kiện Thương Mại & Cước',packageCount:'Số Kiện',applyDimensions:'Áp Dụng Tổng Kích Thước'});
