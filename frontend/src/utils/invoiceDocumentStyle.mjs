@@ -27,6 +27,10 @@ export const invoiceDocumentCss = `
 .invoice-sheet th.MuiTableCell-alignRight,.invoice-sheet .num{text-align:right;font-variant-numeric:tabular-nums}
 .invoice-sheet .invoice-lines .MuiTextField-root{max-width:100%;width:100%}
 .invoice-sheet .invoice-lines .MuiInputBase-root{font-size:13px}
+.invoice-sheet [data-invoice-entry-grid] .MuiInputBase-root{min-height:32px;font:inherit}
+.invoice-sheet [data-invoice-entry-grid] .MuiOutlinedInput-notchedOutline{border:0}
+.invoice-sheet [data-invoice-entry-grid] .MuiInputBase-root:hover{background:#f7f9fc}
+.invoice-sheet [data-invoice-entry-grid] .Mui-focused{background:#f7f9fc;box-shadow:inset 0 -1px #2878f0}
 .invoice-sheet .invoice-lines input{padding:8px 10px}
 .invoice-sheet .invoice-cell:focus-within .invoice-cell-value{border-color:#2878f0}
 .invoice-sheet .invoice-section-title{font-size:12px;font-weight:600;margin:0;padding:10px 16px;color:#57616c;border-bottom:1px solid #e7ecf2}
@@ -59,21 +63,21 @@ export const invoicePrintCss = `
 html,body{box-sizing:border-box;margin:0;padding:0;background:#fff}
 .invoice-print{font-size:11px;line-height:1.5}
 .invoice-print .invoice-document-top{gap:20px;padding-bottom:14px;margin-bottom:18px}
-.invoice-print .invoice-heading{font-size:25px;letter-spacing:2px}
+.invoice-print .invoice-heading{font-size:21px;letter-spacing:1px}
 .invoice-print .invoice-document-identifiers{width:52%;gap:18px}
 .invoice-print .invoice-parties{gap:24px;margin:0 0 20px}
-.invoice-print .invoice-cell-value{border:0;padding:2px 0;min-height:18px}
-.invoice-print .invoice-party-title{color:#182b3d;font-size:11px;border-bottom:1px solid #cbd5e1;margin-bottom:5px;padding-bottom:6px}
+.invoice-print .invoice-cell-value{padding:2px 0;min-height:18px}
+.invoice-print .invoice-party-title{font-size:11px}
 .invoice-print .invoice-cell-label{font-size:9px}
 .invoice-print .invoice-lines{margin:0 0 18px;width:100%;min-width:0;table-layout:fixed}
 .invoice-print th,.invoice-print td{padding:8px 5px;font-size:10px;line-height:1.5}
 .invoice-print th{font-size:9px;color:#475569;border-top:1px solid #cbd5e1}
 .invoice-print .num{white-space:nowrap;overflow-wrap:normal}
-.invoice-print .invoice-summary{grid-template-columns:minmax(0,1fr) minmax(0,300px);gap:18px 28px;padding:0;background:white;align-items:start}
+.invoice-print .invoice-summary{grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:16px;padding:16px;background:#f8fafc;align-items:start}
+.invoice-print .invoice-subtotals{text-align:right;padding:0 0 14px}
 .invoice-print .invoice-remark{min-height:0}
-.invoice-print .invoice-total{font-size:11px;padding:6px 0;margin:0;font-weight:400}
-.invoice-print .invoice-total span:last-child{color:#182b3d}
-.invoice-print .invoice-total:last-child{font-size:13px;font-weight:700;border-top:1px solid #182b3d;border-bottom:2px solid #182b3d;padding:9px 0}
+.invoice-print .invoice-total{font-size:11px;padding:8px 0;margin:0;font-weight:700}
+.invoice-print .invoice-total span:last-child{color:#2878f0}
 .invoice-print .invoice-bank-section{border-top:1px solid #e7ecf2;padding-top:14px;margin-top:2px}
 .invoice-print .invoice-bank-grid{grid-template-columns:repeat(var(--invoice-bank-count,3),minmax(0,1fr));gap:12px}
 .invoice-print .invoice-bank-card{padding:10px;gap:4px 8px;border-radius:0}

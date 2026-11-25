@@ -1,19 +1,14 @@
 import React from 'react';
-import {Box,Stack,Table,TableBody,TableCell,TableHead,TableRow,Typography} from '@mui/material';
+import {Typography} from '@mui/material';
 import InvoiceSheet from './InvoiceSheet';
-import InvoiceFormHeader from './InvoiceFormHeader';
-import InvoiceFormSummary from './InvoiceFormSummary';
-import {generalInvoiceText} from '../constants/generalInvoice';
+import GeneralInvoiceBody from './GeneralInvoiceBody';
+import GeneralInvoiceLineTable from './GeneralInvoiceLineTable';
 import {invoiceUi} from '../constants/invoiceUi';
-import {formatInvoiceMoney} from '../utils/invoiceItemGrid.mjs';
-import {invoiceNumber} from '../utils/invoiceStyleRows.mjs';
-
 export default function GeneralInvoiceDocument({invoice,languageCode}){
- const s=invoice.snapshot,t=generalInvoiceText[languageCode]||generalInvoiceText.en,ui=invoiceUi[languageCode]||invoiceUi.en;
- return <InvoiceSheet><InvoiceFormHeader fields={s.fields} languageCode={languageCode} readOnly/>
-  {invoice.status!=='ISSUED'&&<Typography sx={{p:2}} fontWeight={700}>{invoice.status==='CANCELLED'?ui.cancelled:ui.superseded}</Typography>}
-  <Box sx={{overflowX:'auto'}}><Table size="small" data-table-layout="document" sx={{minWidth:900}}><TableHead><TableRow>{['#',t.description,t.unit,t.quantity,t.currency,t.price,t.vat,t.tax,t.total].map((label,index)=><TableCell key={index} align={index>=3?'right':'left'}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{s.lines.map((line,index)=><TableRow key={line.lineKey}><TableCell>{index+1}</TableCell><TableCell>{line.description}</TableCell><TableCell>{line.unit}</TableCell><TableCell align="right">{invoiceNumber(line.quantity)}</TableCell><TableCell>{line.currencyCode||s.currencyCode}</TableCell><TableCell align="right">{invoiceNumber(line.unitPrice)}</TableCell><TableCell align="right">{invoiceNumber(line.vatRate)}%</TableCell><TableCell align="right">{formatInvoiceMoney(line.vatAmount,line.currencyCode||s.currencyCode)}</TableCell><TableCell align="right">{formatInvoiceMoney(line.amount,line.currencyCode||s.currencyCode)}</TableCell></TableRow>)}</TableBody></Table></Box>
-  <Stack alignItems="flex-end" sx={{p:2}}>{(s.currencyTotals||[{currencyCode:s.currencyCode,subtotal:s.subtotal,vatAmount:s.vatAmount}]).map(total=><Box key={total.currencyCode}><Typography>{s.currencyTotals?.length>1?total.currencyCode+' / ':''}{t.subtotal}: {formatInvoiceMoney(total.subtotal,total.currencyCode)}</Typography><Typography>{t.tax}: {formatInvoiceMoney(total.vatAmount,total.currencyCode)}</Typography></Box>)}</Stack>
-  <InvoiceFormSummary fields={s.fields} total={s.total} currencyTotals={s.currencyTotals} currencyCode={s.currencyCode} languageCode={languageCode} readOnly/>
- </InvoiceSheet>;
+ const s=invoice.snapshot,ui=invoiceUi[languageCode]||invoiceUi.en;
+ const totals=s.currencyTotals||[{currencyCode:s.currencyCode,subtotal:s.subtotal,vatAmount:s.vatAmount,total:s.total}];
+ return <InvoiceSheet><GeneralInvoiceBody fields={s.fields} languageCode={languageCode} readOnly currencyCode={s.currencyCode} currencyTotals={totals} summaryProps={{total:s.total}}>
+ {invoice.status!=='ISSUED'&&<Typography sx={{p:2}} fontWeight={700}>{invoice.status==='CANCELLED'?ui.cancelled:ui.superseded}</Typography>}
+ <GeneralInvoiceLineTable lines={s.lines} currencyCode={s.currencyCode} languageCode={languageCode}/>
+ </GeneralInvoiceBody></InvoiceSheet>;
 }

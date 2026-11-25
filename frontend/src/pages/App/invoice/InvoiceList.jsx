@@ -51,7 +51,7 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
   const [page, setPage] = useState(0), [reload, setReload] = useState(0);
   const [loading, setLoading] = useState(false), [error, setError] = useState('');
   const [revising,setRevising]=useState(false);
-  useWorkspaceRefreshOnEvent({ orgId, isBlocked:revising||requesting, topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES],
+  useWorkspaceRefreshOnEvent({ orgId, isBlocked:revising||requesting||Boolean(invoiceId&&detail?.documentKind==='GENERAL'&&detail.status==='ISSUED'), topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES],
      onRefresh: () => setReload(value => value + 1) });
   useEffect(() => {
     if (!orgId) return;
@@ -103,7 +103,9 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
     {invoiceId&&<>
       {error&&<Alert severity="error" action={<Button onClick={()=>setReload(v=>v+1)}>{common.retry}</Button>}>{error}</Alert>}
       {loading?<CircularProgress size={22}/>:detail&&<>
-        {detail.status==='ISSUED'&&revising
+        {detail.documentKind==='GENERAL'&&detail.status==='ISSUED'
+          ? <GeneralInvoiceEditor orgId={orgId} revisionInvoice={detail} languageCode={languageCode} inlineRevision pageTitle={d.title} onIssued={()=>navigateToPath('/invoices')}/>
+          : detail.status==='ISSUED'&&revising
           ? React.createElement(detail.documentKind==='GENERAL'?GeneralInvoiceEditor:InvoiceEditor,{orgId,revisionInvoice:detail,languageCode,onClose:()=>setRevising(false),onIssued:()=>navigateToPath('/invoices')})
           : <AppPageContainer title={d.title} titleActions={detail.status==='ISSUED'?<Button variant="outlined" onClick={()=>setRevising(true)}>{labels.revise}</Button>:undefined}><InvoiceIssuedForm invoice={detail} languageCode={languageCode}/></AppPageContainer>}
       </>}
