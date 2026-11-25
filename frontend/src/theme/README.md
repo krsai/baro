@@ -248,4 +248,5 @@ Dialog의 크기·내부 스크롤은 공통 테마가, 업무 Drawer의 작업 
 
 - 개인 정보·직원 상세의 `PersonalPhoneField`는 국가번호를 직접 선택하고 기존 국제번호 `phone` 필드에 저장한다. 국적·회사 국가와 독립이며 기존 원문은 조회만으로 변경하지 않는다.
 
+
 - Route dates: Cargo Ready Date belongs beside the first work route stop. Other dates are stored by route node in internal workDetails; their purpose and ETD/ETA linkage remain undecided. Preserve SR, BL, snapshots and customer sharing scope.
