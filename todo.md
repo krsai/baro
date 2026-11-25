@@ -1,3 +1,4 @@
+- SR 구간 삼각형 크기 정정: 카드·슬라이더 제거 변경 f9a246d5는 사용자 정정으로 되돌렸다. 기존 카드/슬라이더/조회 상세를 복구하고 방향 삼각형의 SVG 영역만 24×24에서 12×8로 축소해 구간선 높이에 맞췄다. 구현·프런트 빌드·인코딩·브라우저 카드 4개/슬라이더 유지 및 삼각형 12×8 크기 확인 완료 / 운영 배포·인수 미확인.
 - Route date inputs: implemented; backend/frontend builds, 8 regression tests, encoding and i18n checks passed; production deployment and user acceptance unverified. First stop uses existing Cargo Ready Date; other dates remain semantically unassigned.
 - SR 보기 구간 화살표 색: 구현·인코딩 검사 완료 / 운영 배포·사용자 인수 미확인. 읽기 전용 화살표를 구간선과 동일한 action.disabled 테마 색으로 통일했다.
 # 작업 상태
