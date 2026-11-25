@@ -57,7 +57,10 @@ export async function accountingLedgerReferences(db:any,orgId:number,entries:any
    const expense=expenses.find((row:any)=>row.id===allocation.expenseItemId),invoice=invoices.find((row:any)=>row.id===allocation.invoiceId);
    return [expense?.expenseRequestId?(expense.expenseRequest?.managementNumber||legacyExpenseNumber(expense.expenseRequestId)):null,invoice?.invoiceNumber].filter(Boolean);
   });
-  return [entry.id,[...new Set(numbers)].join(' / ')||entry.id];
+  // FILE evidence stores a path: show its document filename, never the internal UUID.
+  const evidence=String(entry.evidenceNumber||'').trim().replace(/^["']|["']$/g,'');
+  const reference=evidence.split(/[\\/]/).pop()||'';
+  return [entry.id,[...new Set(numbers)].join(' / ')||reference];
  }));
 }
 export async function accountingAlertCandidates(db:any,orgId:number,permissions:any){
