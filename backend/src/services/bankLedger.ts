@@ -1,3 +1,4 @@
+import {ledgerReferenceDetails} from './ledgerReferences';
 import {invoiceCurrencyAmount,mixedInvoiceRemaining} from './invoiceCurrencies';
 import {invoiceEvidenceAccounting} from './invoiceAccounting';
 import {prepareLedgerMaterial} from './materialItems';
@@ -108,7 +109,7 @@ export async function postLedgerEntryInTransaction(tx:any,orgId:number,actor:str
     const generatedPurpose=codeId!==null&&body.evidenceType!=='ADJUSTMENT'&&(body.remark===undefined||ledgerRemark(body.remark)==='');
     const purpose=body.remark!==undefined?(body.evidenceType==='ADJUSTMENT'?text(body.remark,1000):ledgerRemark(body.remark)):generatedPurpose?'':text(body.purpose,1000);
     const data:any={orgId,accountId:account.id,clientKey:clientKey(body.clientKey),transactionDate,direction:body.direction,amount:validateLedgerMoney(body.amount,account.currencyCode),...await ledgerTaxSnapshot(tx,orgId,codeId,body,account.currencyCode),purpose,...(codeId===null?{}:{accountingCodeId:codeId})};
-    const previous=await tx.bankLedgerEntry.findUnique({where:{orgId_clientKey:{orgId,clientKey:data.clientKey}},include:{bankFeeParent:true,allocations:true}});
+    const previous=await tx.bankLedgerEntry.findUnique({where:{orgId_clientKey:{orgId,clientKey:data.clientKey}},include:{managementIdentity:{select:{managementNumber:true}},bankFeeParent:true,allocations:true}});
     if(previous){
       if(ledgerScale4(previous.internalTransferAmount||'0')!==ledgerScale4(transferAmount||'0'))return fail('LEDGER_RETRY_CONFLICT',409);
       const requestedParty=counterpartyInput(body.counterparty),savedParty=entryCounterparty(previous);
@@ -156,7 +157,7 @@ export async function listLedgerEntries(db:any,orgId:number,accountId:string,que
     const account=await tx.bankLedgerAccount.findFirst({where:{id:accountId,orgId}});
     if(!account)return fail('LEDGER_ACCOUNT_NOT_FOUND',404);
     const scope={orgId,accountId};
-    const rows=await tx.bankLedgerEntry.findMany({where:{...scope,transactionDate:{gte:start,lte:end}},orderBy:[{transactionDate:'asc'},{evidenceType:'asc'},{createdAt:'asc'},{id:'asc'}],skip:page*100,take:101,include:{bankFeeParent:true,allocations:{include:{expenseItem:{select:{id:true,expenseRequestLine:true,transactionCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true}}}}}},internalTransferMirror:{select:{id:true}},accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}},settlementLines:{orderBy:{createdAt:'asc'},include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}}}}}});
+    const rows=await tx.bankLedgerEntry.findMany({where:{...scope,transactionDate:{gte:start,lte:end}},orderBy:[{transactionDate:'asc'},{evidenceType:'asc'},{createdAt:'asc'},{id:'asc'}],skip:page*100,take:101,include:{managementIdentity:{select:{managementNumber:true}},bankFeeParent:true,allocations:{include:{expenseItem:{select:{id:true,expenseRequestLine:true,transactionCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true}}}}}},internalTransferMirror:{select:{id:true}},accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}},settlementLines:{orderBy:{createdAt:'asc'},include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}}}}}});
     const allTotals=await sums(tx,scope),periodTotals=await sums(tx,{...scope,transactionDate:{gte:start,lte:end}});
     const first=rows[0];
     const prefix=first?{OR:[{transactionDate:{lt:first.transactionDate}},{transactionDate:first.transactionDate,evidenceType:{lt:first.evidenceType}},{transactionDate:first.transactionDate,evidenceType:first.evidenceType,createdAt:{lt:first.createdAt}},{transactionDate:first.transactionDate,evidenceType:first.evidenceType,createdAt:first.createdAt,id:{lt:first.id}}]}:{transactionDate:{lt:start}};
@@ -257,14 +258,15 @@ export async function listLedgerActivity(db:any,orgId:number,query:any){
   const search=String(query.search||'').trim();if(search.length>200)return fail('LEDGER_INVALID_RANGE');
   const matchingActors=search?await tx.employee.findMany({where:{orgId,name:{contains:search,mode:'insensitive'}},select:{email:true}}):[];
   const contains={contains:search,mode:'insensitive'};
-  const searchScope=search?{OR:[{counterpartyName:contains},{purpose:contains},{evidenceNumber:contains},{createdBy:contains},{createdBy:{in:matchingActors.map((row:any)=>row.email).filter(Boolean)}},{account:{OR:[{bankName:contains},{accountNumber:contains},{currencyCode:contains},{entityAccount:{displayName:contains}}]}},{accountingCode:{OR:[{code:contains},{nameKo:contains},{nameEn:contains},{nameVi:contains},{base:{OR:[{code:contains},{nameKo:contains},{nameEn:contains},{nameVi:contains}]}}]}}]}:{};
-  const rows=await tx.bankLedgerEntry.findMany({where:{orgId,...searchScope,...(String(query.includeVoided)==='0'?{voidedAt:null}:{}),...(selectedAccountId?{accountId:selectedAccountId}:{}),transactionDate:{gte:start,lte:end}},orderBy:[{transactionDate:'desc'},{evidenceType:'desc'},{createdAt:'desc'},{id:'desc'}],skip:page*100,take:101,include:{bankFeeParent:true,allocations:{where:{orgId}},internalTransferMirror:{select:{id:true}},accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}},settlementLines:{orderBy:{createdAt:'asc'},include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}}}}}});
+  const searchScope=search?{OR:[{managementIdentity:{is:{managementNumber:contains}}},{counterpartyName:contains},{purpose:contains},{evidenceNumber:contains},{createdBy:contains},{createdBy:{in:matchingActors.map((row:any)=>row.email).filter(Boolean)}},{account:{OR:[{bankName:contains},{accountNumber:contains},{currencyCode:contains},{entityAccount:{displayName:contains}}]}},{accountingCode:{OR:[{code:contains},{nameKo:contains},{nameEn:contains},{nameVi:contains},{base:{OR:[{code:contains},{nameKo:contains},{nameEn:contains},{nameVi:contains}]}}]}}]}:{};
+  const rows=await tx.bankLedgerEntry.findMany({where:{orgId,...searchScope,...(String(query.includeVoided)==='0'?{voidedAt:null}:{}),...(selectedAccountId?{accountId:selectedAccountId}:{}),transactionDate:{gte:start,lte:end}},orderBy:[{transactionDate:'desc'},{evidenceType:'desc'},{createdAt:'desc'},{id:'desc'}],skip:page*100,take:101,include:{managementIdentity:{select:{managementNumber:true}},bankFeeParent:true,allocations:{where:{orgId}},internalTransferMirror:{select:{id:true}},accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}},settlementLines:{orderBy:{createdAt:'asc'},include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}}}}}});
   const expenseIds=[...new Set<string>(rows.slice(0,100).flatMap((row:any)=>row.allocations.map((allocation:any)=>allocation.expenseItemId).filter(Boolean)))];
   const expenses=expenseIds.length?await tx.partnerTransactionCost.findMany({where:{orgId,id:{in:expenseIds}},select:{id:true,expenseRequestLine:true,description:true,transactionCode:{include:{base:{include:{expenseType:true}}}}}}):[];
   const expenseById=new Map(expenses.map((item:any)=>[item.id,item]));
   for(const row of rows)row.allocations=row.allocations.map((allocation:any)=>({...allocation,expenseItem:expenseById.get(allocation.expenseItemId)||null}));
   const pending=rows.length?await tx.changeApprovalRequest.findMany({where:{orgId,menu:'BANK_LEDGER',status:'PENDING',ledgerEntryId:{in:rows.slice(0,100).flatMap((row:any)=>[row.id,row.bankFeeParent?.parentEntryId,row.internalTransferSourceId,row.internalTransferMirror?.id].filter(Boolean))}},select:{ledgerEntryId:true}}):[];
   // Calculate each balance in ledger order, then return the page newest first.
+  const references=await ledgerReferenceDetails(tx,orgId,rows.slice(0,100));
   const chronologicalRows=rows.slice(0,100).reverse();
   const balances=new Map<string,bigint>();
   const searchedBalances=new Map<string,bigint>();
@@ -278,7 +280,7 @@ export async function listLedgerActivity(db:any,orgId:number,query:any){
   const result=chronologicalRows.map((row:any)=>{
    const account=accounts.find((a:any)=>a.id===row.accountId);let balance=search?searchedBalances.get(row.id)!:balances.get(row.accountId)!;
    if(!row.voidedAt)balance+=(row.direction==='IN'?1n:-1n)*ledgerScale4(row.amount);balances.set(row.accountId,balance);
-   return {...row,changePending:pending.some((request:any)=>[row.id,row.bankFeeParent?.parentEntryId,row.internalTransferSourceId,row.internalTransferMirror?.id].includes(request.ledgerEntryId)),currencyCode:account.currencyCode,accountName:account.displayName||[account.bankName,account.accountNumber].filter(Boolean).join(' / '),amount:ledgerMoney(ledgerScale4(row.amount),account.currencyCode),balance:ledgerMoney(balance,account.currencyCode)};
+   return {...row,...references.get(row.id),changePending:pending.some((request:any)=>[row.id,row.bankFeeParent?.parentEntryId,row.internalTransferSourceId,row.internalTransferMirror?.id].includes(request.ledgerEntryId)),currencyCode:account.currencyCode,accountName:account.displayName||[account.bankName,account.accountNumber].filter(Boolean).join(' / '),amount:ledgerMoney(ledgerScale4(row.amount),account.currencyCode),balance:ledgerMoney(balance,account.currencyCode)};
   });
   const currencyTotals=[...new Set<string>(summary.map((a:any)=>a.currencyCode))].map(code=>{
    const same=summary.filter((a:any)=>a.currencyCode===code),sum=(field:string)=>ledgerMoney(same.reduce((s:bigint,a:any)=>s+ledgerScale4(a[field]),0n),code);

@@ -763,6 +763,7 @@ model BankLedgerAccount {
 }
 
 model BankLedgerEntry {
+  managementIdentity BankLedgerManagementNumber?
   expenseComparison Json?
   materialItemId String?
   materialItemSnapshot Json?
@@ -817,6 +818,21 @@ model BankLedgerEntry {
   @@index([orgId, accountId, transactionDate, createdAt, id], map: "BankLedgerEntry_account_date_idx")
   @@unique([id,orgId])
   @@index([orgId,transactionDate,createdAt,id],map:"BankLedgerEntry_org_date_idx")
+}
+
+model BankLedgerManagementNumber {
+  entryId String @id
+  orgId Int
+  managementNumber String
+  year Int
+  sequence Int
+  origin String
+  originalRow Json?
+  assignedAt DateTime @default(now()) @db.Timestamp(3)
+  entry BankLedgerEntry @relation(fields:[entryId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"LedgerManagementNumber_entry_scope_fkey")
+  @@unique([entryId,orgId],map:"LedgerManagementNumber_entry_org_key")
+  @@unique([orgId,managementNumber],map:"LedgerManagementNumber_org_number_key")
+  @@unique([orgId,year,sequence],map:"LedgerManagementNumber_org_year_sequence_key")
 }
 
 model BankLedgerFeeLink {
