@@ -1,4 +1,5 @@
 import {companyInvoiceParty} from './companyDocumentContact';
+import {prepareMaterialSelection} from './materialItems';
 import {invoicePrimaryAccountText} from './invoicePrimaryAccounts';
 import {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
@@ -30,6 +31,8 @@ export function normalizeGeneralInvoiceLines(lines:any){
   if(!row||typeof row!=='object'||typeof row.key!=='string'||!/^[-\w]{8,100}$/.test(row.key)||seen.has(row.key)||!Number.isSafeInteger(row.transactionCodeId)||row.transactionCodeId<=0)return invalid();
   seen.add(row.key);
   const input:any={key:row.key,transactionCodeId:row.transactionCodeId};
+  for(const key of ['unitId','materialVariantRevision'])if(row[key]!=null){if(!Number.isSafeInteger(row[key])||row[key]<=0)return invalid();input[key]=row[key];}
+  for(const key of ['materialItemId','materialVariantId'])if(row[key]!=null){if(typeof row[key]!=='string'||!row[key]||row[key].length>100)return invalid();input[key]=row[key];}
   for(const [key,max] of [['description',1000],['unit',100],['remark',1000],['quantity',32],['unitPrice',32],['vatRate',8]] as const){
    const value=row[key]??'';if(typeof value!=='string'||value.length>max)return invalid();input[key]=value.trim();
   }
@@ -39,6 +42,15 @@ export function normalizeGeneralInvoiceLines(lines:any){
 export async function validateGeneralInvoiceCodes(db:any,orgId:number,lines:any[]){
  const codes=new Map<number,any>();
  for(const id of new Set<number>(lines.map(row=>row.transactionCodeId)))codes.set(id,await companyBillableCode(db,orgId,id,{allowAnyDirection:true}));
+ for(const line of lines){
+  const code=codes.get(line.transactionCodeId);
+  if(line.materialItemId||line.materialVariantId||code.base?.materialSettings?.enabled){
+   const selected:any=await prepareMaterialSelection(db,orgId,code,{...line,materialVariantRequired:true});
+   if(line.unitId!=null&&line.unitId!==selected.materialItemSnapshot?.unitId)return invalid('INVALID_MATERIAL_ITEM');
+   line.materialItemId=selected.materialItemId;line.materialItemSnapshot=selected.materialItemSnapshot;line.unitId=selected.materialItemSnapshot.unitId;
+  }
+  if(line.unitId!=null){const unit=await db.expenseUnit.findFirst({where:{id:line.unitId,isActive:true}});if(!unit)return invalid();line.unit=unit.nameEn||unit.nameKo||unit.nameVi;}
+ }
  return codes;
 }
 export function calculateGeneralInvoice(content:any,codes:Map<number,any>){
@@ -49,7 +61,8 @@ export function calculateGeneralInvoice(content:any,codes:Map<number,any>){
   if(!code||!input.description)return invalid();
   const amounts=calculateRequestAmounts(input.unitPrice,input.quantity,content.currency,input.vatRate);
   if(!code.vatEnabled&&!amounts.vatRate.isZero())return invalid('VAT_NOT_ENABLED');
-  return {lineKey:input.key,transactionCodeId:code.id,code:code.code,codeDescription:code.nameEn||code.nameKo||'',description:input.description,unit:input.unit,remark:input.remark,
+  const original=content.lines.find((row:any)=>row.key===input.key);
+  return {lineKey:input.key,transactionCodeId:code.id,code:code.code,codeDescription:code.nameEn||code.nameKo||'',description:input.description,unit:input.unit,remark:input.remark,...(input.unitId?{unitId:input.unitId}:{}),...(original?.materialItemId?{materialItemId:original.materialItemId,materialItemSnapshot:original.materialItemSnapshot}:{}),
    quantity:amounts.quantity.toString(),unitPrice:amounts.unitPrice.toString(),vatRate:amounts.vatRate.toString(),subtotal:amounts.subtotal.toString(),vatAmount:amounts.vatAmount.toString(),amount:amounts.amount.toString()};
  });
  const sum=(key:string)=>lines.reduce((total:any,line:any)=>total.add(line[key]),new Prisma.Decimal(0)).toString();

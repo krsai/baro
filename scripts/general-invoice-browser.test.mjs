@@ -11,6 +11,7 @@ import {invoiceUi} from '../frontend/src/constants/invoiceUi.js';
 import {ACCOUNTING_CODE_TEXT} from '../frontend/src/constants/accountingCode.js';
 import {INVOICE_BANK_TEXT} from '../frontend/src/constants/invoiceBankConfirmation.js';
 import {calculateGeneralInvoiceDraft} from '../frontend/src/utils/generalInvoice.mjs';
+const roleName=value=>new RegExp('^'+RegExp.escape(String(value))+'$','i');
 const fixtureName=process.argv.includes('--service')?'general-invoice-service-test':'general-invoice-test';
 const html=`frontend/${fixtureName}.html`,jsx=`frontend/${fixtureName}.jsx`;
 writeFileSync(html,`<meta charset="utf-8"><div id="root"></div><script type="module" src="/${fixtureName}.jsx"></script>`);
@@ -24,6 +25,7 @@ try{
   if((process.argv.includes('--customer-only')||process.argv.includes('--layout-only')||process.argv.includes('--codes-only'))&&failure!=='none')continue;
   if(process.argv.includes('--service')&&lang!=='en')continue;
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],saves=[],issues=[],sourceReads=[];let failed=false;
+  console.log('Checking general invoice',lang,width,failure,process.argv.includes('--material-only')?'material':'standard');
   await page.addInitScript(language=>localStorage.setItem('baro_language_override',language),lang);
   page.on('pageerror',error=>errors.push(error.message));page.on('dialog',dialog=>dialog.accept());
   await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useAuth=()=>({activeOrgId:1,activeProfile:{orgType:'${process.argv.includes('--service')?'SERVICE':'MANUFACTURER'}'}});`}));
@@ -31,19 +33,21 @@ try{
   await page.route('**/src/context/AppContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'const actions={navigateToPath:()=>window.issued=true,showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;'}));
   await page.route('**/src/components/PageDialogProvider.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const usePageDialogs=()=>({confirm:async()=>true,prompt:async()=>"Correction"});'}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
+  await page.route('**/text-acronyms',route=>route.fulfill({headers,json:{revision:1,entries:[]}}));
   await page.route('**/invoices/**',route=>{
    const req=route.request(),url=new URL(req.url());if(req.method()==='OPTIONS')return route.fulfill({headers,status:204});
    if(url.pathname.endsWith('/customers'))return route.fulfill({headers,json:{rows:[{id:2,code:'CUST-001',searchText:'BARO CUST-001',name:process.argv.includes('--customer-only')?'THE SAN':'Customer',businessNumber:'TAX-123',contactName:'Ms. Contact',contactPhone:'0123456789',email:'Public@example.test',address:'Public address'}]}});
-   if(url.pathname.endsWith('/general-source')){sourceReads.push(url.pathname);return route.fulfill({headers,json:{buyerOrgId:2,sellerOrgId:1,buyer:{code:'INTERNAL-BUYER',name:'Customer'},seller:{code:'INTERNAL-SELLER',name:'BARO'},sellerBankAccounts:[{id:'bank',isDefault:true,bankName:'Own Bank',accountNumber:'VND-001',accountHolder:'BARO',currency:{code:'VND'}}],codes:[{id:1,code:'GENV',nameEn:'General sales',nameKo:'일반 매출',nameVi:'Doanh thu khác',cashDirection:'IN',vatEnabled:true},{id:2,code:'PBGV',nameEn:'Poly Bag',nameKo:'폴리백',nameVi:'Túi poly',cashDirection:'OUT',vatEnabled:true},{id:4,code:'PBGZ',nameEn:'Poly Bag',nameKo:'\uD3F4\uB9AC\uBC31',nameVi:'Tui poly',cashDirection:'OUT',vatEnabled:false},{id:5,code:'PBGE',nameEn:'Poly Bag',nameKo:'\uD3F4\uB9AC\uBC31',nameVi:'Tui poly',cashDirection:'OUT',vatEnabled:false},{id:3,code:'TRKV',nameEn:'Inland transport',nameKo:'내륙운송료',nameVi:'Vận tải nội địa',cashDirection:'OUT',vatEnabled:true}],currencies:['VND','USD','KRW']}});}
+   if(url.pathname.endsWith('/general-source')){sourceReads.push(url.pathname);return route.fulfill({headers,json:{buyerOrgId:2,sellerOrgId:1,buyer:{code:'INTERNAL-BUYER',name:'Customer'},seller:{code:'INTERNAL-SELLER',name:'BARO'},sellerBankAccounts:[{id:'bank',isDefault:true,bankName:'Own Bank',accountNumber:'VND-001',accountHolder:'BARO',currency:{code:'VND'}}],codes:[{id:1,code:'GENV',nameEn:'General sales',nameKo:'일반 매출',nameVi:'Doanh thu khác',cashDirection:'IN',vatEnabled:true},{id:2,code:'PBGV',nameEn:'Poly Bag',nameKo:'폴리백',nameVi:'Túi poly',cashDirection:'OUT',vatEnabled:true,...(process.argv.includes('--material-only')?{baseId:20,base:{materialSettings:{enabled:true}}}:{})},{id:4,code:'PBGZ',nameEn:'Poly Bag',nameKo:'\uD3F4\uB9AC\uBC31',nameVi:'Tui poly',cashDirection:'OUT',vatEnabled:false},{id:5,code:'PBGE',nameEn:'Poly Bag',nameKo:'\uD3F4\uB9AC\uBC31',nameVi:'Tui poly',cashDirection:'OUT',vatEnabled:false},{id:3,code:'TRKV',nameEn:'Inland transport',nameKo:'내륙운송료',nameVi:'Vận tải nội địa',cashDirection:'OUT',vatEnabled:true}],units:[{id:9,nameEn:'Pcs',nameKo:'\uAC1C',nameVi:'C\u00e1i',isActive:true}],currencies:['VND','USD','KRW']}});}
    if(req.method()==='GET'&&url.pathname.endsWith('/orders'))return route.fulfill({headers,json:{rows:[],hasMore:false}});
    if(req.method()==='POST'&&url.pathname.endsWith('/issue')){issues.push(req.postDataJSON());if(failure==='issue'&&!failed){failed=true;return route.abort('failed');}return route.fulfill({headers,json:{id:'issued'}});}
    if(req.method()==='POST'&&url.pathname.endsWith('/drafts')){const body=req.postDataJSON();saves.push(body);assert.equal(body.documentKind,'GENERAL');assert.deepEqual(body.orders,[]);assert.equal(body.basis,null);assert.equal(calculateGeneralInvoiceDraft(body.lines,body.currency).amount,'1375000');if(failure==='save'&&!failed){failed=true;return route.abort('failed');}return route.fulfill({headers,json:{id:'draft',revision:1,clientKey:body.clientKey}});}
    throw new Error('Unexpected invoice request: '+req.method()+' '+url.pathname);
   });
+  await page.route('**/material-items/options?*',route=>route.fulfill({headers,json:[{id:'material-master',baseId:20,unitId:9,variantId:'material-variant',variantRevision:2,data:{nameEn:'Poly Bag Material',nameKo:'Poly Bag Material',nameVi:'Poly Bag Material',unit:{id:9,nameEn:'Pcs',nameKo:'\uAC1C',nameVi:'C\u00e1i'},variantId:'material-variant',variantRevision:2}}]}));
   await page.goto(`http://127.0.0.1:${port}/${path.basename(html)}`);
   const t=generalInvoiceText[lang],u=invoiceUi[lang];
-  await page.getByRole('combobox',{name:new RegExp('^'+t.type)}).click();await page.getByRole('option',{name:t.general,exact:true}).click();
-  const customer=page.getByRole('textbox',{name:invoicePartyText[lang].target,exact:true});if(process.argv.includes('--customer-only')){
+  await page.getByRole('combobox',{name:new RegExp('^'+t.type,'i')}).click();await page.getByRole('option',{name:new RegExp('^'+t.general+'$','i')}).click();
+  const customer=page.getByRole('textbox',{name:roleName(invoicePartyText[lang].target)});if(process.argv.includes('--customer-only')){
    await customer.fill('THE');await customer.press('Enter');const partial=page.getByRole('dialog');await partial.waitFor();assert.equal(await partial.getByText('THE SAN',{exact:true}).count(),1);assert.equal(await page.getByTestId('general-invoice-line').count(),0);await page.keyboard.press('Escape');await partial.waitFor({state:'hidden'});await customer.fill('');
    await customer.press('F2');const dialog=page.getByRole('dialog'),lookup=EXPENSE_LOOKUP_TEXT[lang];await dialog.getByText('CUST-001',{exact:true}).click();const details=dialog.getByTestId('payee-details');await details.getByText('0123456789',{exact:true}).waitFor();assert.equal(await details.getByText('TAX-123',{exact:true}).count(),1);assert.equal(await details.getByTestId('payee-accounts').count(),0);
    await dialog.getByRole('textbox',{name:lookup.keyword,exact:true}).fill('BARO');await dialog.getByRole('button',{name:lookup.select,exact:true}).click();await dialog.waitFor({state:'hidden'});
@@ -53,7 +57,7 @@ try{
   await customer.fill('Customer');await customer.press('Enter');
   const row=page.getByTestId('general-invoice-line');await row.waitFor();
   if(process.argv.includes('--layout-only')||process.argv.includes('--codes-only')){
-   const header=page.locator('[data-invoice-form-header="editing"]'),currency=header.getByRole('combobox',{name:t.currency,exact:true});
+   const header=page.locator('[data-invoice-form-header="editing"]'),currency=header.getByRole('combobox',{name:roleName(t.currency)});
    await currency.waitFor();assert.equal(await header.locator('.invoice-document-identifiers').getByRole('combobox').count(),1,'Currency belongs to document metadata');
    if(lang==='ko'&&width===1440){await currency.click();await page.getByRole('option',{name:'USD',exact:true}).click();assert.match(await currency.textContent(),/USD/);await currency.click();await page.getByRole('option',{name:'VND',exact:true}).click();}
    const controls=await header.locator('.MuiInputBase-root').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().height));
@@ -70,19 +74,27 @@ try{
    for(const party of await header.locator('.invoice-party').all())assert.deepEqual(await party.locator('.invoice-party-row').evaluateAll(rows=>rows.map(row=>row.querySelectorAll('.invoice-cell').length)),[2,1,3],'Company name/tax ID, address, contact/phone/email use three declared rows');
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'Only the item table scrolls horizontally');
   }
-  const code=row.getByRole('textbox',{name:ACCOUNTING_CODE_TEXT[lang].code,exact:true});
+  const code=row.getByRole('textbox',{name:roleName(ACCOUNTING_CODE_TEXT[lang].code)});
   if(process.argv.includes('--codes-only')){
    for(const [query,expected]of [['POL','PBGV'],['TRK','TRKV'],['폴리백','PBGV']]){await code.fill(query);await code.press('Enter');const dialog=page.getByRole('dialog');await dialog.waitFor();const candidate=dialog.getByRole('row').filter({has:page.getByRole('cell',{name:expected,exact:true})});await candidate.getByRole('button').click();await dialog.waitFor({state:'hidden'});assert.equal(await code.inputValue(),expected);}
-  }else{await code.fill('GENV');await code.press('Enter');}
-  await row.getByRole('textbox',{name:t.description,exact:true}).fill('Polybag agency purchase');
-  await row.getByRole('textbox',{name:t.unit,exact:true}).fill('pcs');await row.getByRole('textbox',{name:t.quantity,exact:true}).fill('1000');await row.getByRole('textbox',{name:t.price,exact:true}).fill('1250');await row.getByRole('textbox',{name:t.vat,exact:true}).fill('10');
+  }else if(process.argv.includes('--material-only')){
+   await code.fill('PBGV');await code.press('Enter');
+   const materialDialog=page.getByRole('dialog');await materialDialog.waitFor();
+   await materialDialog.getByRole('row').filter({hasText:'Poly Bag Material'}).getByRole('button').click();await materialDialog.waitFor({state:'hidden'});
+   assert.ok(await row.getByRole('textbox',{name:roleName(t.description)}).inputValue());
+   assert.equal(await row.getByRole('textbox',{name:roleName(t.unit)}).inputValue(),({ko:'\uAC1C',en:'Pcs',vi:'C\u00e1i'})[lang]);
+  }else{await code.fill('GENV');await code.press('Enter');assert.match(await row.getByRole('textbox',{name:roleName(t.description)}).inputValue(),roleName(({ko:'\uC77C\uBC18 \uB9E4\uCD9C',en:'General sales',vi:'Doanh thu kh\u00e1c'})[lang]));}
+  const quantity=row.getByRole('textbox',{name:roleName(t.quantity)});await quantity.click();await page.waitForFunction(()=>{const input=document.activeElement;return input?.value==='1'&&input.selectionStart===0&&input.selectionEnd===1;});await page.keyboard.type('2');assert.equal(await quantity.inputValue(),'2');
+  await row.getByRole('textbox',{name:roleName(t.description)}).fill('Polybag agency purchase');
+  if(!process.argv.includes('--material-only')){await row.getByRole('combobox',{name:roleName(t.unit)}).click();await page.getByRole('option',{name:({ko:'\uAC1C',en:'Pcs',vi:'C\u00e1i'})[lang],exact:true}).click();}await row.getByRole('textbox',{name:roleName(t.quantity)}).fill('1000');await row.getByRole('textbox',{name:roleName(t.price)}).fill('1250');await row.getByRole('textbox',{name:roleName(t.vat)}).fill('10');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'Only the item table may scroll horizontally');
-  await page.getByRole('checkbox',{name:t.review}).check();const issue=page.getByRole('button',{name:u.issue,exact:true});await issue.click();
+  await page.getByRole('checkbox',{name:t.review}).check();const issue=page.getByRole('button',{name:roleName(u.issue)});await issue.click();
 
-  if(failure!=='none'){await page.getByRole('alert').filter({hasText:t.uncertain}).waitFor();assert.equal(await row.getByRole('textbox',{name:t.description,exact:true}).isDisabled(),true);await issue.click();}
-  await page.waitForFunction(()=>window.issued===true);
+  if(failure!=='none'){await page.getByRole('alert').filter({hasText:t.uncertain}).waitFor();assert.equal(await row.getByRole('textbox',{name:roleName(t.description)}).isDisabled(),true);await issue.click();}
+  await page.waitForFunction(()=>window.issued===true).catch(async error=>{console.error({lang,width,failure,saves:saves.length,issues:issues.length,errors,alerts:await page.getByRole('alert').allTextContents(),dialogs:await page.getByRole('dialog').allTextContents(),reviewed:await page.getByRole('checkbox',{name:t.review}).isChecked(),issueDisabled:await issue.isDisabled()});throw error;});
   assert.equal(sourceReads.length,1);assert.equal(saves[0].fields.bank,'Own Bank / VND-001 / BARO / VND');assert.deepEqual(errors,[]);
   if(process.argv.includes('--codes-only'))assert.equal(saves[0].lines[0].transactionCodeId,2,'OUT-direction polybag code retains its actual company FK through issuance');
+  assert.equal(saves[0].lines[0].unitId,9);if(process.argv.includes('--material-only')){assert.equal(saves[0].lines[0].materialItemId,'material-master');assert.equal(saves[0].lines[0].materialVariantId,'material-variant');assert.equal(saves[0].lines[0].materialVariantRevision,2);}
   if(failure==='save')assert.deepEqual(saves[0],saves[1]);if(failure==='issue'){assert.equal(saves.length,1);assert.deepEqual(issues[0],issues[1]);}
   if(lang==='ko'&&width===1440&&failure==='none'){
    const content=saves[0],calculation=calculateGeneralInvoiceDraft(content.lines,content.currency);

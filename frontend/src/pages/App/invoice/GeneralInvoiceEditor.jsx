@@ -7,6 +7,10 @@ import InvoiceSheet from '../../../components/InvoiceSheet';
 import InvoiceFormHeader from '../../../components/InvoiceFormHeader';
 import InvoiceDocumentField from '../../../components/InvoiceDocumentField';
 import InvoiceFormSummary from '../../../components/InvoiceFormSummary';
+import MaterialSelectionDialog from '../../../components/MaterialSelectionDialog';
+import ReadOnlyField from '../../../components/ReadOnlyField';
+import {accountingCodeDescription} from '../../../utils/accountingCode.mjs';
+import {materialItemName,materialItemSpec,materialItemText} from '../../../constants/materialItems';
 import AccountingCodeField from '../../../components/AccountingCodeField';
 import DecimalAmountField from '../../../components/DecimalAmountField';
 import DeleteActionButton from '../../../components/DeleteActionButton';
@@ -26,7 +30,9 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
  const t=generalInvoiceText[languageCode]||generalInvoiceText.en,ui=invoiceUi[languageCode]||invoiceUi.en,storage=invoiceSubmissionUi[languageCode]||invoiceSubmissionUi.en;
  const dialogs=usePageDialogs(),{showNotification}=useAppActions();
  const [source,setSource]=useState(null),[fields,setFields]=useState(null),[currency,setCurrency]=useState('VND'),[lines,setLines]=useState([newGeneralInvoiceLine()]);
+ const [selectingMaterial,setSelectingMaterial]=useState(false),[codeRevision,setCodeRevision]=useState(0);
  const [loading,setLoading]=useState(false),[loadError,setLoadError]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0),[dirty,setDirty]=useState(false),[reviewed,setReviewed]=useState(false),[saving,setSaving]=useState(false),[uncertain,setUncertain]=useState(false);
+ const materialRef=useRef(null),selectionBusy=useRef(false);
  const draft=useRef(null),clientKey=useRef(crypto.randomUUID()),revisionRequest=useRef(null),submission=useRef(null),busy=useRef(false),scope=useRef(orgId),mounted=useRef(true);
  scope.current=orgId;useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  useUnsavedChanges(dirty||saving||uncertain);
@@ -52,22 +58,35 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
   return()=>{alive=false;};
  },[orgId,buyerOrgId,revisionInvoice?.id,draftId,reload]);
  const calculation=useMemo(()=>calculateGeneralInvoiceDraft(lines,currency),[lines,currency]);
- const locked=saving||uncertain;
+ const locked=saving||uncertain||selectingMaterial;
  const change=(fn)=>{if(locked)return;fn();setDirty(true);setReviewed(false);};
  const changeLine=(key,patch)=>change(()=>setLines(current=>current.map(row=>row.key===key?{...row,...patch}:row)));
+ const chooseCode=async(line,code)=>{
+  if(locked||selectionBusy.current)return;
+  const company=orgId;
+  if(code?.base?.materialSettings?.enabled){
+   selectionBusy.current=true;setSelectingMaterial(true);
+   try{const item=await materialRef.current.prepare({baseId:code.baseId,value:line.materialItemId,snapshot:line.materialItemSnapshot,context:'INVOICE'});
+    if(!item||!mounted.current||scope.current!==company)return;
+    changeLine(line.key,{transactionCodeId:code.id,description:accountingCodeDescription(code,languageCode),vatRate:code.vatEnabled?line.vatRate:'0',materialItemId:item.id,materialVariantId:item.variantId,materialVariantRevision:item.variantRevision,materialItemSnapshot:{id:item.id,baseId:item.baseId,unitId:item.unitId,...item.data},unitId:item.unitId,unit:materialItemName(item.data?.unit,languageCode)});
+   }finally{selectionBusy.current=false;if(mounted.current&&scope.current===company){setSelectingMaterial(false);setCodeRevision(value=>value+1);}}
+   return;
+  }
+  changeLine(line.key,{transactionCodeId:code?.id||null,description:accountingCodeDescription(code,languageCode),vatRate:code?.vatEnabled?line.vatRate:'0',materialItemId:null,materialVariantId:null,materialVariantRevision:null,materialItemSnapshot:null});
+ };
  const changeField=(key,value)=>change(()=>setFields(current=>({...current,[key]:value})));
  const requestChange=async action=>{
   if(locked)return;if((dirty||draft.current)&&!await dialogs.confirm(ui.discard,{purpose:'discard'}))return;
   draft.current=null;submission.current=null;clientKey.current=crypto.randomUUID();setSource(null);setFields(null);setDirty(false);setReviewed(false);action();
  };
  const issue=async(options={})=>{
-  if(busy.current||loading||loadError||!source||!fields?.date||!reviewed||!calculation.valid)return;
+  if(busy.current||loading||loadError||!source||selectingMaterial||!fields?.date||!reviewed||!calculation.valid)return;
   if(!uncertain&&!await dialogs.confirm(storage.confirmIssue))return;
   const issueFields={...fields,bank:invoiceBankInfo(source?.sellerBankAccounts||[])};
   if(revisionInvoice&&!draft.current&&!revisionRequest.current){const reason=await dialogs.prompt(t.reason);if(!reason?.trim())return;revisionRequest.current={clientKey:clientKey.current,reason:reason.trim()};}
   busy.current=true;setSaving(true);setError('');
   try{
-   const attempt=submission.current||{phase:'SAVE',payload:{clientKey:clientKey.current,revision:draft.current?.revision,documentKind:'GENERAL',buyerOrgId:source.buyerOrgId,basis:null,currency,fields:issueFields,orders:[],percentages:{},settlements:{},lines:lines.map(({key,transactionCodeId,description,unit,quantity,unitPrice,vatRate,remark})=>({key,transactionCodeId,description,unit,quantity,unitPrice,vatRate,remark}))}};
+   const attempt=submission.current||{phase:'SAVE',payload:{clientKey:clientKey.current,revision:draft.current?.revision,documentKind:'GENERAL',buyerOrgId:source.buyerOrgId,basis:null,currency,fields:issueFields,orders:[],percentages:{},settlements:{},lines:lines.map(({key,transactionCodeId,description,unit,unitId,materialItemId,materialVariantId,materialVariantRevision,quantity,unitPrice,vatRate,remark})=>({key,transactionCodeId,description,unit,unitId,materialItemId,materialVariantId,materialVariantRevision,quantity,unitPrice,vatRate,remark}))}};
    submission.current=attempt;const payload=attempt.payload;
    if(revisionInvoice&&!draft.current){const created=await requestJSON('/invoices/issued/'+encodeURIComponent(revisionInvoice.id)+'/revision-draft'+buildQueryString({orgId}),{method:'POST',body:JSON.stringify(revisionRequest.current)});draft.current=created;clientKey.current=created.clientKey;payload.clientKey=created.clientKey;payload.revision=created.revision;}
    if(attempt.phase==='SAVE'){const saved=await requestJSON('/invoices/drafts'+(draft.current?'/'+encodeURIComponent(draft.current.id):'')+buildQueryString({orgId}),{method:draft.current?'PUT':'POST',body:JSON.stringify(payload)});draft.current=saved;attempt.phase='ISSUE';}
@@ -82,15 +101,16 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
    setError(documentNumberError(failure.details?.error||failure.message,languageCode)|| (unknown?t.uncertain:failure.message==='COMPANY_BILLING_CODE_INVALID'?t.codeInvalid:failure.message==='GENERAL_INVOICE_BUYER_INVALID'?t.buyerInvalid:t.failed));
   }finally{busy.current=false;if(mounted.current&&scope.current===orgId)setSaving(false);}
  };
- return <AppPageContainer keyboardEntry title={t.general} titleActions={<Stack direction="row" spacing={1}><Button variant="contained" disabled={loading||loadError||saving||!source||!reviewed||!calculation.valid||!fields?.date} onClick={()=>issue()}>{saving?<CircularProgress size={18}/>:ui.issue}</Button></Stack>}>
+ return <AppPageContainer keyboardEntry title={t.general} titleActions={<Stack direction="row" spacing={1}><Button variant="contained" disabled={loading||loadError||saving||selectingMaterial||!source||!reviewed||!calculation.valid||!fields?.date} onClick={()=>issue()}>{saving?<CircularProgress size={18}/>:ui.issue}</Button></Stack>}>
+  <MaterialSelectionDialog ref={materialRef} orgId={orgId} languageCode={languageCode}/>
   <InvoiceSheet><Stack spacing={0} sx={{minWidth:0}}>
    {renderSelection&&<Box sx={{p:2,borderBottom:1,borderColor:'divider'}}>{renderSelection({requestChange,disabled:locked})}</Box>}
    {loading&&<CircularProgress size={22}/>}{loadError&&<Alert severity="error" action={<Button disabled={locked} onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{t.failed}</Alert>}{error&&<Alert severity="error">{error}</Alert>}
    {source&&fields&&<Box component="fieldset" disabled={locked} sx={{border:0,p:0,m:0,minWidth:0}}>
     <InvoiceFormHeader fields={fields} languageCode={languageCode} onChange={changeField} currencyControl={<InvoiceDocumentField appearance="form" select label={t.currency} value={currency} disabled={!!revisionInvoice||!!draftId||locked} onChange={event=>change(()=>{setCurrency(event.target.value);setFields(current=>({...current,bank:invoiceBankInfo(source.sellerBankAccounts,event.target.value)}));})}>{['VND','USD','KRW'].map(value=><MenuItem key={value} value={value}>{value}</MenuItem>)}</InvoiceDocumentField>}/>
     <Box sx={{overflowX:'auto'}}><Table data-table-layout="wide" data-invoice-entry-grid size="small" sx={{minWidth:1320,'& .MuiInputBase-root':{height:36},'& .MuiTextField-root':{width:'100%',maxWidth:'100%'}}}><colgroup>{[44,160,null,104,100,160,104,140,160,80].map((width,index)=><col key={index} style={width?{width}:undefined}/>)}</colgroup><TableHead><TableRow>{['#',t.code,t.description,t.quantity,t.unit,t.price,t.vat,t.tax,t.total,''].map((label,index)=><TableCell key={index} align={index===3||index>=5&&index<=8?'right':'left'}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{lines.map((line,index)=><TableRow key={line.key} data-testid="general-invoice-line">
-     <TableCell>{index+1}</TableCell><TableCell sx={{minWidth:145}}><AccountingCodeField hideLabel direction="IN" codes={source.codes} value={line.transactionCodeId} valueObject={source.codes.find(code=>code.id===line.transactionCodeId)|| (line.code?{id:line.transactionCodeId,code:line.code,nameEn:line.codeDescription,cashDirection:'IN'}:null)} languageCode={languageCode} disabled={locked} onSelect={code=>changeLine(line.key,{transactionCodeId:code?.id||null,vatRate:code?.vatEnabled?line.vatRate:'0'})}/></TableCell>
-     <TableCell><TextField size="small" inputProps={{maxLength:1000,'aria-label':t.description}} value={line.description} disabled={locked} onChange={event=>changeLine(line.key,{description:event.target.value})}/></TableCell><TableCell><DecimalAmountField size="small" inputProps={{'aria-label':t.quantity,style:{textAlign:'right'}}} value={line.quantity} disabled={locked} onValueChange={quantity=>changeLine(line.key,{quantity})}/></TableCell><TableCell><TextField size="small"  value={line.unit} disabled={locked} inputProps={{maxLength:100,'aria-label':t.unit}} onChange={event=>changeLine(line.key,{unit:event.target.value})}/></TableCell>
+     <TableCell>{index+1}</TableCell><TableCell sx={{minWidth:145}}><AccountingCodeField resetKey={codeRevision} hideLabel direction="IN" codes={source.codes} value={line.transactionCodeId} valueObject={source.codes.find(code=>code.id===line.transactionCodeId)|| (line.code?{id:line.transactionCodeId,code:line.code,nameEn:line.codeDescription,cashDirection:'IN'}:null)} languageCode={languageCode} disabled={locked} requireMaterialSelection onSelect={code=>chooseCode(line,code)}/></TableCell>
+     <TableCell><Stack spacing={.5}><TextField size="small" inputProps={{maxLength:1000,'aria-label':t.description}} value={line.description} disabled={locked} onChange={event=>changeLine(line.key,{description:event.target.value})}/>{line.materialItemId&&<Button size="small" disabled={locked} onClick={()=>chooseCode(line,source.codes.find(code=>code.id===line.transactionCodeId))}>{[materialItemName({data:line.materialItemSnapshot},languageCode),materialItemSpec({data:line.materialItemSnapshot})].filter(Boolean).join(' / ')||(materialItemText[languageCode]||materialItemText.en).title}</Button>}</Stack></TableCell><TableCell><DecimalAmountField size="small" inputProps={{'aria-label':t.quantity,style:{textAlign:'right'},onFocus:event=>{const input=event.target;if(line.quantity==='1')requestAnimationFrame(()=>{if(document.activeElement===input)input.select();});},onMouseUp:event=>{if(line.quantity==='1')event.preventDefault();}}} value={line.quantity} disabled={locked} onValueChange={quantity=>changeLine(line.key,{quantity})}/></TableCell><TableCell>{line.materialItemId?<ReadOnlyField hideLabel label={t.unit} value={line.unit}/>:<TextField select size="small" value={line.unitId||line.unit||''} disabled={locked} slotProps={{select:{inputProps:{'aria-label':t.unit}}}} onChange={event=>{const unit=source.units?.find(unit=>unit.id===event.target.value);changeLine(line.key,{unitId:unit?.id||null,unit:unit?.nameEn||unit?.nameKo||unit?.nameVi||''});}}><MenuItem value="">—</MenuItem>{line.unit&&!line.unitId&&<MenuItem value={line.unit}>{line.unit}</MenuItem>}{(source.units||[]).map(unit=><MenuItem key={unit.id} value={unit.id}>{materialItemName(unit,languageCode)}</MenuItem>)}</TextField>}</TableCell>
      <TableCell><DecimalAmountField size="small" currencyCode={currency} inputProps={{'aria-label':t.price,style:{textAlign:'right'}}} value={line.unitPrice} disabled={locked} onValueChange={unitPrice=>changeLine(line.key,{unitPrice})}/></TableCell><TableCell><TextField size="small"  value={line.vatRate} disabled={locked||!source.codes.find(code=>code.id===line.transactionCodeId)?.vatEnabled} inputProps={{inputMode:'decimal','aria-label':t.vat,style:{textAlign:'right'}}} onChange={event=>changeLine(line.key,{vatRate:event.target.value})}/></TableCell>
      <TableCell align="right">{formatInvoiceMoney(calculation.lines[index]?.vatAmount,currency)}</TableCell><TableCell align="right">{formatInvoiceMoney(calculation.lines[index]?.amount,currency)}</TableCell><TableCell data-table-actions><Stack direction="row"><AddActionButton aria-label={t.add} disabled={locked||lines.length>=50} onClick={()=>change(()=>setLines(current=>[...current.slice(0,index+1),newGeneralInvoiceLine(),...current.slice(index+1)]))}/><DeleteActionButton aria-label={t.remove} disabled={locked||lines.length===1} onClick={()=>change(()=>setLines(current=>current.filter(row=>row.key!==line.key)))}/></Stack></TableCell>
     </TableRow>)}</TableBody></Table></Box>

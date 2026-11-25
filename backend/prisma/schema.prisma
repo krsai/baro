@@ -3202,6 +3202,10 @@ model Invoice {
 }
 
 model InvoiceGeneralLine {
+  // materialBaseId/materialVariantId are stored generated SQL columns used by scoped FKs.
+  unitId Int?
+  materialItemId String?
+  materialItemSnapshot Json?
   id String @id @default(cuid())
   invoiceId String
   sellerOrgId Int
