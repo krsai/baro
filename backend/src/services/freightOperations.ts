@@ -97,6 +97,10 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any,
    data[role+'Party'].country=d[role+'Party'].country;
   }
  }
+ if(generalId&&data.actualRequesterRole){
+  const role=data.actualRequesterRole,document=data[role+'Party'];
+  if(data[role+'Id']!=null||!document||document.name!==data.actualRequesterName||document.phone!==data.actualRequesterPhone||(document.address||'')!==(data.actualRequesterAddress||'')||(document.country||'')!==(data.actualRequesterCountry||''))fail('FREIGHT_CUSTOMER_ROLE');
+ }
  assertShippingEnglishData({...d,...data},previous||{});
  assertDistinctShippingParties(data.shipperParty,data.consigneeParty);
  if(d.customerRole!=null){

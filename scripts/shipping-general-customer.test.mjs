@@ -67,6 +67,16 @@ test('express general customer is created once per company with independent SR r
   await assert.rejects(db.$executeRawUnsafe('DELETE FROM "ShippingGeneralCustomer" WHERE "orgId"=$1',orgId),/SHIPPING_GENERAL_CUSTOMER_IMMUTABLE/);
   await assert.rejects(db.organization.update({where:{id:pool.id},data:{ownerOrgId:null}}),/SHIPPING_GENERAL_CUSTOMER_IMMUTABLE/);
   const publicData=transportSnapshot(job).data;assert.equal(publicData.actualRequesterCountry,undefined);assert.equal(publicData.actualRequesterName,undefined);assert.equal(publicData.actualRequesterAddress,undefined);assert.equal(publicData.actualRequesterPhone,undefined,'internal requester contact is not implicitly shared');
+  await assert.rejects(saveFreight(db,orgId,actorId,'jobs',{...input,clientKey:randomUUID(),data:{...data,actualRequesterRole:'invalid'}}),/FREIGHT_CUSTOMER_ROLE/);
+  for(const role of ['shipper','consignee','notify']){
+   const person={name:data.actualRequesterName,phone:data.actualRequesterPhone,address:data.actualRequesterAddress,country:data.actualRequesterCountry};
+   const roleData={...data,actualRequesterRole:role,[role+'Party']:person,notifySameAsConsignee:role==='consignee'};
+   const selected=await saveFreight(db,orgId,actorId,'jobs',{...input,clientKey:randomUUID(),data:roleData});
+   assert.equal(selected.data.actualRequesterRole,role);assert.equal(selected.data[role+'Party'].name,data.actualRequesterName);assert.equal(selected.data[role+'Id'],undefined);
+   if(role==='consignee')assert.equal(selected.data.notifyParty.name,data.actualRequesterName);
+   assert.equal(transportSnapshot(selected).data.actualRequesterRole,undefined,'private requester role is not added to public whitelist');
+   await assert.rejects(saveFreight(db,orgId,actorId,'jobs',{...input,clientKey:randomUUID(),data:{...roleData,[role+'Party']:{...person,phone:'Wrong phone'}}}),/FREIGHT_CUSTOMER_ROLE/);
+  }
   const before=await db.$queryRawUnsafe('SELECT data,"requestSnapshot" FROM "FreightJob" WHERE id=$1',job.id);
   const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(row=>row.version==='20261114090000_shipping_general_customer');await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);assert.deepEqual(await db.$queryRawUnsafe('SELECT data,"requestSnapshot" FROM "FreightJob" WHERE id=$1',job.id),before);
   const edit=await saveFreight(db,orgId,actorId,'jobs',{...input,customerId:pool.id,version:job.version,data:{...data,actualRequesterPhone:'+84 777'}},job.id);assert.equal(edit.data.actualRequesterPhone,'+84 777');assert.equal(edit.requestCreatedByOrgId,orgId);assert.equal(edit.customerId,pool.id);

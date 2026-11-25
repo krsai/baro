@@ -15,6 +15,10 @@ export async function attachShippingGeneralCustomer(db:any,orgId:number,rows:any
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 export function generalCustomerFields(data:any){
  const result:any={generalCustomer:true};
+ if(data.actualRequesterRole!=null){
+  if(!['shipper','consignee','notify'].includes(data.actualRequesterRole))fail('FREIGHT_CUSTOMER_ROLE');
+  result.actualRequesterRole=data.actualRequesterRole;
+ }
  for(const [key,max] of Object.entries({actualRequesterName:200,actualRequesterPhone:80})){
   const value=data[key];
   if(typeof value!=='string'||!value.trim()||value.length>max)fail('SHIPPING_REQUESTER_REQUIRED');
