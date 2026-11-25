@@ -1,4 +1,5 @@
 import {invoicePaymentAccountText} from '../frontend/src/constants/invoicePaymentAccount.js';
+import {materialItemText} from '../frontend/src/constants/materialItems.js';
 import {invoicePartyText} from '../frontend/src/constants/invoiceParty.js';
 import {EXPENSE_LOOKUP_TEXT} from '../frontend/src/constants/expenseLookup.js';
 import assert from 'node:assert/strict';
@@ -23,7 +24,7 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/${path.basename(html)}`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const [lang,width,failure] of [...['ko','en','vi'].flatMap(lang=>[1440,390].map(width=>[lang,width,'none'])),['en',1440,'save'],['en',1440,'issue']]){
-  if((process.argv.includes('--customer-only')||process.argv.includes('--layout-only')||process.argv.includes('--codes-only'))&&failure!=='none')continue;
+  if((process.argv.includes('--customer-only')||process.argv.includes('--layout-only')||process.argv.includes('--codes-only')||process.argv.includes('--selection-only'))&&failure!=='none')continue;
   if(process.argv.includes('--service')&&lang!=='en')continue;
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],saves=[],issues=[],sourceReads=[];let failed=false;
   console.log('Checking general invoice',lang,width,failure,process.argv.includes('--material-only')?'material':'standard');
@@ -45,7 +46,7 @@ try{
    if(req.method()==='POST'&&url.pathname.endsWith('/drafts')){const body=req.postDataJSON();saves.push(body);assert.equal(body.documentKind,'GENERAL');assert.deepEqual(body.orders,[]);assert.equal(body.basis,null);assert.equal(calculateGeneralInvoiceDraft(body.lines,body.currency).amount,'1375000');if(failure==='save'&&!failed){failed=true;return route.abort('failed');}return route.fulfill({headers,json:{id:'draft',revision:1,clientKey:body.clientKey}});}
    throw new Error('Unexpected invoice request: '+req.method()+' '+url.pathname);
   });
-  await page.route('**/material-items/options?*',route=>route.fulfill({headers,json:[{id:'material-master',baseId:20,unitId:9,variantId:'material-variant',variantRevision:2,data:{nameEn:'Poly Bag Material',nameKo:'Poly Bag Material',nameVi:'Poly Bag Material',unit:{id:9,nameEn:'Pcs',nameKo:'\uAC1C',nameVi:'C\u00e1i'},variantId:'material-variant',variantRevision:2}}]}));
+  await page.route('**/material-items/options?*',route=>route.fulfill({headers,json:[{id:'material-master',baseId:20,unitId:9,variantId:'material-variant',variantRevision:2,data:{nameEn:'Poly Bag Material',nameKo:'Poly Bag Material',nameVi:'Poly Bag Material',details:{length:30,width:40,height:0.08},unit:{id:9,nameEn:'Pcs',nameKo:'\uAC1C',nameVi:'C\u00e1i'},variantId:'material-variant',variantRevision:2}}]}));
   await page.goto(`http://127.0.0.1:${port}/${path.basename(html)}`);
   const t=generalInvoiceText[lang],u=invoiceUi[lang];
   await page.getByRole('combobox',{name:new RegExp('^'+t.type,'i')}).click();await page.getByRole('option',{name:new RegExp('^'+t.general+'$','i')}).click();
@@ -83,7 +84,10 @@ try{
    await code.fill('PBGV');await code.press('Enter');
    const materialDialog=page.getByRole('dialog');await materialDialog.waitFor();
    await materialDialog.getByRole('row').filter({hasText:'Poly Bag Material'}).getByRole('button').click();await materialDialog.waitFor({state:'hidden'});
-   assert.ok(await row.getByRole('textbox',{name:roleName(t.description)}).inputValue());
+   assert.equal(await row.getByRole('textbox',{name:roleName(t.description)}).inputValue(),'Poly Bag Material / 30 × 40 × 0.08 Mm');
+   const materialButton=row.getByRole('button',{name:materialItemText[lang].select,exact:true});
+   await materialButton.click();await materialDialog.waitFor();await page.keyboard.press('Escape');await materialDialog.waitFor({state:'hidden'});
+   assert.equal(await row.getByRole('textbox',{name:roleName(t.description)}).inputValue(),'Poly Bag Material / 30 × 40 × 0.08 Mm');
    assert.equal(await row.getByRole('textbox',{name:roleName(t.unit)}).inputValue(),({ko:'\uAC1C',en:'Pcs',vi:'C\u00e1i'})[lang]);
   }else{await code.fill('GENV');await code.press('Enter');assert.match(await row.getByRole('textbox',{name:roleName(t.description)}).inputValue(),roleName(({ko:'\uC77C\uBC18 \uB9E4\uCD9C',en:'General sales',vi:'Doanh thu kh\u00e1c'})[lang]));}
   const quantity=row.getByRole('textbox',{name:roleName(t.quantity)});await quantity.click();await page.waitForFunction(()=>{const input=document.activeElement;return input?.value==='1'&&input.selectionStart===0&&input.selectionEnd===1;});await page.keyboard.type('2');assert.equal(await quantity.inputValue(),'2');
@@ -107,5 +111,5 @@ try{
   }
   await page.close();
  }
- console.log(process.argv.includes('--codes-only')?'PASS: three-row company details without internal codes, POL/Poly Bag/Korean and transport code selection, scoped FK through VAT/issue/PDF; '+(process.argv.includes('--service')?'SERVICE en desktop/mobile':'MANUFACTURER ko/en/vi desktop/mobile'):process.argv.includes('--layout-only')?'PASS: invoice currency metadata, 36px controls, party/address alignment, item input alignment, codes/VAT/issue and PDF; ko/en/vi desktop/mobile.':process.argv.includes('--customer-only')?'PASS: invoice customer code column, code search/selection and original buyer ID; ko/en/vi desktop/mobile.':'General invoice workspace: ko/en/vi desktop/mobile, customer without orders, codes/items/VAT, bank confirmation, issue and uncertain save/issue retries passed.');
+ console.log(process.argv.includes('--selection-only')?'PASS: material name/specification, reselect/cancel, unit/FK and issuance; ko/en/vi desktop/mobile.':process.argv.includes('--codes-only')?'PASS: three-row company details without internal codes, POL/Poly Bag/Korean and transport code selection, scoped FK through VAT/issue/PDF; '+(process.argv.includes('--service')?'SERVICE en desktop/mobile':'MANUFACTURER ko/en/vi desktop/mobile'):process.argv.includes('--layout-only')?'PASS: invoice currency metadata, 36px controls, party/address alignment, item input alignment, codes/VAT/issue and PDF; ko/en/vi desktop/mobile.':process.argv.includes('--customer-only')?'PASS: invoice customer code column, code search/selection and original buyer ID; ko/en/vi desktop/mobile.':'General invoice workspace: ko/en/vi desktop/mobile, customer without orders, codes/items/VAT, bank confirmation, issue and uncertain save/issue retries passed.');
 }finally{await browser?.close();server.kill();for(const file of [html,jsx])if(existsSync(file))unlinkSync(file);}
