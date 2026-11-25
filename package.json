@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:api-cache-races": "node --test scripts/api-cache-races.test.mjs",
     "test:logistics-status": "npm --prefix backend run build && node --test scripts/logistics-status.test.mjs scripts/bank-ledger.test.mjs scripts/access-policy-regression.test.mjs scripts/industry-menu-policy.test.mjs scripts/company-menu-layout.test.mjs scripts/customer-production-report-regression.test.mjs && node scripts/logistics-status-browser.test.mjs",
     "test:ledger-management-numbers": "npm --prefix backend run build && node --test scripts/ledger-management-numbers.test.mjs scripts/ledger-edit-read.test.mjs scripts/accounting-alerts.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/ledger-management-numbers-browser.test.mjs",
     "test:appearance": "node --test scripts/appearance-preferences.test.mjs && node scripts/appearance-browser.test.mjs",

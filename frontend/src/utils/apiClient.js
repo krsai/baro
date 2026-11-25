@@ -14,7 +14,11 @@ const requestContext = {
   orgId: null,
 };
 const workspaceClientId=typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():'';
-export const clearGetResponseCache=()=>getResponseCache.clear();
+export const clearGetResponseCache = () => {
+  getResponseCache.clear();
+  inFlightGetRequests.clear();
+  getCacheWriteOwners.clear();
+};
 export const fetchWorkspaceEvents=async(orgId,signal,accessToken)=>{
  const token=accessToken||requestContext.accessToken||await resolveSupabaseSessionAccessToken();
  if(!token)throw Object.assign(Error('WORKSPACE_CONTEXT_REQUIRED'),{status:403});
@@ -24,6 +28,7 @@ const DEFAULT_REQUEST_SCOPE_GROUP = 'workspace';
 const DEFAULT_GET_CACHE_TTL_MS = 45_000;
 const getResponseCache = new Map();
 const inFlightGetRequests = new Map();
+const getCacheWriteOwners = new Map();
 const activeRequestScopeByGroup = new Map();
 const activeRequestScopeEntriesByGroup = new Map();
 const requestScopeSchedulerByGroup = new Map();
@@ -53,13 +58,16 @@ const invalidateCacheByPath = (mutationPath) => {
     .flatMap(([, prefixes]) => prefixes);
 
   if (prefixesToInvalidate.length === 0) {
-    getResponseCache.clear();
+    clearGetResponseCache();
     return;
   }
 
-  for (const [key] of getResponseCache.entries()) {
-    if (prefixesToInvalidate.some((prefix) => key.includes(prefix))) {
-      getResponseCache.delete(key);
+  // Invalidate pending snapshots too, retaining unrelated request sharing.
+  for (const entries of [getResponseCache, inFlightGetRequests, getCacheWriteOwners]) {
+    for (const key of entries.keys()) {
+      if (prefixesToInvalidate.some((prefix) => key.includes(prefix))) {
+        entries.delete(key);
+      }
     }
   }
 };
@@ -245,9 +253,17 @@ export const setRequestContext = (next = {}) => {
   const normalizedEmail =
     typeof next.userEmail === 'string' ? next.userEmail.trim().toLowerCase() : '';
   const parsedOrgId = Number(next.orgId);
+  const normalizedOrgId = Number.isFinite(parsedOrgId) && parsedOrgId > 0 ? parsedOrgId : null;
+  if (
+    requestContext.accessToken !== normalizedAccessToken ||
+    requestContext.userEmail !== normalizedEmail ||
+    requestContext.orgId !== normalizedOrgId
+  ) {
+    clearGetResponseCache();
+  }
   requestContext.accessToken = normalizedAccessToken;
   requestContext.userEmail = normalizedEmail;
-  requestContext.orgId = Number.isFinite(parsedOrgId) && parsedOrgId > 0 ? parsedOrgId : null;
+  requestContext.orgId = normalizedOrgId;
 };
 
 export const getRequestContext = () => ({
@@ -685,6 +701,8 @@ export const requestJSON = async (path, options = {}) => {
       : execute();
   }
 
+  const cacheWriteOwner = Symbol('get-cache-write');
+  getCacheWriteOwners.set(cacheKey, cacheWriteOwner);
   const networkPromise = shouldScheduleByScope
     ? scheduleScopedRequest({
         groupId: schedulerGroupId,
@@ -697,13 +715,18 @@ export const requestJSON = async (path, options = {}) => {
   }
   try {
     const data = await networkPromise;
-    getResponseCache.set(cacheKey, {
-      data,
-      expiresAt: Date.now() + effectiveCacheTtl,
-    });
+    if (getCacheWriteOwners.get(cacheKey) === cacheWriteOwner) {
+      getResponseCache.set(cacheKey, {
+        data,
+        expiresAt: Date.now() + effectiveCacheTtl,
+      });
+    }
     return cloneResponseData(data);
   } finally {
-    if (shouldShareInFlight) {
+    if (getCacheWriteOwners.get(cacheKey) === cacheWriteOwner) {
+      getCacheWriteOwners.delete(cacheKey);
+    }
+    if (shouldShareInFlight && inFlightGetRequests.get(inFlightKey) === networkPromise) {
       inFlightGetRequests.delete(inFlightKey);
     }
   }
