@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {runInNewContext} from 'node:vm';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
@@ -6,6 +7,22 @@ import {PGlite} from '@electric-sql/pglite';
 const require=createRequire(import.meta.url);
 const {validateGeneralInvoiceCodes,calculateGeneralInvoice}=require('../backend/dist/services/generalInvoice');
 const migration=await readFile(new URL('../backend/prisma/migrations/20261125020000_general_invoice_material_selection/migration.sql',import.meta.url),'utf8');
+
+test('startup accepts the generated client and still rejects missing invoice material fields',async()=>{
+ const {Prisma}=require('../backend/node_modules/@prisma/client');
+ const built=await readFile(new URL('../backend/dist/index.js',import.meta.url),'utf8');
+ const start=built.indexOf('function assertGeneratedPrismaClientShape()');
+ const end=built.indexOf('\nassertGeneratedPrismaClientShape();',start);
+ assert.ok(start>=0&&end>start);
+ const check=built.slice(start,end)+'\nassertGeneratedPrismaClientShape();';
+ assert.doesNotThrow(()=>runInNewContext(check,{client_1:{Prisma}}));
+ const broken=structuredClone(Prisma.dmmf.datamodel);
+ const model=broken.models.find(row=>row.name==='InvoiceGeneralLine');
+ model.fields=model.fields.filter(row=>row.name!=='materialItemId');
+ assert.throws(()=>runInNewContext(check,{client_1:{Prisma:{dmmf:{datamodel:broken}}}}),/InvoiceGeneralLine.materialItemId is missing/);
+ const source=await readFile(new URL('../backend/src/index.ts',import.meta.url),'utf8');
+ for(const column of ['materialBaseId','materialVariantId'])assert.ok(source.includes('"tableName":"InvoiceGeneralLine","columnName":"'+column+'"'),'SQL generated columns remain in database startup checks');
+});
 
 test('invoice material migration retries preserve historical lines and protect company, code, variant and unit FKs',async()=>{
  const db=new PGlite();
