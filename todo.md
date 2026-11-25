@@ -1,3 +1,4 @@
+- SR 슬라이더 삼각형 겹침 정정: 구현·인코딩·브라우저·프런트 빌드 확인 완료 / 운영 배포·인수 미확인. 사용자 의도는 크기 축소가 아니라 반투명 회색 중첩 제거다. 삼각형은 원래 24×24로 복구하고 비활성 선/삼각형에 같은 불투명 grey.400을 적용했다. 실제 브라우저에서 양쪽 rgb(189,189,189), opacity 1과 카드 유지 확인. 카드 상세 Tooltip·슬라이더 동작·저장값은 보존한다.
 - SR 조회 구간 중복 상세 제거: 구현·인코딩·브라우저 hover/키보드 상세 조회 및 카드/슬라이더 유지 확인 완료 / 프런트 빌드·번역 검사 완료 / 운영 배포·인수 미확인. 하단 중복 주소/지점 상세를 제거하고 원본의 업체명·국가·주소·담당자·전화는 해당 카드 Tooltip으로 옮겼다. 모바일은 공통 Tooltip 길게 누르기를 사용하며 터치 실기기 검증은 미실시. 저장/API/원본 변경 없음.
 - SR 구간 삼각형 크기 정정: 카드·슬라이더 제거 변경 f9a246d5는 사용자 정정으로 되돌렸다. 기존 카드/슬라이더/조회 상세를 복구하고 방향 삼각형의 SVG 영역만 24×24에서 12×8로 축소해 구간선 높이에 맞췄다. 구현·프런트 빌드·인코딩·브라우저 카드 4개/슬라이더 유지 및 삼각형 12×8 크기 확인 완료 / 운영 배포·인수 미확인.
 - Route date inputs: implemented; backend/frontend builds, 8 regression tests, encoding and i18n checks passed; production deployment and user acceptance unverified. First stop uses existing Cargo Ready Date; other dates remain semantically unassigned.
