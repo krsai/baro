@@ -7,6 +7,11 @@ export function shippingModeKey(job){
 }
 export function shippingModeLabel(job,languageCode){
  const x=shippingEditorText[languageCode]||shippingEditorText.en,e=freightJobEditorText[languageCode]||freightJobEditorText.en;
- return ({FCL:x.seaFcl,LCL:x.seaLcl,SEA:x.sea,AIR:x.air,ROAD:x.road,EXPRESS:e.EXPRESS})[shippingModeKey(job)]||'—';
+ return ({FCL:'FCL',LCL:'LCL',SEA:x.sea,AIR:x.air,ROAD:x.road,EXPRESS:e.EXPRESS})[shippingModeKey(job)]||'—';
 }
 export const shippingRequestDate=job=>job.createdAt&&dayjs(job.createdAt).isValid()?dayjs(job.createdAt).format('YYYY-MM-DD'):'—';
+
+export function shippingEndpointLabel(job,key){
+ const data=job.data||{},node=data.workScope?.[key==='origin'?'start':'end'];
+ return data.routeLocationDetails?.[node]?.label?.trim()||data[key]||'\u2014';
+}
