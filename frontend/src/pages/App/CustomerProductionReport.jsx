@@ -1,3 +1,5 @@
+import {RecordMenuButton} from '../../components/RecordInteraction';
+import {isRecordActionTarget} from '../../utils/recordInteraction.mjs';
 import CompletionFilter from '../../components/CompletionFilter';
 import Dialog from '../../components/AppDialog';
 import ActionNotice from '../../components/ActionNotice';
@@ -246,6 +248,7 @@ const CustomerProductionReport = () => {
     });
   }, [customerId, data.rows, includeCompleted, search]);
   const handleRowContextMenu = useCallback((event, styleRow) => {
+    if(event.type==='contextmenu'&&isRecordActionTarget(event))return;
     event.preventDefault();
     setContextMenuState({
       mouseX: event.clientX - 2,
@@ -298,7 +301,7 @@ const CustomerProductionReport = () => {
                   <TableCell align="right">{fmt(row.producedQuantity)}/{fmt(row.orderedQuantity)}</TableCell>
                   <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={row.progressPercent} status={row.status} /></TableCell>
                   <TableCell><ReportStatusChip status={row.status} languageCode={languageCode} /></TableCell>
-                  <TableCell align="center"><Tooltip title={text.schedule}><IconButton size="small" color="primary" aria-label={text.schedule} onClick={() => openDailyProducedCalendar(row)}><CalendarMonthIcon fontSize="small" /></IconButton></Tooltip></TableCell>
+                  <TableCell align="center">{soleStyle&&<RecordMenuButton languageCode={languageCode} onOpenMenu={event=>handleRowContextMenu(event,soleStyle)}/>}<Tooltip title={text.schedule}><IconButton size="small" color="primary" aria-label={text.schedule} onClick={() => openDailyProducedCalendar(row)}><CalendarMonthIcon fontSize="small" /></IconButton></Tooltip></TableCell>
                 </TableRow>
               </React.Fragment>;
             })}</TableBody>
@@ -399,7 +402,7 @@ const CustomerProductionReport = () => {
                   <TableCell><ReportStatusChip status={dailyProducedRow?.status} languageCode={languageCode} /></TableCell>
                 </TableRow>
                 {(dailyProducedRow?.styles || []).map((styleRow) => <TableRow key={styleRow.styleId} tabIndex={0} data-keyboard-context-menu="true" aria-haspopup="menu" onContextMenu={(event) => handleRowContextMenu(event, styleRow)}>
-                  <TableCell>{styleRow.styleName || styleRow.styleCode || '-'}</TableCell>
+                  <TableCell><RecordMenuButton languageCode={languageCode} onOpenMenu={event=>handleRowContextMenu(event,styleRow)}/>{styleRow.styleName || styleRow.styleCode || '-'}</TableCell>
                   <TableCell align="right">{fmt(styleRow.producedQuantity)}/{fmt(styleRow.orderedQuantity)}{styleRow.priorQuantity > 0 && <Typography variant="caption" display="block">{languageCode === 'ko' ? '이전 완료' : languageCode === 'vi' ? 'Hoàn thành trước' : 'Previous completion'} {fmt(styleRow.priorQuantity)}</Typography>}</TableCell>
                   <TableCell><ReportProgressCell percent={styleRow.progressPercent} status={styleRow.status} /></TableCell>
                   <TableCell><ReportStatusChip status={styleRow.status} languageCode={languageCode} onClick={['ADMIN', 'OPERATOR', 'ACCOUNTANT'].includes(activeOrgRole) ? () => setPriorCompletionRow(styleRow) : undefined} /></TableCell>

@@ -41,6 +41,8 @@
 
 ## UI·저장·갱신
 
+- 클릭 동작은 새 화면에도 공통 적용한다. 일반 업무 목록은 `RecordInteractionScope`·`RecordRow`로 원클릭 선택/강조, 더블클릭·Enter 열기, Space 선택을 제공한다. 번호·코드·이름의 명시적 열기는 `RecordOpenButton`으로 원클릭/터치/키보드 실행하며 자식 버튼·입력·링크가 행 열기를 실행하지 않는다. 기존 우클릭 작업에는 같은 메뉴를 여는 `RecordMenuButton`을 제공하고 브라우저의 링크·입력 메뉴는 보존한다. 검색 선택창의 후보 탐색/명시적 확정, 좌우 상세의 원클릭 미리보기, 펼치기·다중 선택·드래그는 역할별 예외로 유지하고 `data-record-interaction`으로 선언한다. 화면별 열기 이벤트를 복제하지 않으며 `check:ui-consistency`와 `test:record-interaction`으로 검증한다. 전체 계약은 공통 UI 기준을 따른다.
+
 - 앱 테마는 개인 설정의 기본/컴팩트 두 가지를 공통 theme/ui 계층으로 관리한다. 기본은 기존 스타일이며 개인·회사별 브라우저 선택이다. 전환으로 탭·모달·입력을 재생성하지 않고 글자/상태색·터치 조작을 보존한다. 문서/인쇄용 InvoiceSheet는 기본 테마와 변수를 고정한다. 개별 화면 CSS로 테마를 따로 덮어쓰지 않는다.
 
 - 운송 의뢰·업무·서류의 당사자 표기는 한영베 모두 Shipper / Consignee / Notify Party다. 의뢰의 별도 제목행과 Same As Consignee 체크는 제거하며 Notify Party는 기본 Consignee를 따르고 직접 다른 업체를 선택하면 독립한다. 업무는 왼쪽 관리 정보·오른쪽 BL 계열 편집 양식으로 배치하며 모바일도 관리 정보부터 표시한다. 원본 SR/거래 FK·기존 BL/출력본을 보존하면서 업무 수정본은 workDetails에 저장한다. 고객 응답 whitelist에 내부 수정본을 임의 추가하지 않는다.

@@ -999,7 +999,7 @@ const QcReview = () => {
 
                     return (
                       <React.Fragment key={row.id}>
-                        <TableRow
+                        <TableRow data-record-interaction="expand"
                           hover
                           tabIndex={0} onKeyDown={activateOnKeyboard} aria-expanded={isExpanded}
                           onClick={() => handleToggleExpand(row)}

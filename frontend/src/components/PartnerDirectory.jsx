@@ -1,8 +1,9 @@
+import {RecordInteractionScope, RecordRow, RecordOpenButton} from './RecordInteraction';
 import {titleCaseWords} from '../utils/humanTextCase.mjs';
 import SearchPanel from './SearchPanel';
 import {PARTY_KIND_TEXT} from '../constants/partyKind';
 import React,{useMemo,useState} from 'react';
-import {Button,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
+import {Button, Paper, Stack, Table, TableCell, TableContainer, TableHead, TableRow, Typography} from '@mui/material';
 import AppPageContainer from './AppPageContainer';
 import PartnerListPanel from './PartnerListPanel';
 import SearchInput from './SearchInput';
@@ -31,22 +32,22 @@ export default function PartnerDirectory({embedded=false,title,rows,loading,erro
    <Table size="small" sx={{minWidth:1040,tableLayout:'fixed'}} data-testid="partner-directory">
     <colgroup>{[100,75,190,80,100,125,150,95,110,220].map((width,index)=><col key={index} style={{width}}/>)}</colgroup>
     <TableHead><TableRow><TableCell>{partyText.label}</TableCell>{['code','name','country','contact','phone','email','status','registered','actions'].map(key=><TableCell key={key} align={key==='actions'?'right':'left'}>{labels[key]}</TableCell>)}</TableRow></TableHead>
-    <TableBody>
-     {loading?<TableStatusRow colSpan={10} state="loading"/>:error||!filtered.length?<TableStatusRow colSpan={10} state={error?'error':'empty'} onRetry={onRetry}/>:filtered.map(row=><TableRow key={row.id} hover onDoubleClick={()=>canOpen&&onOpen(row.source)} sx={{cursor:canOpen?'pointer':'default','& td':{py:1,overflowWrap:'anywhere'}}}>
+    <RecordInteractionScope>
+     {loading?<TableStatusRow colSpan={10} state="loading"/>:error||!filtered.length?<TableStatusRow colSpan={10} state={error?'error':'empty'} onRetry={onRetry}/>:filtered.map(row=><RecordRow key={row.id} hover recordKey={row.id} onOpen={()=>canOpen&&onOpen(row.source)} disabled={!canOpen} sx={{cursor:canOpen?'pointer':'default','& td':{py:1,overflowWrap:'anywhere'}}}>
       <TableCell>{partyText[row.source?.partyKind]||partyText.legacy}</TableCell>
       <TableCell>{row.source?.linkedCompany?.code||row.code||'-'}</TableCell>
       <TableCell>
        <Stack direction="row" alignItems="center" spacing={.75}>
-        <Button variant="text" disabled={!canOpen} onClick={()=>onOpen(row.source)} sx={{p:0,minWidth:0,justifyContent:'flex-start',textAlign:'left',textTransform:'none'}}>{row.name||'-'}</Button>
+        <RecordOpenButton disabled={!canOpen} onOpen={()=>onOpen(row.source)}>{row.name||'-'}</RecordOpenButton>
         {row.attentionLabel && <NotificationIndicator label={row.attentionLabel} />}
        </Stack>
        {row.subtitle && <Typography variant="caption" color="text.secondary">{row.subtitle}</Typography>}
       </TableCell>
       <TableCell>{row.country?getStaticOptionLabel('country',row.country,row.country,languageCode):'-'}</TableCell><TableCell>{titleCaseWords(row.contactName)||'-'}</TableCell><TableCell>{row.phone||'-'}</TableCell><TableCell>{row.email||'-'}</TableCell>
       <TableCell><StatusLabel tone={row.isActive===false?'gray':'green'} label={row.isActive===false?labels.inactive:labels.active}/></TableCell><TableCell>{registeredDate(row.registeredAt,languageCode)}</TableCell>
-      <TableCell align="right" data-table-actions><Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center" onDoubleClick={event=>event.stopPropagation()}><Button variant="outlined" disabled={!canOpen} onClick={()=>onOpen(row.source)}>{labels.detail}</Button>{renderActions?.(row.source)}</Stack></TableCell>
-     </TableRow>)}
-    </TableBody>
+      <TableCell align="right" data-table-actions><Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center" onDoubleClick={event=>event.stopPropagation()}><RecordOpenButton variant="outlined" sx={{px:1}} disabled={!canOpen} onOpen={()=>onOpen(row.source)}>{labels.detail}</RecordOpenButton>{renderActions?.(row.source)}</Stack></TableCell>
+     </RecordRow>)}
+    </RecordInteractionScope>
    </Table>
   </TableContainer></Paper>{children}
  </Container>;

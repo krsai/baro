@@ -1,5 +1,24 @@
 # 공통 UI 사용 기준
 
+일반 업무 목록의 클릭 계약은 새 화면을 포함해 공통으로 적용한다. `components/RecordInteraction.jsx`의 `RecordInteractionScope`로 목록별 선택 상태를 격리하고 `RecordRow`에 실제 `recordKey`, `onOpen`, 권한·로딩에 따른 `disabled`를 전달한다. 원클릭은 선택/강조만 하고 더블클릭·Enter는 열기, Space는 선택이다. 포커스·선택은 저장·초안 수정·화면 이동을 실행하지 않는다. PC와 모바일의 동일한 열기 동작을 번호·코드·이름·날짜 등의 `RecordOpenButton`으로 제공한다. 명시적 버튼은 원클릭·터치·키보드로 실행하며 더블클릭 시 중복 실행하지 않는다. 자식 버튼·링크·체크박스·입력의 클릭/더블클릭/키보드는 행 열기로 전파하지 않는다. 일반 행에 개별 `onClick`/`onDoubleClick`/열기 키 처리를 추가하지 않는다.
+
+기존 우클릭 작업은 유지하되 같은 실제 메뉴를 여는 `RecordMenuButton`(⋯)을 함께 제공한다. 키보드 ContextMenu/Shift+F10과 메뉴 닫기 후 포커스 복귀도 유지한다. 메뉴는 기존 콜백·권한·미저장/저장 중 제한을 공유하고 메뉴를 열기만 해서는 업무 값을 바꾸지 않는다. 입력·링크의 브라우저 기본 우클릭은 가로채지 않는다. 우클릭이 없던 화면에 빈 메뉴를 추가하지 않는다. 배정 카드의 ⋯ 조작은 드래그를 시작하지 않는다.
+
+행 안에서 선언한 모달·메뉴도 실제 DOM은 portal로 행 밖에 표시될 수 있다. 이 이벤트가 React 부모 행으로 전파되어 행을 선택하거나 열지 않도록 공통 `isRecordActionTarget`에서 DOM 소속을 확인한다. 화면별로 portal 예외를 복제하지 않는다.
+
+역할별 예외는 명시한다. 검색 선택창은 원클릭 후보 탐색과 더블클릭·Enter·선택 버튼의 확정을 구분한다(`lookup`). `DialogRecordList` 같은 좌우 목록은 원클릭 상세/미리보기(`preview`), QC·수량 검토는 펼치기(`expand`), 공정 행의 기존 다중 선택은 선택(`select`)을 유지한다. 원클릭 선택이 있는 업무 그리드와 검색/편집/인쇄 표를 일괄 변환하지 않는다. `data-record-interaction`으로 역할을 선언하며 `check:ui-consistency`의 정책 검사가 개별 열기 이벤트와 우클릭 전용 행을 차단한다. 실제 공통 동작 회귀는 `test:record-interaction`에서 한영베·기본/컴팩트·PC/터치로 검증한다.
+
+```jsx
+<RecordInteractionScope>
+  {rows.map(row => <RecordRow key={row.id} recordKey={row.id}
+    disabled={loading || !canOpen} onOpen={() => openRecord(row.id)}>
+    <TableCell><RecordOpenButton disabled={loading || !canOpen}
+      onOpen={() => openRecord(row.id)}>{row.number}</RecordOpenButton></TableCell>
+    <TableCell>{row.name}</TableCell>
+  </RecordRow>)}
+</RecordInteractionScope>
+```
+
 - 청구서 문서형 배치: 일반 청구 등록·상세·개정은 `GeneralInvoiceBody`/`GeneralInvoiceLineTable`, 헤더는 `InvoiceFormHeader`를 공유한다. 조회/편집 전환 때문에 상단 식별자나 회사 정보의 위치·테두리·열 순서를 바꾸지 않는다. 편집용 코드 선택과 행 작업은 기존 문서 칸에 추가하고 입력/포커스/권한 검증은 유지한다. `generalInvoiceLayout.mjs`의 열 계약을 화면과 영어 출력에서 함께 사용하며 앱/PDF는 기본 문서 테마로 고정한다. 화면에서 발행 snapshot을 직접 수정하는 것으로 취급하지 않으며 원본은 기존 개정 발행 절차로 보존한다.
 
 - 운송 목록 오른쪽 고정 열 제목은 ‘작업’이며 SR 보기와 거부된 원본 소유 SR의 영구 삭제 버튼을 함께 둔다. 접수된 DRAFT 건은 ‘접수’, 거부된 건은 ‘거부’로 표시한다. 거부는 운송 업무 상단의 전체 작업이며 미저장/저장 중/결과 불명 상태에서 실행하지 않는다. 영구 삭제는 복구 불가·백업 없음 확인을 거치고 실패 시 행을 보존한다. 실제 후속 참조·원본 소유 회사·권한·revision은 서버에서 검사한다.

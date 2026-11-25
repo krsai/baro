@@ -488,7 +488,7 @@ const ProcessMasterSection = ({
               const isSelected = selectedRowId === row.id;
               return (
                 <React.Fragment key={row.id}>
-                  <TableRow
+                  <TableRow data-record-interaction="select"
                     hover
                     selected={isSelected}
                     tabIndex={isSelectable?0:undefined} onKeyDown={activateOnKeyboard}

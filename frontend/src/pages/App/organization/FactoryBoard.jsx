@@ -1,22 +1,9 @@
-import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
+import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
+
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 ﻿import React, { useEffect, useState } from 'react';
-import {
-  Button,
-  Chip,
-  Paper,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  IconButton,
-  Tooltip,
-  Typography,
-} from '@mui/material';
+import {Button, Chip, Paper, Stack, Table, TableCell, TableContainer, TableHead, TableRow, IconButton, Tooltip, Typography} from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
@@ -289,7 +276,7 @@ const FactoryList = ({ embedded = false }) => {
                 </TableCell>
               </TableRow>
             </TableHead>
-            <TableBody>
+            <RecordInteractionScope>
               {loading ? (
                 <TableStatusRow colSpan={8} state="loading" />
               ) : queryFailed || factories.length === 0 ? (
@@ -304,10 +291,10 @@ const FactoryList = ({ embedded = false }) => {
                   const localizedNames = formatFactoryLocalizedNames(factory);
 
                   return (
-                    <TableRow
+                    <RecordRow
                       key={factory.id}
                       hover
-                      tabIndex={0} onKeyDown={event=>activateOnKeyboard(event,()=>handleRowDoubleClick(factory))} onDoubleClick={() => handleRowDoubleClick(factory)}
+                        recordKey={factory.id} onOpen={() => handleRowDoubleClick(factory)}
                       sx={{ cursor: 'pointer' }}
                     >
                       <TableCell>
@@ -322,7 +309,7 @@ const FactoryList = ({ embedded = false }) => {
                           ) : null}
                         </Stack>
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', color: 'primary.main' }}>{factory.factoryCode || '-'}</TableCell>
+                      <TableCell sx={{ fontWeight: 'bold', color: 'primary.main' }}><RecordOpenButton onOpen={() => handleRowDoubleClick(factory)}>{factory.factoryCode || '-'}</RecordOpenButton></TableCell>
                       <TableCell>{factory.address || '-'}</TableCell>
                       <TableCell>{formatFactoryContact(factory)}</TableCell>
                       <TableCell>{resolveFactoryManagerLabel(factory)}</TableCell>
@@ -340,11 +327,11 @@ const FactoryList = ({ embedded = false }) => {
                           </span>
                         </Tooltip>
                       </TableCell>
-                    </TableRow>
+                    </RecordRow>
                   );
                 })
               )}
-            </TableBody>
+            </RecordInteractionScope>
           </Table>
         </TableContainer>
       </Paper>

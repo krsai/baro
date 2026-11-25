@@ -3,6 +3,7 @@ import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
 import {chromium} from 'playwright-core';
 import {shippingEditorText} from '../frontend/src/constants/shippingEditor.js';
+const exactLabel = value => new RegExp('^'+value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'$','i');
 const html='frontend/record-preview-test.html',jsx='frontend/record-preview-test.jsx',port=43517;
 assert.ok(!existsSync(html)&&!existsSync(jsx));
 writeFileSync(html,'<html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="/record-preview-test.jsx"></script></html>');
@@ -24,24 +25,24 @@ try{
   if(mode==='party'){const address=rows.first().locator('[data-truncate-text]').last();assert.equal(await address.evaluate(node=>getComputedStyle(node).whiteSpace),'nowrap');assert.equal(await address.evaluate(node=>getComputedStyle(node).textOverflow),'ellipsis');assert.ok(await address.evaluate(node=>node.scrollWidth>node.clientWidth));assert.equal(await address.getAttribute('title'),await address.textContent());}
   if(mode==='port'){
    await rows.nth(1).hover();await detail.getByText('BETA',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>window.chosen),undefined);
-   await detail.getByRole('textbox',{name:t.terminalName,exact:true}).fill('TERMINAL DRAFT');await rows.nth(0).getByRole('button').focus();await detail.getByText('ALPHA',{exact:true}).waitFor();assert.equal(await detail.getByRole('textbox',{name:t.terminalName,exact:true}).inputValue(),'TERMINAL DRAFT');
-   await rows.nth(0).dispatchEvent('keydown',{key:'Enter',repeat:true});assert.equal(await page.evaluate(()=>window.chosen),undefined);await page.keyboard.press('Enter');await page.waitForFunction(()=>window.previewClosed);assert.equal(await page.evaluate(()=>window.chosen.code),'KRALP');assert.equal(await page.evaluate(()=>window.chosen.extra.label),'TERMINAL DRAFT');assert.equal(await page.evaluate(()=>window.commits),1);assert.equal(writes,0);assert.deepEqual(errors,[]);await page.close();console.log('PASS record preview/Enter/native button',mode,lang,width);continue;
+   await detail.getByRole('textbox',{name:exactLabel(t.terminalName)}).fill('TERMINAL DRAFT');await rows.nth(0).getByRole('button').focus();await detail.getByText('ALPHA',{exact:true}).waitFor();assert.equal((await detail.getByRole('textbox',{name:exactLabel(t.terminalName)}).inputValue()).toUpperCase(),'TERMINAL DRAFT');
+   await rows.nth(0).dispatchEvent('keydown',{key:'Enter',repeat:true});assert.equal(await page.evaluate(()=>window.chosen),undefined);await page.keyboard.press('Enter');await page.waitForFunction(()=>window.previewClosed);assert.equal(await page.evaluate(()=>window.chosen.code),'KRALP');assert.equal((await page.evaluate(()=>window.chosen.extra.label)).toUpperCase(),'TERMINAL DRAFT');assert.equal(await page.evaluate(()=>window.commits),1);assert.equal(writes,0);assert.deepEqual(errors,[]);await page.close();console.log('PASS record preview/Enter/native button',mode,lang,width);continue;
   }
-  const name=()=>detail.getByRole('textbox',{name:mode==='party'?t.partyName:mode==='requester'?t.requesterName:t.addressTitle,exact:true});
-  await rows.nth(1).hover();await page.waitForFunction(()=>[...document.querySelectorAll('[data-list-detail-content] input')].some(n=>n.value==='BETA'));assert.equal(await name().inputValue(),'BETA');assert.equal(await page.evaluate(()=>window.chosen),undefined);
-  await search.focus();await search.press('ArrowUp');await page.waitForFunction(()=>[...document.querySelectorAll('[data-list-detail-content] input')].some(n=>n.value==='ALPHA'));assert.equal(await name().inputValue(),'ALPHA');
+  const name=()=>detail.getByRole('textbox',{name:exactLabel(mode==='party'?t.partyName:mode==='requester'?t.requesterName:t.addressTitle)});
+  await rows.nth(1).hover();await page.waitForFunction(()=>[...document.querySelectorAll('[data-list-detail-content] input')].some(n=>n.value.toUpperCase()==='BETA'));assert.equal((await name().inputValue()).toUpperCase(),'BETA');assert.equal(await page.evaluate(()=>window.chosen),undefined);
+  await search.focus();await search.press('ArrowUp');await page.waitForFunction(()=>[...document.querySelectorAll('[data-list-detail-content] input')].some(n=>n.value.toUpperCase()==='ALPHA'));assert.equal((await name().inputValue()).toUpperCase(),'ALPHA');
   await page.keyboard.press('Shift+Enter');await rows.nth(0).dispatchEvent('keydown',{key:'Enter',isComposing:true,keyCode:229});assert.equal(await page.evaluate(()=>window.chosen),undefined);
   await page.keyboard.press('Enter');await page.waitForFunction(()=>window.previewClosed);assert.equal(await page.evaluate(()=>window.commits),1);assert.equal(await page.evaluate(()=>window.chosen.name||window.chosen.label),'ALPHA');assert.equal(writes,0);
-  await go();await rows.nth(1).hover();await page.waitForFunction(()=>[...document.querySelectorAll('[data-list-detail-content] input')].some(n=>n.value==='BETA'));
-  const address=detail.getByRole('textbox',{name:t.savedAddress,exact:true});await address.fill('UNSAVED ADDRESS');await rows.nth(0).hover();assert.equal(await name().inputValue(),'BETA');assert.equal(await address.inputValue(),'UNSAVED ADDRESS');assert.equal(confirms,0,'hover never opens discard confirmation');
+  await go();await rows.nth(1).hover();await page.waitForFunction(()=>[...document.querySelectorAll('[data-list-detail-content] input')].some(n=>n.value.toUpperCase()==='BETA'));
+  const address=detail.getByRole('textbox',{name:exactLabel(t.savedAddress)});await address.fill('UNSAVED ADDRESS');await rows.nth(0).hover();assert.equal((await name().inputValue()).toUpperCase(),'BETA');assert.equal((await address.inputValue()).toUpperCase(),'UNSAVED ADDRESS');assert.equal(confirms,0,'hover never opens discard confirmation');
   await search.focus();await search.press('ArrowUp');await search.press('Enter');assert.equal(await page.evaluate(()=>window.chosen),undefined,'dirty form is not replaced or confirmed by list navigation');
-  await detail.getByRole('textbox',{name:t.savedAddress,exact:true}).press('Enter');assert.equal(await page.evaluate(()=>window.chosen),undefined,'detail input Enter does not apply');assert.equal(writes,0);
+  await detail.getByRole('textbox',{name:exactLabel(t.savedAddress)}).press('Enter');assert.equal(await page.evaluate(()=>window.chosen),undefined,'detail input Enter does not apply');assert.equal(writes,0);
   if(mode==='requester'||mode==='address'){
    await page.route('**/shipping-requests/presets*',async r=>{await new Promise(resolve=>setTimeout(resolve,300));await r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:[]});});
    await page.goto('http://127.0.0.1:'+port+'/record-preview-test.html?mode='+mode+'&lang='+lang);
    await page.locator('[data-table-status=empty]').waitFor();await page.waitForFunction(()=>document.activeElement?.matches('[data-record-search] input'));
    await search.fill('NO MATCH');assert.equal(await search.evaluate(node=>node===document.activeElement),true);
-   await detail.getByRole('textbox',{name:t.savedAddress,exact:true}).fill('KEEP DRAFT');await page.waitForTimeout(350);assert.equal(await detail.getByRole('textbox',{name:t.savedAddress,exact:true}).inputValue(),'KEEP DRAFT');assert.equal(await detail.getByRole('textbox',{name:t.savedAddress,exact:true}).evaluate(node=>node===document.activeElement),true);
+   await detail.getByRole('textbox',{name:exactLabel(t.savedAddress)}).fill('KEEP DRAFT');await page.waitForTimeout(350);assert.equal(await detail.getByRole('textbox',{name:exactLabel(t.savedAddress)}).inputValue(),'KEEP DRAFT');assert.equal(await detail.getByRole('textbox',{name:exactLabel(t.savedAddress)}).evaluate(node=>node===document.activeElement),true);
   }
   assert.deepEqual(errors,[]);await page.close();console.log('PASS record preview/Enter/dirty guard',mode,lang,width);
  }

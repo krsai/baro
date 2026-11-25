@@ -1,9 +1,10 @@
+import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
 import Dialog from '../../../components/AppDialog';
 import TableStatusRow from '../../../components/TableStatusRow';
 import {dialogTitle} from '../../../constants/dialogTitles';
-import {keyboardAction} from '../../../utils/keyboardPolicy.mjs';
+
 import React,{useEffect,useState} from 'react';
-import {Button,DialogActions,DialogContent,DialogTitle,Stack,TextField,Paper,Table,TableHead,TableBody,TableRow,TableCell} from '@mui/material';
+import {Button, DialogActions, DialogContent, DialogTitle, Stack, TextField, Paper, Table, TableHead, TableRow, TableCell} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import {useAuth} from '../../../context/AuthContext';
 import {useLanguage} from '../../../context/LanguageContext';
@@ -21,7 +22,7 @@ export default function WorkplaceBoard(){
   setForm(null);setRevision(n=>n+1);emitWorkspaceDataChanged({orgId:activeOrgId,topics:['production-allowance-settings'],source:'workplaces'});
  }catch(e){setError(e.message||t.error);}finally{setBusy(false);}};
  return <Stack spacing={2}>{error&&<Alert severity="error">{error}</Alert>}{canEdit&&<Button sx={{alignSelf:'flex-start'}} variant="contained" onClick={()=>setForm({name:'',factoryCode:'',managementStartDate:'',address:''})}>{t.add}</Button>}
- <Paper variant="outlined" sx={{overflowX:'auto'}}><Table><TableHead><TableRow>{['name','code','start','address'].map(key=><TableCell key={key}>{t[key]}</TableCell>)}</TableRow></TableHead><TableBody>{!rows.length&&<TableStatusRow colSpan={4} languageCode={languageCode} state="empty"/>}{rows.map(row=><TableRow key={row.id} hover tabIndex={canEdit?0:undefined} onDoubleClick={()=>canEdit&&setForm({...row})} onKeyDown={e=>{if(canEdit&&e.target===e.currentTarget&&keyboardAction(e,'lookup')==='confirm'){e.preventDefault();setForm({...row});}}} sx={{cursor:canEdit?'pointer':undefined}}>{['name','factoryCode','managementStartDate','address'].map(key=><TableCell key={key}>{row[key]||'—'}</TableCell>)}</TableRow>)}</TableBody></Table></Paper>
+ <Paper variant="outlined" sx={{overflowX:'auto'}}><Table><TableHead><TableRow>{['name','code','start','address'].map(key=><TableCell key={key}>{t[key]}</TableCell>)}</TableRow></TableHead><RecordInteractionScope>{!rows.length&&<TableStatusRow colSpan={4} languageCode={languageCode} state="empty"/>}{rows.map(row=><RecordRow key={row.id} hover  recordKey={row.id} onOpen={()=>canEdit&&setForm({...row})} disabled={!canEdit}  sx={{cursor:canEdit?'pointer':undefined}}>{['name','factoryCode','managementStartDate','address'].map(key=><TableCell key={key}>{key==='name'?<RecordOpenButton disabled={!canEdit} onOpen={()=>setForm({...row})}>{row[key]||'—'}</RecordOpenButton>:row[key]||'—'}</TableCell>)}</RecordRow>)}</RecordInteractionScope></Table></Paper>
  <Dialog open={Boolean(form)} onClose={()=>!busy&&setForm(null)} fullWidth maxWidth="sm"><DialogTitle>{dialogTitle(form?.id?'workplaceEdit':'workplaceCreate',languageCode)}</DialogTitle><DialogContent><Stack spacing={2}>{[['name','name'],['factoryCode','code'],['managementStartDate','start'],['address','address']].map(([key,label])=><TextField key={key} label={t[label]} value={form?.[key]||''} required={['name','factoryCode','managementStartDate'].includes(key)} type={key==='managementStartDate'?'date':'text'} InputLabelProps={key==='managementStartDate'?{shrink:true}:undefined} disabled={busy} onChange={e=>setForm(previous=>({...previous,[key]:e.target.value}))}/>)}</Stack></DialogContent><DialogActions><Button variant="contained" disabled={busy||!form?.name?.trim()||!(/^[A-Z]{2,3}$/).test(form?.factoryCode||'')||!form?.managementStartDate} onClick={save}>{t.save}</Button></DialogActions></Dialog>
  </Stack>;
 }

@@ -1,6 +1,7 @@
+import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
 import Dialog from '../../../components/AppDialog';
 import GlobalNotice from "../../../components/AppNotice";
-import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
+
 import PayrollTargetSettings from './PayrollTargetSettings';
 import {workTimeText} from '../../../constants/workTime';
 import {payrollPayableMessage} from '../../../constants/payrollPayable';
@@ -12,7 +13,7 @@ import SearchInput from '../../../components/SearchInput';
 import {periodMonthKeys} from "../../../utils/periodRange.mjs";
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {Box,Button,Chip,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography,Tooltip} from '@mui/material';
+import {Box, Button, Chip, DialogActions, DialogContent, DialogTitle, MenuItem, Paper, Stack, Table, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Tooltip} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import CalculateIcon from '@mui/icons-material/Calculate';
 
@@ -471,7 +472,7 @@ const PayrollBoard = () => {
                 <TableCell sx={{ fontWeight: 700 }} align="center">{text.status}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{payrollSummaryText.lock}</TableCell>
               </TableRow></TableHead>
-              <TableBody>
+              <RecordInteractionScope>
                 {loading ? <TableStatusRow colSpan={isService?7:9} state="loading" />
                   : queryFailed || filteredMonthFactoryRows.length === 0 ? <TableStatusRow colSpan={isService?7:9} state={queryFailed ? 'error' : 'empty'} onRetry={() => load()} />
                     : filteredMonthFactoryRows.map((row) => {
@@ -502,12 +503,12 @@ const PayrollBoard = () => {
                       const totalPayroll = payrollAmountSummary(summaryEmployees);
                       const factoryLabel = resolveFactoryDisplayName(factory, languageCode);
                       return (
-                        <TableRow
+                        <RecordRow
                           key={key} hover sx={{ cursor: snapshot ? 'pointer' : 'default' }}
-                          tabIndex={snapshot?0:undefined} onKeyDown={activateOnKeyboard}
-                          onClick={() => snapshot && navigateToPath(`/payroll/${month}?factoryId=${factory.id}`, { label: `${text.title} ${month} · ${factoryLabel}` })}
+
+                          recordKey={key} onOpen={() => snapshot && navigateToPath(`/payroll/${month}?factoryId=${factory.id}`, { label: `${text.title} ${month} · ${factoryLabel}` })} disabled={!snapshot}
                         >
-                          <TableCell sx={{ fontWeight: 700 }}>{month}{snapshot?.payableDocument?.managementNumber&&<Typography variant="caption" display="block">{snapshot.payableDocument.managementNumber}</Typography>}</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}><RecordOpenButton onOpen={() => snapshot && navigateToPath(`/payroll/${month}?factoryId=${factory.id}`, { label: `${text.title} ${month} · ${factoryLabel}` })} disabled={!snapshot}>{month}{snapshot?.payableDocument?.managementNumber&&<Typography variant="caption" display="block">{snapshot.payableDocument.managementNumber}</Typography>}</RecordOpenButton></TableCell>
                           <TableCell>{factoryLabel || '-'}</TableCell>
                           <TableCell align="right">{summaryEmployees.length}{text.peopleSuffix}{!isService&&`(${generalEmployees.length}, ${fixedOutputEmployees.length}, ${outputEmployees.length})`}</TableCell>
                           <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? generalPayroll || '-' : payrollSummaryText.pending}</TableCell>
@@ -536,10 +537,10 @@ const PayrollBoard = () => {
                               ariaLabel={`${resolveText(languageCode, 'lock')} ${month} ${factoryLabel}`}
                             />
                           </TableCell>
-                        </TableRow>
+                        </RecordRow>
                       );
                     })}
-              </TableBody>
+              </RecordInteractionScope>
             </Table>
           </TableContainer>
         </Paper>

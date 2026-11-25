@@ -1,6 +1,7 @@
+import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
 import ListPagination from '../../../components/ListPagination';
 import TableStatusRow from '../../../components/TableStatusRow';
-import {keyboardAction} from '../../../utils/keyboardPolicy.mjs';
+
 import {accountingOpeningText} from '../../../constants/accountingOpening';
 import ChangeApprovalDialog from '../../../components/ChangeApprovalDialog';
 import DeleteActionButton from '../../../components/DeleteActionButton';
@@ -16,7 +17,7 @@ import PageContentStack from '../../../components/PageContentStack';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchPanel from '../../../components/SearchPanel';
 import React, { useEffect, useState, useRef } from 'react';
-import {Button,CircularProgress,Box,Paper,MenuItem,TextField,Stack,Table,TableBody,TableCell,TableHead,TableRow,Typography} from '@mui/material';
+import {Button, CircularProgress, Box, Paper, MenuItem, TextField, Stack, Table, TableCell, TableHead, TableRow, Typography} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
 import { invoiceMessages } from '../../../constants/invoiceMessages';
@@ -85,18 +86,18 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
     {error&&<Alert severity="error" action={<Button onClick={()=>setReload(v=>v+1)}>{common.retry}</Button>}>{error}</Alert>}
     <Box sx={{overflowX:'auto'}}><Table size="small" sx={{minWidth:1100}}><TableHead><TableRow>
       {[common.issuedDate,flow.to,(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,entry.codeDescription,workspace.currency,labels.statement,labels.received,labels.balance,bank.createdBy,common.invoiceStatus,'PDF',change.DELETE].map((label,index)=><TableCell key={index} align={index>=5&&index<=7?'right':'left'}>{label}</TableCell>)}
-    </TableRow></TableHead><TableBody>
-      {loading?<TableStatusRow colSpan={12} languageCode={languageCode} state="loading"/>:!issued.rows.length?<TableStatusRow colSpan={12} languageCode={languageCode} error={Boolean(error)} onRetry={()=>setReload(v=>v+1)}/>:issued.rows.map(row=><TableRow key={row.id} data-cancelled={row.status==='CANCELLED'} hover tabIndex={0} onDoubleClick={event=>{if(!event.target.closest('button,a,input,select'))navigateToPath('/invoices/'+encodeURIComponent(row.id));}} onKeyDown={event=>{if(event.target===event.currentTarget&&keyboardAction(event,'lookup')==='confirm'){event.preventDefault();navigateToPath('/invoices/'+encodeURIComponent(row.id));}}} sx={{cursor:'pointer'}}>
+    </TableRow></TableHead><RecordInteractionScope>
+      {loading?<TableStatusRow colSpan={12} languageCode={languageCode} state="loading"/>:!issued.rows.length?<TableStatusRow colSpan={12} languageCode={languageCode} error={Boolean(error)} onRetry={()=>setReload(v=>v+1)}/>:issued.rows.map(row=><RecordRow key={row.id} data-cancelled={row.status==='CANCELLED'} hover  recordKey={row.id} onOpen={()=>navigateToPath('/invoices/'+encodeURIComponent(row.id))}  sx={{cursor:'pointer'}}>
         <TableCell sx={{whiteSpace:'nowrap'}}>{new Date(row.issuedAt).toLocaleDateString({ko:'ko-KR',vi:'vi-VN',en:'en-GB'}[languageCode]||'en-GB')}</TableCell>
-        <TableCell>{row.buyerName}</TableCell><TableCell>{(row.accountingCodes||[]).join(', ')||'\u2014'}</TableCell><TableCell><Typography noWrap sx={{maxWidth:240}} title={[row.invoiceNumber,...(row.descriptions||[]),...(row.orders||[]).map(order=>order.sourceOrderNumber)].filter(Boolean).join(' / ')}>{[row.invoiceNumber,...(row.descriptions||[])].filter(Boolean).join(' / ')}</Typography></TableCell><TableCell>{(row.currencyTotals||[{currencyCode:row.currencyCode}]).map(total=><div key={total.currencyCode}>{total.currencyCode}</div>)}</TableCell>
+        <TableCell>{row.buyerName}</TableCell><TableCell>{(row.accountingCodes||[]).join(', ')||'\u2014'}</TableCell><TableCell><RecordOpenButton onOpen={()=>navigateToPath('/invoices/'+encodeURIComponent(row.id))}><Typography noWrap sx={{maxWidth:240}} title={[row.invoiceNumber,...(row.descriptions||[]),...(row.orders||[]).map(order=>order.sourceOrderNumber)].filter(Boolean).join(' / ')}>{[row.invoiceNumber,...(row.descriptions||[])].filter(Boolean).join(' / ')}</Typography></RecordOpenButton></TableCell><TableCell>{(row.currencyTotals||[{currencyCode:row.currencyCode}]).map(total=><div key={total.currencyCode}>{total.currencyCode}</div>)}</TableCell>
         <TableCell align="right"><Typography variant="subtitle2">{row.currencyTotals?row.currencyTotals.map(total=><div key={total.currencyCode}>{amount(total.total,total.currencyCode)}</div>):amount(row.total,row.currencyCode)}</Typography></TableCell>
         <TableCell align="right">{row.currencyBalances?row.currencyBalances.map(total=><div key={total.currencyCode}>{amount(total.receivedAmount,total.currencyCode)}</div>):amount(row.receivedAmount,row.currencyCode)}</TableCell>
         <TableCell align="right" title={row.openingSettlementKind?`${(accountingOpeningText[languageCode]||accountingOpeningText.en)[row.openingSettlementKind]}: ${amount(row.openingSettlementAmount,row.currencyCode)}`:''}>{row.currencyBalances?row.currencyBalances.map(total=><div key={total.currencyCode}>{amount(total.balanceAmount,total.currencyCode)}</div>):amount(row.familyBalanceAmount,row.currencyCode)}</TableCell>
         <TableCell>{row.issuedByName||'\u2014'}</TableCell><TableCell><StatusLabel tone={row.status==='ISSUED'?'blue':'gray'} label={{ISSUED:ui.issued,CANCELLED:ui.cancelled,SUPERSEDED:ui.superseded}[row.status]||row.status}/></TableCell>
         <TableCell><Button aria-label={d.pdf} disabled={pdfBusy} onDoubleClick={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();printIssued(row);}}><InvoicePdfIcon/></Button></TableCell>
         <TableCell data-table-actions><DeleteActionButton aria-label={change.requestDelete} disabled={loading||requesting||!['ISSUED','CANCELLED'].includes(row.status)} onClick={event=>{event.stopPropagation();deleteInvoice(row);}}/></TableCell>
-      </TableRow>)}
-    </TableBody></Table></Box>
+      </RecordRow>)}
+    </RecordInteractionScope></Table></Box>
     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{p:1.5}}><Typography variant="caption" color="text.secondary">{ui.count}: {issued.rows.length}</Typography><ListPagination languageCode={languageCode} onPrevious={()=>setPage(v=>v-1)} onNext={()=>setPage(v=>v+1)} previousDisabled={!page||loading} nextDisabled={!issued.hasMore||loading} previousLabel={common.previous} nextLabel={common.next}><Typography variant="caption">{page+1}</Typography></ListPagination></Stack>
     </Paper>
     </>}

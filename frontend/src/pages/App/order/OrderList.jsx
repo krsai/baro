@@ -1,6 +1,7 @@
+import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
 import LocalizedDateField from '../../../components/LocalizedDateField';
 import Dialog from '../../../components/AppDialog';
-import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
+
 import {keyboardAction} from '../../../utils/keyboardPolicy.mjs';
 import Autocomplete from '../../../components/SearchableSelect';
 import {DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter} from '@dnd-kit/core';
@@ -3148,7 +3149,7 @@ const OrderList = () => {
                   </TableCell>
                 </TableRow>
               </TableHead>
-              <TableBody>
+              <RecordInteractionScope>
                 {!ordersLoaded ? (
                   <TableStatusRow colSpan={10} state="loading" />
                 ) : queryFailed || filteredOrders.length === 0 ? (
@@ -3161,16 +3162,16 @@ const OrderList = () => {
                       : order.hasAssignments ? orderPageText.deleteAssignmentBlocked : orderPageText.modificationLocked;
                     const progressStageLabel = getOrderWorkflowLabel(order.workflowStatus, languageCode);
                     return (
-                      <TableRow
+                      <RecordRow
                         key={order.id}
                         hover
-                        tabIndex={0} onKeyDown={event=>activateOnKeyboard(event,()=>handleEdit(order))} onDoubleClick={() => handleEdit(order)}
+                          recordKey={order.id} onOpen={() => handleEdit(order)}
                         sx={{ cursor: 'pointer' }}
                       >
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
                           <StatusLabel label={progressStageLabel} tone={ORDER_WORKFLOW_TONES[order.workflowStatus]} />
                         </TableCell>
-                        <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>{order.orderNumber}</TableCell>
+                        <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}><RecordOpenButton onOpen={()=>handleEdit(order)}>{order.orderNumber}</RecordOpenButton></TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
                           {resolveCustomerDisplayName(
                             { name: order.buyerOrgName || order.customerName || order.customer, nameKo: order.buyerOrgNameKo, nameVi: order.buyerOrgNameVi },
@@ -3233,11 +3234,11 @@ const OrderList = () => {
                             }}
                           />
                         </TableCell>
-                      </TableRow>
+                      </RecordRow>
                     );
                   })
                 )}
-              </TableBody>
+              </RecordInteractionScope>
             </Table>
           </TableContainer>
         </Paper>

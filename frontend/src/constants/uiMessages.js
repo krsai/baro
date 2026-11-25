@@ -3,6 +3,7 @@ import {titleCaseWords} from '../utils/humanTextCase.mjs';
 
 export const UI_MESSAGES = {
   common: {
+    recordActions: {ko: '작업 메뉴', en: 'Actions', vi: 'Thao Tác'},
     add: { ko: '추가', en: 'Add', vi: 'Thêm' },
     clearSearch: { ko: '검색어 지우기', en: 'Clear search', vi: 'Xóa từ khóa' },
     loading: { ko: '불러오는 중...', en: 'Loading...', vi: 'Đang tải...' },

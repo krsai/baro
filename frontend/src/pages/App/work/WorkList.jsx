@@ -1,5 +1,6 @@
+import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
 import Dialog from '../../../components/AppDialog';
-import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
+
 import SearchPanel from '../../../components/SearchPanel';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import DeleteActionButton from '../../../components/DeleteActionButton';
@@ -687,12 +688,12 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
           ) : loadError || factoryError || filteredLogs.length === 0 ? (
             <><QueryFeedback error={loadError || factoryError} onRetry={() => setReloadNonce(value => value + 1)} />{!loadError && !factoryError && <Typography variant="body2">{resolveText(TEXT.empty, languageCode)}</Typography>}</>
           ) : (
-            <Stack spacing={1}>
+            <RecordInteractionScope as={Stack} spacing={1}>
               {filteredLogs.map((log) => (
-                <Paper
+                <RecordRow as={Paper}
                   key={log.id}
                   variant="outlined"
-                  tabIndex={0} onKeyDown={event=>activateOnKeyboard(event,()=>handleOpen(log))} onDoubleClick={() => handleOpen(log)}
+                    recordKey={log.id} onOpen={() => handleOpen(log)}
                   sx={{
                     p: 1.25,
                     borderRadius: 1.5,
@@ -709,7 +710,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                       }}
                     >
                       <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                        {formatWorkLogDateRangeLabel(log)}
+                        <RecordOpenButton onOpen={()=>handleOpen(log)}>{formatWorkLogDateRangeLabel(log)}</RecordOpenButton>
                       </Typography>
                       <Tooltip title={getUiMessage('common.delete', '삭제', languageCode)}>
                         <span>
@@ -765,9 +766,9 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                       </Typography>
                     </Box>
                   </Stack>
-                </Paper>
+                </RecordRow>
               ))}
-            </Stack>
+            </RecordInteractionScope>
           )}
         </Box>
         <TableContainer sx={{ display: { xs: 'none', sm: 'block' } }}>
@@ -792,7 +793,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                 <TableCell align="right">&nbsp;</TableCell>
               </TableRow>
             </TableHead>
-            <TableBody>
+            <RecordInteractionScope>
               {loading ? (
                 <TableStatusRow
                   colSpan={7}
@@ -805,16 +806,16 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                 />
               ) : (
                 filteredLogs.map((log) => (
-                  <TableRow
+                  <RecordRow
                     key={log.id}
                     hover
-                    tabIndex={0} onKeyDown={event=>activateOnKeyboard(event,()=>handleOpen(log))} onDoubleClick={() => handleOpen(log)}
+                      recordKey={log.id} onOpen={() => handleOpen(log)}
                     sx={{
                       cursor: 'pointer',
                       '& td': { verticalAlign: 'middle' },
                     }}
                   >
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatWorkLogDateRangeLabel(log)}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}><RecordOpenButton onOpen={() => handleOpen(log)}>{formatWorkLogDateRangeLabel(log)}</RecordOpenButton></TableCell>
                     <TableCell>{log.factoryName || '-'}</TableCell>
                     <TableCell align="right">
                       {isOutsourcingMode ? log.partnerCount || 0 : log.workerCount || 0}
@@ -845,10 +846,10 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                         </span>
                       </Tooltip>
                     </TableCell>
-                  </TableRow>
+                  </RecordRow>
                 ))
               )}
-            </TableBody>
+            </RecordInteractionScope>
           </Table>
         </TableContainer>
       </Paper>

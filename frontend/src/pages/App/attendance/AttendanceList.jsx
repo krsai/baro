@@ -1,5 +1,6 @@
+import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
 import Dialog from '../../../components/AppDialog';
-import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
+
 import {workplaceText} from '../../../utils/serviceCompany.mjs';
 import SearchPanel from '../../../components/SearchPanel';
 import DeleteActionButton from '../../../components/DeleteActionButton';
@@ -764,7 +765,7 @@ const AttendanceList = () => {
                 <TableCell align="right">&nbsp;</TableCell>
               </TableRow>
             </TableHead>
-            <TableBody>
+            <RecordInteractionScope>
               {loadingRows || loadingFactories ? (
                 <TableStatusRow
                   colSpan={6}
@@ -791,10 +792,10 @@ const AttendanceList = () => {
                   });
 
                   return (
-                    <TableRow
+                    <RecordRow
                       key={row.workDate}
                       hover
-                      tabIndex={0} onKeyDown={event=>activateOnKeyboard(event,()=>handleOpenDetail(row))} onDoubleClick={() => handleOpenDetail(row)}
+                        recordKey={row.workDate} onOpen={() => handleOpenDetail(row)}
                       sx={{
                         cursor: 'pointer',
                         ...(isSpecialDay
@@ -807,10 +808,10 @@ const AttendanceList = () => {
                           : {}),
                       }}
                     >
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}><RecordOpenButton onOpen={() => handleOpenDetail(row)}>
                         {dateText}
                         {weekdayText ? ` ${weekdayText}` : ''}
-                      </TableCell>
+                      </RecordOpenButton></TableCell>
                       <TableCell sx={{ whiteSpace: 'nowrap' }}>{workTypeText}</TableCell>
                       <TableCell align="right">
                         <Tooltip describeChild title={formatTemplate(text(TEXT.workerCountMeaning, languageCode), { entered: row.enteredWorkerCount, target: row.activeWorkerCount })}>
@@ -836,11 +837,11 @@ const AttendanceList = () => {
                           </span>
                         </Tooltip>
                       </TableCell>
-                    </TableRow>
+                    </RecordRow>
                   );
                 })
               )}
-            </TableBody>
+            </RecordInteractionScope>
           </Table>
         </TableContainer>
       </Paper>

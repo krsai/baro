@@ -1,8 +1,9 @@
+import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
 import Dialog from '../../../components/AppDialog';
 import TableStatusRow from '../../../components/TableStatusRow';
 import useChangeDrivenEffect from '../../../hooks/useChangeDrivenEffect';
 import AppNotice from '../../../components/AppNotice';
-import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
+
 import SearchPanel from '../../../components/SearchPanel';
 import StyleProductPicker from './StyleProductPicker';
 import DeleteActionButton from '../../../components/DeleteActionButton';
@@ -695,7 +696,7 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
                 </TableCell>}
               </TableRow>
             </TableHead>
-            <TableBody>
+            <RecordInteractionScope>
               {!loadError && rows.length === 0 && (
                 <TableStatusRow colSpan={8} languageCode={languageCode} state={loading?"loading":"empty"}/>
               )}
@@ -705,10 +706,10 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
                   ? resolveStyleDeleteBlockedByWorkRecordsMessage(languageCode)
                   : getUiMessage('common.delete', '삭제', languageCode);
                 return (
-                  <TableRow
+                  <RecordRow
                     hover
                     key={style.id}
-                    tabIndex={0} onKeyDown={event=>activateOnKeyboard(event,()=>handleRowDoubleClick(style))} onDoubleClick={() => handleRowDoubleClick(style)}
+                      recordKey={style.id} onOpen={() => handleRowDoubleClick(style)}
                     sx={{ cursor: 'pointer' }}
                   >
                     <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={resolveCustomerDisplayName({ name: style.customer, nameKo: style.customerNameKo, nameVi: style.customerNameVi }, languageCode) || ''}>
@@ -717,9 +718,9 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
                     <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={style.name || ''}>
                       {style.name || '-'}
                     </TableCell>
-                    <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={style.styleCode || ''}>
+                    <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={style.styleCode || ''}><RecordOpenButton onOpen={() => handleRowDoubleClick(style)}>
                       {style.styleCode || style.id || '-'}
-                    </TableCell>
+                    </RecordOpenButton></TableCell>
                     {canViewProcessSummary ? (
                       <TableCell>
                         {style.hasTotalPT ? formatLocalizedSeconds(style.totalPT, languageCode) : '-'}
@@ -791,10 +792,10 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
                         </span>
                       </Tooltip>
                     </TableCell>}
-                  </TableRow>
+                  </RecordRow>
                 );
               })}
-            </TableBody>
+            </RecordInteractionScope>
           </Table>
         </TableContainer>
       </Paper>

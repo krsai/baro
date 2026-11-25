@@ -1,3 +1,5 @@
+import {RecordMenuButton} from '../../../components/RecordInteraction';
+import {isRecordActionTarget} from '../../../utils/recordInteraction.mjs';
 import LocalizedDateField from '../../../components/LocalizedDateField';
 import TableStatusRow from '../../../components/TableStatusRow';
 ﻿import React, { useEffect, useMemo, useState } from 'react';
@@ -186,6 +188,7 @@ const OnboardingBoard = () => {
   };
 
   const handleRowContextMenu = (event, row) => {
+    if(event.type==='contextmenu'&&isRecordActionTarget(event))return;
     event.preventDefault();
     setContextMenuState({
       requestId: row.id,
@@ -331,6 +334,7 @@ const OnboardingBoard = () => {
                       </TableCell>
                       <TableCell align="right">
                         <Box sx={{ display: 'inline-flex', gap: 1 }}>
+                          <RecordMenuButton label={text.detailView} onOpenMenu={event=>handleRowContextMenu(event,row)}/>
                           <Button
                             size="small"
                             variant="contained"

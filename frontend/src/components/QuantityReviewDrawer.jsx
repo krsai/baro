@@ -48,7 +48,7 @@ const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label
               );
               return (
                 <React.Fragment key={processKey}>
-                  <TableRow
+                  <TableRow data-record-interaction="expand"
                     hover
                     tabIndex={0} onKeyDown={activateOnKeyboard}
                     onClick={() => setExpandedProcessKey((current) => current === processKey ? '' : processKey)}

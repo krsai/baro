@@ -1,5 +1,6 @@
+import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../components/RecordInteraction';
 import CompletionFilter from '../../components/CompletionFilter';
-import {keyboardAction} from '../../utils/keyboardPolicy.mjs';
+
 import {accountingSummary} from '../../utils/accountingSummary.mjs';
 import {ACCOUNTING_CODE_TEXT} from '../../constants/accountingCode';
 import {expenseDeletionText} from '../../constants/expenseDeletion';
@@ -144,7 +145,6 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   const uniqueText=values=>[...new Set(values.filter(Boolean))].join(', ')||'\u2014';
   const codeSummary=items=>accountingSummary(items.map(item=>item.transactionCode?.code),languageCode);
   const descriptionSummary=items=>accountingSummary(items.map(item=>expenseLineDescription(item,languageCode)),languageCode);
-  const openRowOnClick = (event,row) => {event.stopPropagation();editRow(row);};
   return <AppPageContainer title={labels.costs} titleActions={<div className="cc-actions">
       <Button variant="contained" disableElevation className="cc-primary" disabled={canDraft!==true || loading || Boolean(errors.items) || !onNewRequest} onClick={onNewRequest}>{labels.addCost}</Button>
     </div>}><div className="compact-costs cc-live">
@@ -162,12 +162,12 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
       <div className="cc-total-amount"><span>{text.total}</span>{loading || error || !totals.length ? <strong>—</strong> : totals.map(total=><strong key={total.currency}>{money(total.amount,total.currency)}</strong>)}</div>
     </div>
       {loading ? <div className="cc-loading"><CircularProgress size={24} /></div> : error ? <Alert severity="error" action={<button className="cc-button" onClick={load}>{text.retry}</button>}>{error}</Alert> : <div className="cc-table-scroll is-dense">
-        {['items','documents'].includes(view) ? <table key={view}><thead><tr>{[labels.date,docText.payee,(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,docText.description,labels.currency,docText.total,labels.creator,workflow.status,''].map((label,index)=><th key={index} className={index===5?'cc-number':undefined}>{label}</th>)}</tr></thead><tbody>
-          {(view==='items'?requests.map(group=>({key:group.key,row:group.row,items:group.items,currencyTotals:group.currencyTotals,document:documentsById.get(group.row.expenseRequestId)})):filteredDocuments.map(document=>({key:document.id,row:{...document,transactionDate:document.requestDate,expenseRequestId:document.id},items:document.items,currencyTotals:document.currencyTotals||expenseCurrencyTotals(document.items),document}))).map(({key,row,items,currencyTotals,document},index)=><tr key={key} data-expense-row={row.id} data-expense-request={row.expenseRequestId} tabIndex={0} onDoubleClick={()=>editRow(row)} onKeyDown={event=>{if(event.target===event.currentTarget&&keyboardAction(event,'lookup')==='confirm')editRow(row);}}>
-            <td>{row.transactionDate}</td><td><button className="cc-cell-link" aria-label={text.details+' '+(index+1)} onClick={event=>openRowOnClick(event,row)}>{row.partner?.name||row.payeeEmployee?.name||'\u2014'}</button></td>
+        {['items','documents'].includes(view) ? <table key={view}><thead><tr>{[labels.date,docText.payee,(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,docText.description,labels.currency,docText.total,labels.creator,workflow.status,''].map((label,index)=><th key={index} className={index===5?'cc-number':undefined}>{label}</th>)}</tr></thead><RecordInteractionScope as="tbody">
+          {(view==='items'?requests.map(group=>({key:group.key,row:group.row,items:group.items,currencyTotals:group.currencyTotals,document:documentsById.get(group.row.expenseRequestId)})):filteredDocuments.map(document=>({key:document.id,row:{...document,transactionDate:document.requestDate,expenseRequestId:document.id},items:document.items,currencyTotals:document.currencyTotals||expenseCurrencyTotals(document.items),document}))).map(({key,row,items,currencyTotals,document},index)=><RecordRow as="tr" key={key} recordKey={key} data-expense-row={row.id} data-expense-request={row.expenseRequestId} onOpen={()=>editRow(row)}>
+            <td>{row.transactionDate}</td><td><RecordOpenButton className="cc-cell-link" aria-label={text.details+' '+(index+1)} onOpen={()=>editRow(row)}>{row.partner?.name||row.payeeEmployee?.name||'\u2014'}</RecordOpenButton></td>
             <td><span className="cc-list-text" title={codeSummary(items)}>{codeSummary(items)}</span></td><td><span className="cc-list-text" title={descriptionSummary(items)}>{descriptionSummary(items)}</span></td><td>{currencyTotals.filter(matchesCurrency).map(total=><div key={total.currency}>{total.currency}</div>)}</td><td className="cc-number cc-amount">{currencyTotals.filter(matchesCurrency).map(total=><div key={total.currency}>{money(total.amount,total.currency)}</div>)}</td><td>{row.createdByEmployee?.name||document?.createdByEmployee?.name||'\u2014'}</td><td><ApprovalStatusLabel status={document?.approval?.status||(row.expenseRequestId?'UNKNOWN':'NOT_REQUESTED')} languageCode={languageCode}/></td><td data-table-actions><ExpenseDeletionButton document={document} orgId={activeOrgId} languageCode={languageCode}/></td>
-          </tr>)}{!(view==='items'?requests:filteredDocuments).length&&<tr><td colSpan={9} className="cc-empty">{text.empty}</td></tr>}
-        </tbody></table> : <table key={view} className="cc-summary"><thead><tr><th>{view==='partner'?labels.partner:labels.industry}</th><th>{labels.currency}</th><th className="cc-number">{text.count}</th><th className="cc-number">{labels.amount}</th><th>{text.share}</th></tr></thead><tbody>
+          </RecordRow>)}{!(view==='items'?requests:filteredDocuments).length&&<tr><td colSpan={9} className="cc-empty">{text.empty}</td></tr>}
+        </RecordInteractionScope></table> : <table key={view} className="cc-summary"><thead><tr><th>{view==='partner'?labels.partner:labels.industry}</th><th>{labels.currency}</th><th className="cc-number">{text.count}</th><th className="cc-number">{labels.amount}</th><th>{text.share}</th></tr></thead><tbody>
           {groups.map(group=><tr key={group.key}><td>{group.name}</td><td>{group.currency}</td><td className="cc-number">{group.count}</td><td className="cc-number cc-amount">{money(group.amount,group.currency)}</td><td><div className="cc-share"><span><i style={{width:`${group.share}%`}} /></span>{group.share.toFixed(1)}%</div></td></tr>)}{!groups.length && <tr><td colSpan={5} className="cc-empty">{text.empty}</td></tr>}
         </tbody></table>}
       </div>}

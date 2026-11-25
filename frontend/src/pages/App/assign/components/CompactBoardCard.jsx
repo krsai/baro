@@ -1,4 +1,6 @@
 import React, { memo, useCallback } from 'react';
+import {RecordMenuButton} from '../../../../components/RecordInteraction';
+import {isRecordActionTarget} from '../../../../utils/recordInteraction.mjs';
 import {activateOnKeyboard,openContextMenuFor,keyboardAction} from '../../../../utils/keyboardPolicy.mjs';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { Avatar, Box, Chip, LinearProgress, Stack, Typography } from '@mui/material';
@@ -135,7 +137,9 @@ const CompactBoardCard = ({
       }}
       onPointerDown={handlePointerDown}
       onClick={onClick}
-      onContextMenu={onContextMenu}
+      onContextMenu={onContextMenu ? event => {
+        if (!isRecordActionTarget(event)) onContextMenu(event);
+      } : undefined}
       sx={{
         width: '100%',
         minWidth: 0,
@@ -186,6 +190,7 @@ const CompactBoardCard = ({
           flexWrap: 'wrap',
         }}
       >
+        {onContextMenu && <RecordMenuButton label={getUiMessage('common.recordActions', 'Actions', languageCode)}/>}
         {previewUrl ? (
           <Avatar
             src={previewUrl}

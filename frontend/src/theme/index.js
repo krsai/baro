@@ -401,6 +401,14 @@ const theme = createTheme(baseTheme, {
   },
   components: {
     MuiCssBaseline: { styleOverrides: {
+      '[data-record-interaction="open"]': {cursor: 'pointer'},
+      '[data-record-interaction="open"][aria-disabled="true"]': {cursor: 'default'},
+      '[data-record-interaction="open"]:focus-visible': {outline: `2px solid ${ui.color.primary}`, outlineOffset: -2},
+      '[data-record-interaction="open"][data-record-selected="true"], [data-record-interaction="open"][data-record-selected="true"]:hover': {
+        backgroundColor: `${getLabelPalette('blue').background} !important`,
+        '--table-row-background': getLabelPalette('blue').background,
+      },
+      '[data-record-selected="true"] > [data-table-actions]': {backgroundColor: `${getLabelPalette('blue').background} !important`},
       // Use final domain states, never pending cancellation requests.
       '[data-cancelled="true"] > td:not([data-table-actions]), [data-cancelled="true"] > td:not([data-table-actions]) :is(p,span,a,button,div,h1,h2,h3,h4,h5,h6,strong,b,small,em), [data-cancelled-content="true"]': {
         textDecorationLine: 'line-through',

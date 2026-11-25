@@ -1,8 +1,9 @@
+import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
 import LocalizedDateField from '../../../components/LocalizedDateField';
 import PersonalPhoneField from '../../../components/PersonalPhoneField';
 import {titleCaseWords} from '../../../utils/humanTextCase.mjs';
 import Dialog from '../../../components/AppDialog';
-import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
+
 import TenureRecognitionDialog from '../../../components/TenureRecognitionDialog';
 import {tenureRecognitionText} from '../../../constants/tenureRecognition';
 import ActionNotice from '../../../components/ActionNotice';
@@ -1873,7 +1874,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   <TableCell>{tenantText('leftAtColumn', languageCode)}</TableCell>
                 </TableRow>
               </TableHead>
-              <TableBody>
+              <RecordInteractionScope>
                 {sortedActiveMembers.length === 0 ? (
                   <TableStatusRow
                     colSpan={11}
@@ -1913,14 +1914,14 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                       currentUserName
                     );
                     return (
-                      <TableRow
+                      <RecordRow
                         key={member.id}
                         hover
-                        tabIndex={canManageMembers?0:undefined} onKeyDown={activateOnKeyboard}
-                        onClick={canManageMembers ? () => openEditDrawer(member) : undefined}
+
+                        recordKey={member.id} onOpen={canManageMembers ? () => openEditDrawer(member) : undefined} disabled={!canManageMembers}
                         sx={{ cursor: canManageMembers ? 'pointer' : 'default' }}
                       >
-                        <TableCell>{displayName}</TableCell>
+                        <TableCell><RecordOpenButton onOpen={canManageMembers ? () => openEditDrawer(member) : undefined} disabled={!canManageMembers}>{displayName}</RecordOpenButton></TableCell>
                         <TableCell sx={{ fontWeight: 'bold', letterSpacing: 1, color: 'text.secondary' }}>
                           {employee?.employeeNo || '-'}
                         </TableCell>
@@ -1933,11 +1934,11 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                         <TableCell>{getEmployeeStatusLabel(member.status, languageCode)}</TableCell>
                         <TableCell>{formatDate(employee?.joinedAt || member.approvedAt)}</TableCell>
                         <TableCell>{formatDate(employee?.leftAt)}</TableCell>
-                      </TableRow>
+                      </RecordRow>
                     );
                   })
                 )}
-              </TableBody>
+              </RecordInteractionScope>
             </Table>
           </TableContainer>
         </Paper>
