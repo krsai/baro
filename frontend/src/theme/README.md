@@ -250,3 +250,5 @@ Dialog의 크기·내부 스크롤은 공통 테마가, 업무 Drawer의 작업 
 
 
 - Route dates: Cargo Ready Date belongs beside the first work route stop. Other dates are stored by route node in internal workDetails; their purpose and ETD/ETA linkage remain undecided. Preserve SR, BL, snapshots and customer sharing scope.
+
+- SR 조회 운송 구간은 기존 카드·슬라이더를 유지하고 하단의 중복 출발지/도착지·지점 상세를 반복하지 않는다. 저장된 지점 상세(업체명·국가·주소·담당자·전화)는 카드 Tooltip에서 hover·키보드 포커스·모바일 길게 누르기로 조회한다. 편집 동작·원본 snapshot은 변경하지 않는다.
