@@ -1,7 +1,7 @@
-export const PACKAGING_KEYS=['boxLengthCm','boxWidthCm','boxHeightCm','packedCbmPerPiece','polyUsage','boxCapacity','packWaste','polyPrice','boxPrice'];
+export const PACKAGING_KEYS=['boxCbm','boxCbmFormula','packedCbmPerPieceFormula','boxLengthCm','boxWidthCm','boxHeightCm','packedCbmPerPiece','polyUsage','boxCapacity','packWaste','polyPrice','boxPrice'];
 export function packagingGeometry(input){
  const length=Number(input.boxLengthCm??60),width=Number(input.boxWidthCm??40),height=Number(input.boxHeightCm??40),piece=Number(input.packedCbmPerPiece);
- const boxCbm=length>0&&width>0&&height>0?length*width*height/1000000:null;
+ const boxCbm=input.boxCbm!==undefined?(Number(input.boxCbm)>0?Number(input.boxCbm):null):length>0&&width>0&&height>0?length*width*height/1000000:null;
  const capacity=boxCbm!==null&&piece>0?(boxCbm<piece?0:Math.ceil(Number((boxCbm/piece).toPrecision(12)))):null;
  return {boxCbm,capacity};
 }
@@ -30,7 +30,7 @@ export function calculateProfitScenario(input,{linkedAmount=0}={}){
  if(input.packaging){
   const geometry=packagingGeometry(input);
   const hasVolume=Number(input.packedCbmPerPiece)>0;
-  if(hasVolume){for(const key of ['boxLengthCm','boxWidthCm','boxHeightCm'])if(!(Number(input[key]??({boxLengthCm:60,boxWidthCm:40,boxHeightCm:40}[key]))>0))missing.push(key);input={...input,boxCapacity:geometry.capacity??''};}
+  if(hasVolume){if(input.boxCbm!==undefined&&!(Number(input.boxCbm)>0))missing.push('boxCbm');for(const key of input.boxCbm!==undefined?[]:['boxLengthCm','boxWidthCm','boxHeightCm'])if(!(Number(input[key]??({boxLengthCm:60,boxWidthCm:40,boxHeightCm:40}[key]))>0))missing.push(key);input={...input,boxCapacity:geometry.capacity??''};}
   const usage=read('polyUsage'),boxCapacity=input.boxPayer==='CUSTOMER'?number(input.boxCapacity):read('boxCapacity',true),waste=read('packWaste'),polyPrice=input.polyPayer==='CUSTOMER'?0:read('polyPrice'),boxPrice=input.boxPayer==='CUSTOMER'?0:read('boxPrice');
   poly=quantity!==null&&usage!==null&&waste!==null?Math.ceil(quantity*usage*(1+waste/100)):null;
   boxes=quantity!==null&&boxCapacity!==null&&waste!==null?Math.ceil(quantity/boxCapacity*(1+waste/100)):null;

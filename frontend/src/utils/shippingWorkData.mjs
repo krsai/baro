@@ -17,7 +17,7 @@ export function shippingPackageTotals(rows){
 }
 export function shippingWorkValues(job){
  const d=shippingWorkData(job.data),result={};
- for(const key of ['assigneeId','vessel','voyage','etd','eta',...workFields])result[key]=d[key]??(key==='assigneeId'?null:'');
+ for(const key of ['assigneeId','vessel','voyage','etd','eta',...workFields])result[key]=d[key]??(key==='assigneeId'?null:['quantity','weightKg','cbm'].includes(key)?'0':key==='unit'?'PKG':'');
  for(const role of ['shipper','consignee','notify'])if(!Object.hasOwn(job.data.workDetails||{},role)){
   const actual=role==='notify'&&d.notifySameAsConsignee?'consignee':role,p=d[actual+'Party'];
   result[role]=p?[p.name,p.address,[p.contactName,p.phone,p.email].filter(Boolean).join(' / ')].filter(Boolean).join('\n'):d[actual]||'';

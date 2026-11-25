@@ -30313,7 +30313,7 @@ app.post("/styles", async (req, res) => {
         timeBucketSource: "CUSTOMER_DEFAULT",
       },
     });
-    await saveStylePackaging(tx,owner.ownerOrgId,createdStyle.id,req.body?.packedCbmPerPiece);
+    await saveStylePackaging(tx,owner.ownerOrgId,createdStyle.id,req.body?.packedCbmPerPiece,req.body?.packedCbmPerPieceFormula);
     if (includeProcesses) {
       await syncStyleProcessStorageForStyle({
         styleId: createdStyle.id,
@@ -30496,7 +30496,7 @@ app.put("/styles/:styleId", async (req, res) => {
         bomNotes: normalized.bomNotes,
       },
     });
-    await saveStylePackaging(tx,existing.orgId,existing.id,req.body?.packedCbmPerPiece);
+    await saveStylePackaging(tx,existing.orgId,existing.id,req.body?.packedCbmPerPiece,req.body?.packedCbmPerPieceFormula);
     if (processesProvided) {
       await syncStyleProcessStorageForStyle({
         styleId: existing.id,

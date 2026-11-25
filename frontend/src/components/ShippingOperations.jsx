@@ -9,7 +9,7 @@ import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import {shippingOperationText} from '../constants/shippingOperations';
 import {humanTextDisplay} from '../utils/humanTextDisplay.mjs';
 import {workRouteSteps} from '../utils/shippingWorkPresentation.mjs';
-import {shippingWorkValues as values,shippingWorkData,shippingPackageTotals} from '../utils/shippingWorkData.mjs';
+import {shippingWorkValues as values,shippingWorkData} from '../utils/shippingWorkData.mjs';
 import ShippingCargoRows from './ShippingCargoRows';
 import {freightText} from '../constants/freight';
 import {freightJobEditorText} from '../constants/freightJobEditor';
@@ -49,7 +49,7 @@ export default function ShippingOperations({job,employees,languageCode,busy,form
  const choice=(key,label,options)=><TextField fullWidth select name={key} label={label} value={value[key]||''} disabled={blocked} onChange={ev=>patch(key,ev.target.value)}><MenuItem value="">—</MenuItem>{[...new Set([...(value[key]?[value[key]]:[]),...options])].map(option=><MenuItem key={option} value={option}>{option}</MenuItem>)}</TextField>;
  const numeric=(key,label)=>key==='cbm'?<VolumeInput label={label} value={value.cbm} formula={value.cbmFormula} quantity={value.quantity} languageCode={languageCode} disabled={blocked} onChange={patch=>setValue(old=>({...old,...patch}))}/>:<TextField fullWidth name={key} label={label} value={value[key]??''} disabled={blocked} slotProps={{htmlInput:{inputMode:'decimal',maxLength:21}}} onChange={ev=>{if(/^\d*(\.\d*)?$/.test(ev.target.value))patch(key,ev.target.value);}}/>;
  const fcl=job.mode==='SEA'&&source.shipmentType==='FCL';
- const packageTotals=shippingPackageTotals(value.packages);
+
  return <Box component="form" id={formId} onSubmit={save} data-testid="shipping-operations-form">
   {error&&<AppNotice severity={error===t.review?'info':'error'} action={conflict&&onReload?<Button disabled={reloading} onClick={reload}>{t.refresh}</Button>:undefined}>{error}</AppNotice>}
   <Box data-shipping-work-columns sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:'minmax(0,2fr) minmax(300px,1fr)'},gap:2,alignItems:'start'}}>
@@ -58,7 +58,7 @@ export default function ShippingOperations({job,employees,languageCode,busy,form
     <EntityDetailSection title={t.route}><Stack spacing={2} data-shipping-work-route>{routeSteps.map((step,index)=><Box key={step.node} data-shipping-route-step={step.node} sx={{display:'grid',gridTemplateColumns:{xs:'24px minmax(0,1fr)',sm:'24px minmax(0,1fr) 170px'},gap:1,alignItems:'start'}}><Box aria-hidden="true" sx={{position:'relative',height:'100%',minHeight:24,pt:'6px','&:after':index<routeSteps.length-1?{content:'""',position:'absolute',top:30,bottom:-22,left:11,borderLeft:1,borderColor:'divider'}:undefined}}><Box sx={{width:24,height:24,border:1,borderColor:'divider',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',color:'text.secondary',fontSize:'0.75rem'}}>{index+1}</Box></Box>{step.field?field(step.field,t[step.label],true,1):<TextField fullWidth size="small" label={t[step.label]} value={step.value||t.notSpecified} multiline minRows={1} slotProps={{input:{readOnly:true},htmlInput:{'aria-label':t[step.label],tabIndex:-1},inputLabel:{shrink:true}}}/>}<Box sx={{gridColumn:{xs:2,sm:'auto'},minWidth:0}}>{date(index===0?'plannedDate':'routeDate'+step.node,index===0?e.plannedDate:({ko:'\uB0A0\uC9DC',en:'Date',vi:'Ng\u00E0y'}[languageCode]||'Date')+' '+(index+1))}</Box></Box>)}</Stack></EntityDetailSection>
     <EntityDetailSection title={t.cargo}><Stack spacing={2}>
      <Box data-shipping-cargo-summary sx={{display:'grid',gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',sm:'minmax(0,2fr) repeat(4,minmax(0,1fr))'},gap:1,alignItems:'start'}}><Box sx={{gridColumn:{xs:'1 / -1',sm:'auto'},minWidth:0}}>{field('cargo',e.cargo,/[\r\n]/.test(value.cargo||''),1)}</Box>{numeric('quantity',t.packageCount)}{choice('unit',e.unit,['PKG','CTN','PLT','PCS','BAG','BOX','CRATE','DRUM','ROLL'])}{numeric('weightKg',e.weightKg)}{numeric('cbm',e.cbm)}</Box>
-     {!fcl&&<Stack spacing={1.5}><Stack direction="row" useFlexGap flexWrap="wrap" alignItems="center" justifyContent="space-between" gap={1}><Typography variant="subtitle2">{x.packages}</Typography><Button type="button" disabled={blocked||!packageTotals} onClick={()=>setValue(old=>({...old,...packageTotals,cbmFormula:''}))}>{t.applyDimensions}{packageTotals?` · ${packageTotals.quantity} / ${packageTotals.cbm} CBM`:''}</Button></Stack>{value.packages.length?<ShippingCargoRows rows={value.packages} disabled={blocked} express={job.service==='EXPRESS'} onChange={rows=>patch('packages',rows)} t={x} e={e}/>:<Button type="button" variant="outlined" disabled={blocked} onClick={()=>patch('packages',[{quantity:'',lengthM:'',widthM:'',heightM:''}])}>{x.add}</Button>}</Stack>}
+
      {job.mode==='AIR'&&numeric('chargeableWeightKg',x.chargeableWeightKg)}
      {source.hsCode&&detail(x.hsCode,source.hsCode)}{source.dangerousGoods&&detail(e.dangerousGoods,[source.dgClass,source.unNumber,source.dangerousGoodsDetails].filter(Boolean).join(' · '))}
      {source.outOfGauge&&<Stack spacing={1}>{detail(x.oog,source.oogDetails)}{source.oogPackages?.map((row,index)=><Box key={index}>{detail(x.oogDimensions,`${row.quantity} × ${row.lengthM} × ${row.widthM} × ${row.heightM} m`)}</Box>)}</Stack>}

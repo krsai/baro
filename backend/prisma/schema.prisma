@@ -281,6 +281,7 @@ model FreightPackage {
  quantity Int
  weightKg Decimal @db.Decimal(20,4)
  cbm Decimal @db.Decimal(20,6)
+  cbmFormula String @default("") @db.VarChar(200)
  version Int @default(1)
  createdByEmployeeId Int
  updatedByEmployeeId Int

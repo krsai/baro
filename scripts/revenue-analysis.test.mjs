@@ -56,10 +56,14 @@ test('real Prisma queries load scoped order styles and read-only sources; scenar
  const {changeApprovalFixture,seedChangeApproval}=await import('./helpers/change-approval-fixture.mjs');
  const f=await changeApprovalFixture();try{
   const s=await seedChangeApproval(f.db),orgId=s.company.id;
+  await f.db.organization.update({where:{id:orgId},data:{type:'MANUFACTURER'}});
+  await f.db.orgRelationship.create({data:{manufacturerOrgId:orgId,brandOrgId:s.vendor.id}});
   const style=await f.db.style.create({data:{orgId,customerOrgId:s.vendor.id,code:'PROFIT_STYLE',name:'Profit style'}});
   const {saveStylePackaging,readStylePackaging,validatePackedCbm}=require('../backend/dist/services/stylePackaging.js');
   assert.throws(()=>validatePackedCbm(-1),/INVALID_PACKED_CBM/);assert.throws(()=>validatePackedCbm('NaN'),/INVALID_PACKED_CBM/);
   await f.db.$transaction(tx=>saveStylePackaging(tx,orgId,style.id,.002));assert.equal((await readStylePackaging(f.db,orgId,style.id)).packedCbmPerPiece,.002);
+  await saveStylePackaging(f.db,orgId,style.id,.002,'=0.1*0.1*0.2');assert.equal((await readStylePackaging(f.db,orgId,style.id)).packedCbmPerPieceFormula,'=0.1*0.1*0.2');
+  await assert.rejects(saveStylePackaging(f.db,orgId,style.id,.004,'=0.1*0.1*0.2'),/INVALID_PACKED_CBM/);
   await assert.rejects(saveStylePackaging(f.db,s.other.id,style.id,.004),/style not found/);assert.equal((await readStylePackaging(f.db,s.other.id,style.id)).packedCbmPerPiece,null);
   await saveStylePackaging(f.db,orgId,style.id,undefined);assert.equal((await readStylePackaging(f.db,orgId,style.id)).packedCbmPerPiece,.002);
   const {readCategoryPackaging,saveCategoryPackaging}=require('../backend/dist/services/categoryPackaging.js');

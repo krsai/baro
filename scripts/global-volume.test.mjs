@@ -1,0 +1,50 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {randomUUID} from 'node:crypto';
+import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
+import {initialBillData} from '../frontend/src/utils/shippingBillData.mjs';
+import {packagingGeometry} from '../frontend/src/utils/profitScenario.mjs';
+const require=createRequire(import.meta.url);
+const {billData}=require('../backend/dist/services/freightBillData');
+const {saveFreight,saveFreightPackage}=require('../backend/dist/services/freightOperations');
+const {saveShippingTradeDocument}=require('../backend/dist/services/shippingTradeDocuments');
+const {saveCategoryPackaging,readCategoryPackaging}=require('../backend/dist/services/categoryPackaging');
+const {validateProfitInputs}=require('../backend/dist/services/revenueAnalysis');
+const {shippingCargo,validateOogTransition}=require('../backend/dist/services/shippingCargo');
+test('document and packaging volume retain formulas and legacy numeric sources independently',()=>{
+ assert.equal(billData({cbm:'0.333333',cbmFormula:'=1/3'}).cbmFormula,'=1/3');
+ assert.throws(()=>billData({cbm:'0.5',cbmFormula:'=1/3'}),/FREIGHT_INVALID_INPUT/);
+ assert.equal(validateProfitInputs({boxCbm:'0.333333',boxCbmFormula:'=1/3'}).boxCbmFormula,'=1/3');
+ assert.throws(()=>validateProfitInputs({boxCbm:'0.5',boxCbmFormula:'=1/3'}),/INVALID_PROFIT_SCENARIO/);
+ assert.equal(initialBillData({data:{cbm:'0.3',cbmFormula:'=0.1+0.2'}},{data:{cbm:'0.4'}}).cbmFormula,undefined);
+ assert.equal(packagingGeometry({boxCbm:'0.075',packedCbmPerPiece:'.005'}).capacity,15);
+ assert.equal(packagingGeometry({boxLengthCm:60,boxWidthCm:40,boxHeightCm:40,packedCbmPerPiece:'.005'}).boxCbm,.096);
+ const oog={cargoSchemaVersion:1,cargo:'Machine',shipmentType:'FCL',containers:[{size:'40',type:'FR',count:'1'}],outOfGauge:true,oogSchemaVersion:2,oogDetails:'Top protrusion'};
+ const saved=shippingCargo(oog,'SEA');assert.equal(saved.oogDetails,oog.oogDetails);assert.deepEqual(saved.oogPackages,[]);assert.doesNotThrow(()=>validateOogTransition(saved));
+ assert.throws(()=>shippingCargo({...oog,oogDetails:''},'SEA'),/SHIPPING_CARGO_INVALID/);
+});
+test('global formula writes preserve package identity, PL snapshots and scoped category revisions across migration retries',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
+  const job=await saveFreight(db,org,actor,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,mode:'AIR',data:{origin:'HAN',destination:'ICN'}});
+  const input={id:randomUUID(),label:'BOX',quantity:2,weightKg:'3',cbm:'0.075',cbmFormula:'=0.5*0.5*0.1 + 0.5*0.5*0.2'};
+  const box=await saveFreightPackage(db,org,actor,job.id,input);
+  assert.equal(String(box.cbm),'0.075');assert.equal(box.cbmFormula,input.cbmFormula);
+  assert.equal((await saveFreightPackage(db,org,actor,job.id,input)).version,box.version);
+  await assert.rejects(saveFreightPackage(db,org,actor,job.id,{...input,version:box.version,cbm:'0.15'}),/FREIGHT_INVALID_INPUT/);
+  const party={name:'Sender',address:'Hanoi',taxId:'',phone:'',email:'',contactName:''};
+  const fields={number:'PL-1',date:'2026-11-25',seller:party,buyer:party,lines:[{description:'Goods',marks:'',packages:'2',quantity:'2',unit:'PKG',netWeightKg:'2',grossWeightKg:'3',cbm:'0.333333',cbmFormula:'=1/3'}]};
+  const pl=await saveShippingTradeDocument(db,org,actor,job.id,{clientKey:randomUUID(),version:job.version,kind:'PACKING_LIST',sourceMode:'FORM',fields});
+  assert.equal(pl.snapshot.tradeDocument.fields.lines[0].cbmFormula,'=1/3');assert.equal(pl.snapshot.tradeDocument.fields.totals.cbm,'0.333333');
+  const category=await db.attrCategory.create({data:{orgId:org,code:'VOLUME',name:'Volume'}});
+  const saved=await saveCategoryPackaging(db,org,actor,{revision:0,values:{[category.id]:.075},formulas:{[category.id]:input.cbmFormula}});
+  assert.equal(saved.formulas[category.id],input.cbmFormula);
+  await assert.rejects(saveCategoryPackaging(db,org,actor,{revision:1,values:{[category.id]:.15},formulas:{[category.id]:input.cbmFormula}}),/INVALID_CATEGORY_PACKAGING/);
+  assert.equal((await readCategoryPackaging(db,org)).revision,1);
+  const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(m=>m.version==='20261125010000_global_volume_formulas');
+  await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);
+  const after=(await db.$queryRawUnsafe('SELECT * FROM "FreightPackage" WHERE id=$1',box.id))[0];
+  assert.equal(after.cbmFormula,box.cbmFormula);assert.equal(after.version,box.version);assert.equal(after.jobId,job.id);
+ }finally{await f.close();}
+});

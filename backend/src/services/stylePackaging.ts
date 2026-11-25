@@ -1,3 +1,4 @@
+import {validateVolumeFormula} from '../utils/validateVolumeFormula';
 import {createHttpError} from '../utils/http';
 const key=(orgId:number,styleId:number)=>`STYLE_PACKAGING:${orgId}:${styleId}`;
 export function validatePackedCbm(value:any){
@@ -8,15 +9,15 @@ export function validatePackedCbm(value:any){
 }
 export async function readStylePackaging(db:any,orgId:number,styleId:number){
  const row=await db.systemSetting.findUnique({where:{key:key(orgId,styleId)}});
- if(row?.value?.packedCbmPerPiece)return {packedCbmPerPiece:row.value.packedCbmPerPiece,packagingVolumeSource:'STYLE'};
+ if(row?.value?.packedCbmPerPiece)return {packedCbmPerPiece:row.value.packedCbmPerPiece,...(row.value.packedCbmPerPieceFormula?{packedCbmPerPieceFormula:row.value.packedCbmPerPieceFormula}:{}),packagingVolumeSource:'STYLE'};
  const style=await db.style.findFirst({where:{id:styleId,orgId},select:{categoryId:true}});
  const categoryId=style?.categoryId??null;
  const defaults=categoryId?await db.systemSetting.findUnique({where:{key:`CATEGORY_PACKAGING:${orgId}`}}):null;
  const packedCbmPerPiece=defaults?.value?.values?.[String(categoryId)]??null;
- return {packedCbmPerPiece,packagingCategoryId:categoryId,packagingVolumeSource:packedCbmPerPiece?'CATEGORY':null};
+ return {packedCbmPerPiece,...(defaults?.value?.formulas?.[String(categoryId)]?{packedCbmPerPieceFormula:defaults.value.formulas[String(categoryId)]}:{}),packagingCategoryId:categoryId,packagingVolumeSource:packedCbmPerPiece?'CATEGORY':null};
 }
-export async function saveStylePackaging(db:any,orgId:number,styleId:number,input:any){
+export async function saveStylePackaging(db:any,orgId:number,styleId:number,input:any,formula?:any){
  const packedCbmPerPiece=validatePackedCbm(input);if(packedCbmPerPiece===undefined)return;
  if(!await db.style.findFirst({where:{id:styleId,orgId},select:{id:true}}))throw createHttpError(404,'style not found');
- const value={packedCbmPerPiece};await db.systemSetting.upsert({where:{key:key(orgId,styleId)},create:{key:key(orgId,styleId),value},update:{value}});
+ const value={packedCbmPerPiece,...(formula!==undefined?{packedCbmPerPieceFormula:validateVolumeFormula(packedCbmPerPiece,formula,'INVALID_PACKED_CBM')}:{})};await db.systemSetting.upsert({where:{key:key(orgId,styleId)},create:{key:key(orgId,styleId),value},update:{value}});
 }

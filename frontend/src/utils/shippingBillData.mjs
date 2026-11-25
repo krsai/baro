@@ -1,9 +1,9 @@
 import {shippingWorkData} from './shippingWorkData.mjs';
-export const billFields=['shipper','consignee','notify','deliveryAgent','vessel','voyage','origin','destination','placeOfReceipt','placeOfDelivery','etd','eta','issueDate','issuePlace','marks','cargo','quantity','unit','weightKg','cbm','freightTerms'];
+export const billFields=['shipper','consignee','notify','deliveryAgent','vessel','voyage','origin','destination','placeOfReceipt','placeOfDelivery','etd','eta','issueDate','issuePlace','marks','cargo','quantity','unit','weightKg','cbm','cbmFormula','freightTerms'];
 export const requiresBillHierarchy=job=>job?.service!=='EXPRESS'&&['SEA','AIR'].includes(job?.mode);
 const routeFields=['vessel','voyage','origin','destination','placeOfReceipt','placeOfDelivery','etd','eta'];
 export function initialBillData(job,bill,parent){
- const source=shippingWorkData(job.data||{}),result=Object.fromEntries(billFields.map(key=>[key,String(source[key]??'')]));
+ const source=shippingWorkData(job.data||{}),result=Object.fromEntries(billFields.map(key=>[key,String(source[key]??(['quantity','weightKg','cbm'].includes(key)?'0':key==='unit'?'PKG':''))]));
  for(const role of ['shipper','consignee','notify']){
   const party=source[(role==='notify'&&source.notifySameAsConsignee?'consignee':role)+'Party'];
   if(Object.hasOwn(job.data.workDetails||{},role))continue;
@@ -11,6 +11,7 @@ export function initialBillData(job,bill,parent){
   else if(role==='notify'&&source.notifySameAsConsignee)result.notify=String(source.consignee||'');
  }
  if(parent)for(const key of routeFields)if(parent.data?.[key]!==undefined)result[key]=parent.data[key];
+ if(Object.hasOwn(bill.data||{},'cbm')&&!Object.hasOwn(bill.data||{},'cbmFormula'))delete result.cbmFormula;
  return {...result,...bill.data};
 }
 export function billHierarchy(bills){

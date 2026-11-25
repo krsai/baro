@@ -1,14 +1,15 @@
+import {validateVolumeFormula} from '../utils/validateVolumeFormula';
 import {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
 import {parseVolumeInput} from '../utils/volumeFormula';
 const fail=():never=>{throw createHttpError(400,'SHIPPING_CARGO_INVALID');};
 const number=(value:any,integer=false)=>{if(typeof value!=='string'||!(integer?/^\d{1,8}$/:/^\d{1,10}(\.\d{1,6})?$/).test(value)||!new Prisma.Decimal(value).gt(0))fail();return value;};
 export function validateOogTransition(data:any,previous:any={}){
- if(data.outOfGauge&&data.oogSchemaVersion!==1&&(!previous.outOfGauge||previous.oogSchemaVersion===1))fail();
+ if(data.outOfGauge&&data.oogSchemaVersion!==1&&data.oogSchemaVersion!==2&&(!previous.outOfGauge||previous.oogSchemaVersion===1))fail();
  if(data.outOfGauge&&!(Array.isArray(data.containers)&&data.containers.some((row:any)=>['OT','FR'].includes(row?.type)))&&!(previous.outOfGauge&&JSON.stringify(data.containers)===JSON.stringify(previous.containers)))fail();
 }
 export function shippingCargo(data:any,mode:string){
- if(data.cargoSchemaVersion==null)return {};
+ if(data.cargoSchemaVersion==null)return data.cbmFormula===undefined?{}:{cbmFormula:validateVolumeFormula(data.cbm,data.cbmFormula,'SHIPPING_CARGO_INVALID')};
  if(data.cargoSchemaVersion!==1)fail();
  const result:any={cargoSchemaVersion:1};
  if(data.cbmFormula!==undefined){
@@ -46,9 +47,10 @@ export function shippingCargo(data:any,mode:string){
   result.outOfGauge=data.outOfGauge;result.oogDetails=data.oogDetails||'';
   if(typeof result.oogDetails!=='string'||result.oogDetails.length>2000)fail();
   if(data.oogSchemaVersion!==undefined||data.oogPackages!==undefined){
-   if(data.oogSchemaVersion!==1)fail();
-   result.oogSchemaVersion=1;result.oogPackages=[];
-   if(result.outOfGauge){
+   if(![1,2].includes(data.oogSchemaVersion))fail();
+   result.oogSchemaVersion=data.oogSchemaVersion;result.oogPackages=[];
+   if(result.outOfGauge&&data.oogSchemaVersion===2){if(!result.oogDetails.trim())fail();}
+   else if(result.outOfGauge){
     if(!Array.isArray(data.oogPackages)||!data.oogPackages.length||data.oogPackages.length>50)fail();
     result.oogPackages=data.oogPackages.map((row:any)=>{if(!row||typeof row!=='object'||Array.isArray(row))fail();return {quantity:number(row.quantity,true),lengthM:number(row.lengthM),widthM:number(row.widthM),heightM:number(row.heightM)};});
    }

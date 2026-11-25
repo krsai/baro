@@ -1,3 +1,4 @@
+import VolumeInput from '../../../../components/VolumeInput';
 import GlobalNotice from "../../../../components/AppNotice";
 import {activateOnKeyboard} from '../../../../utils/keyboardPolicy.mjs';
 import {keyboardAction} from '../../../../utils/keyboardPolicy.mjs';
@@ -713,7 +714,7 @@ const StyleInfo = ({
           <Box sx={{ mt: 'var(--ui-section-gap, 20px)' }} />
 
           <Typography variant="h6" gutterBottom>{packText.section}</Typography>
-          <TextField fullWidth size="small" type="number" label={packText.packedCbmPerPiece} value={formData.packedCbmPerPiece??''} onChange={event=>emitInputChange('packedCbmPerPiece',event.target.value)} helperText={packText.volumeHint} slotProps={{htmlInput:{min:0,step:'any'},input:{endAdornment:<InputAdornment position="end">CBM</InputAdornment>}}}/>
+          <VolumeInput label={packText.packedCbmPerPiece} name="packedCbmPerPiece" value={formData.packedCbmPerPiece??''} formula={formData.packedCbmPerPieceFormula||''} languageCode={languageCode} onChange={({cbm,cbmFormula})=>{emitInputChange('packedCbmPerPiece',cbm);emitInputChange('packedCbmPerPieceFormula',cbmFormula);}}/>
           {showStyleAnalysis ? (
             <>
               <Box sx={{ mt: 'var(--ui-section-gap, 20px)' }} />

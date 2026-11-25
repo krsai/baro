@@ -1,3 +1,5 @@
+import {Prisma} from '@prisma/client';
+import {validateVolumeFormula} from '../utils/validateVolumeFormula';
 import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -18,10 +20,11 @@ function form(kind:string,value:any){
  const allowed=['number','date','seller','buyer','currencyCode','incoterms','paymentTerms','remarks','lines'];
  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!allowed.includes(key))||!Array.isArray(value.lines)||!value.lines.length||value.lines.length>200)fail();
  const lines=value.lines.map((line:any)=>{
-  const keys=kind==='COMMERCIAL_INVOICE'?['description','hsCode','origin','quantity','unit','unitPrice']:['description','marks','packages','quantity','unit','netWeightKg','grossWeightKg','cbm'];
+  const keys=kind==='COMMERCIAL_INVOICE'?['description','hsCode','origin','quantity','unit','unitPrice']:['description','marks','packages','quantity','unit','netWeightKg','grossWeightKg','cbm','cbmFormula'];
   if(!line||Object.keys(line).some(key=>!keys.includes(key)))fail();
   const out:any={description:text(line.description,500,true),quantity:decimal(line.quantity,true),unit:text(line.unit,30,true)};
-  for(const key of keys.filter(key=>!['description','quantity','unit'].includes(key)))out[key]=['unitPrice','packages','netWeightKg','grossWeightKg','cbm'].includes(key)?decimal(line[key]):text(line[key]||'',200);
+  for(const key of keys.filter(key=>!['description','quantity','unit','cbmFormula'].includes(key)))out[key]=['unitPrice','packages','netWeightKg','grossWeightKg','cbm'].includes(key)?(key==='cbm'?(/^\d{1,10}(?:\.\d{1,6})?$/.test(line[key])?line[key]:fail()):decimal(line[key])):text(line[key]||'',200);
+  if(kind==='PACKING_LIST'&&line.cbmFormula!==undefined)out.cbmFormula=validateVolumeFormula(out.cbm,line.cbmFormula,'SHIPPING_TRADE_DOCUMENT_INVALID');
   if(kind==='PACKING_LIST'&&(units(out.grossWeightKg)<units(out.netWeightKg)||!/^\d{1,8}$/.test(out.packages)||Number(out.packages)<1))fail();
   return out;
  });
@@ -34,6 +37,7 @@ function form(kind:string,value:any){
  }else{
   const four=(value:bigint)=>`${value/10000n}.${String(value%10000n).padStart(4,'0')}`;
   result.totals={packages:lines.reduce((sum:bigint,line:any)=>sum+BigInt(line.packages),0n).toString(),...Object.fromEntries(['netWeightKg','grossWeightKg','cbm'].map(key=>[key,four(lines.reduce((sum:bigint,line:any)=>sum+units(line[key]),0n))]))};
+  if(lines.some((line:any)=>(line.cbm.split('.')[1]||'').length>4))result.totals.cbm=lines.reduce((sum:any,line:any)=>sum.plus(line.cbm),new Prisma.Decimal(0)).toFixed(6);
  }
  return result;
 }

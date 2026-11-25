@@ -1,3 +1,4 @@
+import {validateVolumeFormula} from '../utils/validateVolumeFormula';
 import {readStylePackaging} from './stylePackaging';
 import {createHttpError} from '../utils/http';
 import {approvalState} from './bankEvidence';
@@ -7,7 +8,7 @@ import {revenueLaborBasis} from './revenueLaborBasis';
 import {revenueStyles,revenueStyleReport} from './revenueStyleAnalysis';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const key=(orgId:number)=>`REVENUE_ANALYSIS_SCENARIOS:${orgId}`;
-const inputKeys=['officeFixedMonthly','productionFixedMonthly','variableBaseMonthly','variableAllowanceMonthly','variableProductionMonthly','currency','quantity','salePrice','basis','stSeconds','ptSeconds','productivity','workers','targetDays','hoursDay','workdays','factoryWorkers','baseMonthly','allowanceMonthly','supportMonthly','rentMonthly','productionPay','otherUnitCost','boxLengthCm','boxWidthCm','boxHeightCm','packedCbmPerPiece','packaging','polyUsage','boxCapacity','packWaste','polyPrice','boxPrice','costMode','usdVnd','usdKrw','laborSource','factoryId','atSeconds','includedPayroll','excludedCostIds','includePurchases','includeRent','includeOther','includeOffice','includeFactory','officeMonthly','factoryOtherMonthly','polyPayer','boxPayer'];
+const inputKeys=['officeFixedMonthly','productionFixedMonthly','variableBaseMonthly','variableAllowanceMonthly','variableProductionMonthly','currency','quantity','salePrice','basis','stSeconds','ptSeconds','productivity','workers','targetDays','hoursDay','workdays','factoryWorkers','baseMonthly','allowanceMonthly','supportMonthly','rentMonthly','productionPay','otherUnitCost','boxCbm','boxCbmFormula','packedCbmPerPieceFormula','boxLengthCm','boxWidthCm','boxHeightCm','packedCbmPerPiece','packaging','polyUsage','boxCapacity','packWaste','polyPrice','boxPrice','costMode','usdVnd','usdKrw','laborSource','factoryId','atSeconds','includedPayroll','excludedCostIds','includePurchases','includeRent','includeOther','includeOffice','includeFactory','officeMonthly','factoryOtherMonthly','polyPayer','boxPayer'];
 export function validateProfitInputs(value:any){
  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!inputKeys.includes(k)))fail('INVALID_PROFIT_SCENARIO');
  const result:any={};
@@ -20,9 +21,11 @@ export function validateProfitInputs(value:any){
   else if(k==='costMode'){if(!['estimate','linked'].includes(String(v)))fail('INVALID_PROFIT_SCENARIO');}
   else if(k==='laborSource'){if(!['AUTO','MANUAL'].includes(String(v)))fail('INVALID_PROFIT_SCENARIO');}
   else if(['packaging','includePurchases','includeRent','includeOther','includeOffice','includeFactory'].includes(k)){if(typeof v!=='boolean')fail('INVALID_PROFIT_SCENARIO');}
+  else if(k==='boxCbmFormula'||k==='packedCbmPerPieceFormula'){if(typeof v!=='string'||v.length>200)fail('INVALID_PROFIT_SCENARIO');}
   else if(v!==''&&(typeof v!=='number'&&typeof v!=='string'||!Number.isFinite(Number(v))||Number(v)<0||Number(v)>1e12))fail('INVALID_PROFIT_SCENARIO');
   result[k]=v;
  }
+ for(const key of ['boxCbm','packedCbmPerPiece'])if(Object.hasOwn(result,key+'Formula'))result[key+'Formula']=validateVolumeFormula(result[key],result[key+'Formula'],'INVALID_PROFIT_SCENARIO');
  return result;
 }
 export async function profitCatalog(db:any,orgId:number,gates:any,orderId?:number){

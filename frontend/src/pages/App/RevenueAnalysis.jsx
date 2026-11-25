@@ -1,3 +1,4 @@
+import VolumeInput from '../../components/VolumeInput';
 import GlobalNotice from "../../components/AppNotice";
 import {HOLIDAY_UPDATED_EVENT} from '../../utils/holidayApi';
 import AnalysisNumberField from '../../components/AnalysisNumberField';
@@ -89,7 +90,7 @@ function OrderAnalysis({orgId}){
   try{const value=await requestJSON('/revenue-analysis/scenarios'+buildQueryString({orgId}),{method:'PUT',body:JSON.stringify(next)});if(live.current){setConfig(value);setInitial(JSON.stringify(value));setSaved(true);}}
   catch(failure){if(live.current)setError(failure.message==='PROFIT_SETTINGS_CHANGED'?t.changed:t.saveError);}finally{lock.current=false;if(live.current)setSaving(false);}
  };
- const field=(key,value=defaults[key],onChange=next=>change(key,next))=><AnalysisNumberField key={key} fullWidth size="small" label={key==='atSeconds'?'AT ('+c.seconds+')':c[({officeMonthly:'office',factoryOtherMonthly:'factory',otherUnitCost:'other',rentMonthly:'rent'})[key]]||pk[key]||payLabels[PAYROLL_KEYS.indexOf(key)]||t[key]||p[key]} value={value??''} disabled={disabled||!config||key==='atSeconds'} precision={key==='packedCbmPerPiece'?6:2} onValueChange={onChange} inputProps={{'data-analysis-input':key}} currencyCode={monetary.includes(key)?currency:undefined}/>;
+ const field=(key,value=defaults[key],onChange=next=>change(key,next))=>['packedCbmPerPiece','boxCbm'].includes(key)?<VolumeInput key={key} name={key} label={pk[key]||pk.boxVolume} value={value} formula={defaults[key+'Formula']||''} languageCode={languageCode} disabled={disabled||!config} onChange={({cbm,cbmFormula})=>{onChange(cbm);change(key+'Formula',cbmFormula);}}/>:<AnalysisNumberField key={key} fullWidth size="small" label={key==='atSeconds'?'AT ('+c.seconds+')':c[({officeMonthly:'office',factoryOtherMonthly:'factory',otherUnitCost:'other',rentMonthly:'rent'})[key]]||pk[key]||payLabels[PAYROLL_KEYS.indexOf(key)]||t[key]||p[key]} value={value??''} disabled={disabled||!config||key==='atSeconds'} precision={key==='packedCbmPerPiece'?6:2} onValueChange={onChange} inputProps={{'data-analysis-input':key}} currencyCode={monetary.includes(key)?currency:undefined}/>;
  const eligibleCostIds=new Set((report?.styles||[]).flatMap(row=>mode==='STYLE'?(row.sources.estimatedPurchases||[]).flatMap(group=>(group.sources||[]).map(part=>part.id)):row.sources.costs.filter(cost=>cost.exact||cost.withinOrder).map(cost=>cost.id)));
  const allCosts=[...new Map((report?.styles||[]).flatMap(row=>row.sources.costs).filter(row=>eligibleCostIds.has(row.id)).map(row=>[row.id,row])).values()];
  const openSettings=()=>{flowSnapshot.current={config,month,mode,orderId,standalone};setCrewEdited(false);setDetail(null);setPickerOpen(true);};

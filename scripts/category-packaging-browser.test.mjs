@@ -26,11 +26,12 @@ try{
    if(route.request().method()==='PUT'){const body=route.request().postDataJSON();assert.equal(body.revision,saved.revision);saved={...saved,...body,revision:saved.revision+1};writes++;}
    await route.fulfill({headers,json:saved});
   });
+  await page.route('**/text-acronyms',r=>r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{revision:0,entries:[]}}));
   await page.goto(`http://127.0.0.1:${port}/category-packaging-acceptance.html?lang=${lang}`);
   const input=page.getByRole('textbox',{name:t.volume,exact:true}),save=page.getByRole('button',{name:t.save,exact:true});
-  await input.waitFor();assert.equal(writes,0);assert.equal(await save.isDisabled(),true);
-  await input.fill('0.000125');await save.click();await page.waitForFunction(()=>document.querySelector('button')?.disabled);
-  assert.equal(saved.values['2'],'0.000125');assert.equal(writes,1);
+  await input.waitFor();assert.equal(await input.inputValue(),'0');assert.equal(writes,0);assert.equal(await save.isDisabled(),true);
+  await input.fill('=0.05*0.05*0.05');await input.press('Tab');await save.click();await page.waitForFunction(()=>document.querySelector('#category-packaging button.MuiButton-contained')?.disabled);
+  assert.equal(saved.values['2'],'0.000125');assert.equal(writes,1);assert.equal(saved.formulas['2'],'=0.05*0.05*0.05');
   await page.reload();await input.waitFor();assert.equal(await input.inputValue(),'0.000125');assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS: category CBM precision, dirty state, explicit save/reload; ko/en/vi.');

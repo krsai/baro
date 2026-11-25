@@ -56,6 +56,7 @@ const normalizeStyle = (value = {}) => ({
   bom: normalizeArray(value.bom),
   bomNotes: value.bomNotes || '',
   packedCbmPerPiece: value.packedCbmPerPiece ?? '',
+  packedCbmPerPieceFormula: value.packedCbmPerPieceFormula || '',
   timeBucketSource: value.timeBucketSource || null,
   timeBucketSetVersionId: toPositiveOrgId(value.timeBucketSetVersionId),
   timeBucketQuantities: normalizeBucketQuantities(value.timeBucketQuantities),

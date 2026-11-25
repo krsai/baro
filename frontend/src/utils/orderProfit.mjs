@@ -25,6 +25,7 @@ export function orderStyleProfit(style,defaults,override={},pack={},rates={},lab
  Object.assign(input,local);
  if(laborBasis?.calendar){input.workdays=laborBasis.calendar.regularWorkdays;input.hoursDay=laborBasis.calendar.standardWorkMinutes/60;}
  input.packedCbmPerPiece=override.packedCbmPerPiece??pack.packedCbmPerPiece??style.sources?.packedCbmPerPiece??input.packedCbmPerPiece;
+ input.packedCbmPerPieceFormula=Object.hasOwn(override,'packedCbmPerPiece')?(override.packedCbmPerPieceFormula||''):pack.packedCbmPerPiece!=null?(pack.packedCbmPerPieceFormula||''):(style.sources?.packedCbmPerPieceFormula||'');
  if(Number(input.packedCbmPerPiece)>0)input.boxCapacity=packagingGeometry(input).capacity??'';
  input.costMode='linked';
  // Saved order quantities and prices are authoritative, never scenario inputs.

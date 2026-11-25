@@ -1,3 +1,4 @@
+import {validateVolumeFormula} from '../utils/validateVolumeFormula';
 import {directoryShippingParty,recentShippingParties} from './shippingPartyDirectory';
 import {assertDistinctShippingParties} from './shippingParties';
 import {assertShippingEnglishData} from './shippingEnglish';
@@ -198,13 +199,14 @@ export async function saveFreightPackage(db:any,orgId:number,actorId:number,jobI
  await freightActor(db,orgId,actorId);return retryEditTransaction(db,async(tx:any)=>{
   await freightActor(tx,orgId,actorId);const job=await get(tx,orgId,'jobs',jobId,true);if(job.status==='CANCELLED')fail('FREIGHT_CHANGED',409);
   const id=key(input.id||input.clientKey),label=clean(input.label||'',100),quantity=Number(input.quantity),weightKg=decimal(input.weightKg),cbm=decimal(input.cbm,6),dispatchId=input.dispatchId?clean(input.dispatchId,80):null;
+  const cbmFormula=validateVolumeFormula(cbm,input.cbmFormula);
   if(!label||!Number.isSafeInteger(quantity)||quantity<=0||quantity>1000000)fail('FREIGHT_INVALID_INPUT');
   if(dispatchId)await get(tx,orgId,'dispatches',dispatchId,true);
   const old=(await tx.$queryRawUnsafe('SELECT * FROM "FreightPackage" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',id,orgId))[0];
   if(old&&old.jobId!==jobId)fail('FREIGHT_NOT_FOUND',404);
-  if(old&&old.label===label&&old.quantity===quantity&&canonical(old.weightKg)===canonical(weightKg)&&canonical(old.cbm)===canonical(cbm)&&old.dispatchId===dispatchId)return old;
+  if(old&&old.label===label&&old.quantity===quantity&&canonical(old.weightKg)===canonical(weightKg)&&canonical(old.cbm)===canonical(cbm)&&old.dispatchId===dispatchId&&(old.cbmFormula||'')===cbmFormula)return old;
   if(old&&old.version!==input.version)fail('FREIGHT_CHANGED',409);
-  const rows=old?await tx.$queryRawUnsafe('UPDATE "FreightPackage" SET label=$1,quantity=$2,"weightKg"=$3::numeric,cbm=$4::numeric,"dispatchId"=$5,version=version+1,"updatedByEmployeeId"=$6 WHERE id=$7 AND "orgId"=$8 RETURNING *',label,quantity,weightKg,cbm,dispatchId,actorId,id,orgId):await tx.$queryRawUnsafe('INSERT INTO "FreightPackage"(id,"orgId","jobId","dispatchId",label,quantity,"weightKg",cbm,"createdByEmployeeId","updatedByEmployeeId") VALUES($1,$2,$3,$4,$5,$6,$7::numeric,$8::numeric,$9,$9) RETURNING *',id,orgId,jobId,dispatchId,label,quantity,weightKg,cbm,actorId);
+  const rows=old?await tx.$queryRawUnsafe('UPDATE "FreightPackage" SET label=$1,quantity=$2,"weightKg"=$3::numeric,cbm=$4::numeric,"dispatchId"=$5,"cbmFormula"=$9,version=version+1,"updatedByEmployeeId"=$6 WHERE id=$7 AND "orgId"=$8 RETURNING *',label,quantity,weightKg,cbm,dispatchId,actorId,id,orgId,cbmFormula):await tx.$queryRawUnsafe('INSERT INTO "FreightPackage"(id,"orgId","jobId","dispatchId",label,quantity,"weightKg",cbm,"createdByEmployeeId","updatedByEmployeeId","cbmFormula") VALUES($1,$2,$3,$4,$5,$6,$7::numeric,$8::numeric,$9,$9,$10) RETURNING *',id,orgId,jobId,dispatchId,label,quantity,weightKg,cbm,actorId,cbmFormula);
   await audit(tx,orgId,'packages',rows[0],old,actorId);return rows[0];
  });
 }
