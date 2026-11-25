@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import {parseVolumeInput} from '../frontend/src/utils/volumeFormula.mjs';
+import {reviewVolumeFormula} from '../frontend/src/utils/volumeFormulaReview.mjs';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
 const require=createRequire(import.meta.url);
 const server=require('../backend/dist/utils/volumeFormula');
@@ -11,6 +12,17 @@ const {shippingCargo}=require('../backend/dist/services/shippingCargo');
 const {saveFreight}=require('../backend/dist/services/freightOperations');
 const {saveJobOperationDetails}=require('../backend/dist/services/freightJobWorkflow');
 const {transportSnapshot}=require('../backend/dist/services/transportExchange');
+test('package count is only a review hint for additive formula groups, never a required breakdown',()=>{
+ const one='=0.5*0.5*0.1',two='=0.5*0.5*0.1 + 0.5*0.5*0.2';
+ assert.deepEqual(reviewVolumeFormula(one,'2'),{quantity:2,terms:1});
+ assert.equal(reviewVolumeFormula(two,'2'),null);assert.equal(parseVolumeInput(two).cbm,'0.075');
+ assert.equal(reviewVolumeFormula('=('+two.slice(1)+')','2'),null);
+ assert.deepEqual(reviewVolumeFormula('=(0.2+0.3)*0.5*0.1','2'),{quantity:2,terms:1});
+ assert.deepEqual(reviewVolumeFormula(two,'3'),{quantity:3,terms:2});
+ for(const input of ['0.075','', '=1/0'])assert.equal(reviewVolumeFormula(input,'2'),null);
+ assert.equal(reviewVolumeFormula(one,'1'),null);assert.equal(reviewVolumeFormula(one,'1.5'),null);
+ assert.deepEqual(reviewVolumeFormula(one+'*2','2'),{quantity:2,terms:1},'a factor could be a dimension or a count; do not infer its meaning');
+});
 test('exact arithmetic preserves the entered formula without quantity inference or executable expressions',()=>{
  assert.equal(readFileSync('backend/src/utils/volumeFormula.js','utf8'),readFileSync('frontend/src/utils/volumeFormula.mjs','utf8'));
  for(const [input,expected] of [['=0.5*0.5*0.3','0.075'],['=0.5*0.5*0.3*2','0.15'],['0.15','0.15'],['=0.1+0.2','0.3'],['=(1+2)/7','0.428571'],['=1-1','0'],['=10*10','100'],['=1/3','0.333333']]){
