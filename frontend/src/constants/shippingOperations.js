@@ -27,3 +27,7 @@ Object.assign(shippingOperationText.vi,{"masterSection":"MBL Dùng Chung","house
 Object.assign(shippingOperationText.ko,{placeOfReceipt:'\uD654\uBB3C \uC778\uC218\uC9C0',placeOfDelivery:'\uD654\uBB3C \uC778\uB3C4\uC9C0'});
 Object.assign(shippingOperationText.en,{placeOfReceipt:'Place of Receipt',placeOfDelivery:'Place of Delivery'});
 Object.assign(shippingOperationText.vi,{placeOfReceipt:'N\u01A1i Nh\u1EADn H\u00E0ng',placeOfDelivery:'N\u01A1i Giao H\u00E0ng'});
+
+Object.assign(shippingOperationText.ko,{routeCompleted:'진행 완료',routePending:'미진행'});
+Object.assign(shippingOperationText.en,{routeCompleted:'Completed',routePending:'Pending'});
+Object.assign(shippingOperationText.vi,{routeCompleted:'Đã Hoàn Thành',routePending:'Chưa Hoàn Thành'});

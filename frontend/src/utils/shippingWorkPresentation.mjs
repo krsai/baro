@@ -14,7 +14,14 @@ export function workRouteSteps(job){
  const labels={ORIGIN_DOOR:'pickup',ORIGIN_TERMINAL:job.mode==='AIR'?'originAirport':'loadingPort',DESTINATION_TERMINAL:job.mode==='AIR'?'destinationAirport':'dischargePort',DESTINATION_DOOR:'delivery'};
  const start=nodes.indexOf(data.workScope?.start),end=nodes.indexOf(data.workScope?.end);
  const selected=start>=0&&end>start?nodes.slice(start,end+1):nodes.filter(node=>node.endsWith('DOOR')||values[node]);
- return selected.map((node,index)=>({node,label:labels[node],field:index===0?'origin':index===selected.length-1?'destination':null,value:locations[node]||values[node]}));
+ return selected.map((node,index)=>({node,label:labels[node],field:index===0?'origin':index===selected.length-1?'destination':null,value:locations[node]||values[node],name:data.routeLocationDetails?.[node]?.label?.trim()||''}));
+}
+export function routeStopText(name,address){
+ const label=String(name||'').trim(),value=String(address||'').trim();
+ return label&&value&&label!==value?`${label} (${value})`:label||value;
+}
+export function routeDateComplete(date,today){
+ return typeof date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(date)&&Number.isFinite(Date.parse(date))&&new Date(date).toISOString().slice(0,10)===date&&date<today;
 }
 export function workCargo(data){
  const positive=value=>value!==''&&value!=null&&Number.isFinite(Number(value))&&Number(value)>0;

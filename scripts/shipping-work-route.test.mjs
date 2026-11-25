@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {workRouteSteps} from '../frontend/src/utils/shippingWorkPresentation.mjs';
+import {workRouteSteps,routeStopText,routeDateComplete} from '../frontend/src/utils/shippingWorkPresentation.mjs';
 
 test('work route follows the saved 2/3/4-node scope and keeps actual terminal and door identities',()=>{
  const data={origin:'Factory',destination:'Buyer',originPortCode:'VNHPH',destinationPortCode:'KRINC',routeLocations:{ORIGIN_DOOR:'Factory',ORIGIN_TERMINAL:'Haiphong (VNHPH)',DESTINATION_TERMINAL:'Incheon (KRINC)',DESTINATION_DOOR:'Buyer'}};
@@ -20,4 +20,13 @@ test('legacy records show only saved terminals, and road/express always use two 
  assert.equal(workRouteSteps({mode:'SEA',data:{...data,originPortCode:'VNHPH',destinationPortCode:'KRINC'}}).length,4);
  for(const job of [{mode:'ROAD',data},{mode:'AIR',service:'EXPRESS',data}])assert.deepEqual(workRouteSteps(job).map(row=>row.node),['ORIGIN_DOOR','DESTINATION_DOOR']);
  assert.deepEqual(workRouteSteps({mode:'AIR',data:{...data,workScope:{start:'ORIGIN_TERMINAL',end:'DESTINATION_TERMINAL'}}}).map(row=>row.label),['originAirport','destinationAirport']);
+});
+
+test('saved route names display with addresses without rewriting source values',()=>{
+ const job={mode:'ROAD',data:{origin:'115 Ngoc Truc',destination:'Seoul',routeLocationDetails:{ORIGIN_DOOR:{label:'BARO GARMENT'},DESTINATION_DOOR:{label:'THE SAN'}}}},before=structuredClone(job);
+ const stops=workRouteSteps(job);assert.equal(routeStopText(stops[0].name,stops[0].value),'BARO GARMENT (115 Ngoc Truc)');assert.equal(routeStopText('Same','Same'),'Same');assert.equal(routeStopText('', 'Legacy Address'),'Legacy Address');assert.deepEqual(job,before);
+});
+test('route completion requires a valid saved date strictly before local today',()=>{
+ for(const date of ['2026-11-24','2025-12-31'])assert.equal(routeDateComplete(date,'2026-11-25'),true);
+ for(const date of ['',null,'2026-11-25','2026-11-26','2026-02-30','bad'])assert.equal(routeDateComplete(date,'2026-11-25'),false);
 });

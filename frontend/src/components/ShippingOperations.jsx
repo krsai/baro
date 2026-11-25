@@ -9,7 +9,7 @@ import AppNotice from './AppNotice';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import {shippingOperationText} from '../constants/shippingOperations';
 import {humanTextDisplay} from '../utils/humanTextDisplay.mjs';
-import {workRouteSteps} from '../utils/shippingWorkPresentation.mjs';
+import {workRouteSteps,routeStopText,routeDateComplete} from '../utils/shippingWorkPresentation.mjs';
 import {shippingWorkValues as values,shippingWorkData} from '../utils/shippingWorkData.mjs';
 import ShippingCargoRows from './ShippingCargoRows';
 import {freightText} from '../constants/freight';
@@ -18,10 +18,17 @@ import {shippingWorkbenchText} from '../constants/shippingWorkbench';
 import {shippingRequestDate} from '../utils/shippingPresentation';
 import {shippingEditorText} from '../constants/shippingEditor';
 
+function RouteAddress({routeName,value,onChange,...props}){
+ const [editing,setEditing]=useState(false);
+ return <TextField {...props} value={editing?value:routeStopText(routeName,value)} onFocus={()=>setEditing(true)} onBlur={()=>setEditing(false)} onChange={onChange}/>;
+}
+const localToday=()=>{const now=new Date();return new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,10);};
 const grid={display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))'},gap:2};
 export default function ShippingOperations({job,employees,languageCode,busy,formId,onSave,onReload,onDirtyChange,onStateChange}){
  const t=shippingOperationText[languageCode]||shippingOperationText.en,f=freightText[languageCode]||freightText.en,e=freightJobEditorText[languageCode]||freightJobEditorText.en,w=shippingWorkbenchText[languageCode]||shippingWorkbenchText.en,x=shippingEditorText[languageCode]||shippingEditorText.en;
  const [value,setValue]=useState(()=>values(job)),baseline=useRef(values(job)),[saving,setSaving]=useState(false),[uncertain,setUncertain]=useState(false),[error,setError]=useState(''),pending=useRef(null),lock=useRef(false),live=useRef(true);
+ const [today,setToday]=useState(localToday);
+ useEffect(()=>{const refresh=()=>setToday(localToday()),timer=setInterval(refresh,30000);document.addEventListener('visibilitychange',refresh);return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',refresh);};},[]);
  const version=useRef(job.version),[conflict,setConflict]=useState(false),[reloading,setReloading]=useState(false);
  const dirty=JSON.stringify(value)!==JSON.stringify(baseline.current),readOnly=job.receiptStatus!=='ACCEPTED'||job.status==='CANCELLED',blocked=busy||saving||reloading||uncertain||readOnly;
  useUnsavedChanges(dirty||uncertain);
@@ -44,6 +51,7 @@ export default function ShippingOperations({job,employees,languageCode,busy,form
  };
  const customer=job.data.generalCustomer?humanTextDisplay(job.data.actualRequesterName,{textCase:'title'}):job.data.customer?.[languageCode==='ko'?'nameKo':languageCode==='vi'?'nameVi':'name']||job.data.customer?.name;
  const source=shippingWorkData(job.data),routeSteps=workRouteSteps(job),hasMaster=job.bills.some(row=>row.kind==='MASTER');
+ const completedStops=new Set(routeSteps.filter((step,index)=>routeDateComplete(baseline.current[index===0?'plannedDate':'routeDate'+step.node],today)).map(step=>step.node));
  const detail=(label,text)=><Box sx={{minWidth:0}}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2" sx={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{text||'—'}</Typography></Box>;
  const field=(key,label,multiline=false,minRows=3)=><TextField fullWidth size="small" key={key} name={key==='voyage'?'voyageNumber':key} label={label} value={value[key]??''} disabled={blocked} multiline={multiline} minRows={multiline?minRows:undefined} required={['shipper','consignee','origin','destination'].includes(key)} slotProps={{htmlInput:{'aria-label':label,'data-text-case':key==='incoterms'?'preserve':undefined,maxLength:['cargo','remark'].includes(key)?4000:['shipper','consignee','notify','marks'].includes(key)?2000:['origin','destination','placeOfReceipt','placeOfDelivery'].includes(key)?1000:200}}} onChange={ev=>patch(key,ev.target.value)}/>;
  const date=(key,label)=><LocalizedDateField fullWidth size="small" key={key} name={key} type="date" label={label||(key==='plannedDate'?e.plannedDate:t[key])} value={value[key]||''} disabled={blocked} slotProps={{inputLabel:{shrink:true}}} onChange={ev=>patch(key,ev.target.value)}/>;
@@ -56,7 +64,7 @@ export default function ShippingOperations({job,employees,languageCode,busy,form
   <Box data-shipping-work-columns sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:'minmax(0,2fr) minmax(300px,1fr)'},gap:2,alignItems:'start'}}>
    <Stack spacing={2} data-shipping-work-main sx={{minWidth:0}}>
     <EntityDetailSection title={t.parties}><Stack spacing={2} data-shipping-work-parties>{field('shipper',t.shipper,true)}{field('consignee',t.consignee,true)}{field('notify',t.notify,true)}</Stack></EntityDetailSection>
-    <EntityDetailSection title={t.route}><Stack spacing={2} data-shipping-work-route>{routeSteps.map((step,index)=><Box key={step.node} data-shipping-route-step={step.node} sx={{display:'grid',gridTemplateColumns:{xs:'24px minmax(0,1fr)',sm:'24px minmax(0,1fr) 170px'},gap:1,alignItems:'start'}}><Box aria-hidden="true" sx={{position:'relative',height:'100%',minHeight:24,pt:'6px','&:after':index<routeSteps.length-1?{content:'""',position:'absolute',top:30,bottom:-22,left:11,borderLeft:1,borderColor:'divider'}:undefined}}><Box sx={{width:24,height:24,border:1,borderColor:'divider',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',color:'text.secondary',fontSize:'0.75rem'}}>{index+1}</Box></Box>{step.field?field(step.field,t[step.label],true,1):<TextField fullWidth size="small" label={t[step.label]} value={step.value||t.notSpecified} multiline minRows={1} slotProps={{input:{readOnly:true},htmlInput:{'aria-label':t[step.label],tabIndex:-1},inputLabel:{shrink:true}}}/>}<Box sx={{gridColumn:{xs:2,sm:'auto'},minWidth:0}}>{date(index===0?'plannedDate':'routeDate'+step.node,index===0?e.plannedDate:({ko:'\uB0A0\uC9DC',en:'Date',vi:'Ng\u00E0y'}[languageCode]||'Date')+' '+(index+1))}</Box></Box>)}</Stack></EntityDetailSection>
+    <EntityDetailSection title={t.route}><Stack spacing={2} data-shipping-work-route>{routeSteps.map((step,index)=><Box key={step.node} data-shipping-route-step={step.node} sx={{display:'grid',gridTemplateColumns:{xs:'24px minmax(0,1fr)',sm:'24px minmax(0,1fr) 170px'},gap:1,alignItems:'start'}}><Box data-route-complete={completedStops.has(step.node)} aria-label={completedStops.has(step.node)?t.routeCompleted:t.routePending} sx={{position:'relative',height:'100%',minHeight:24,pt:'6px','&:after':index<routeSteps.length-1?{content:'""',position:'absolute',top:30,bottom:-22,left:11,borderLeft:1,borderColor:'divider'}:undefined}}><Box sx={{width:24,height:24,border:1,borderColor:completedStops.has(step.node)?'primary.main':'divider',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',bgcolor:completedStops.has(step.node)?'primary.main':'background.paper',color:completedStops.has(step.node)?'primary.contrastText':'text.secondary',fontSize:'0.75rem'}}>{index+1}</Box></Box>{step.field?<RouteAddress fullWidth size="small" routeName={step.name} name={step.field} required label={t[step.label]} value={value[step.field]||''} disabled={blocked} multiline minRows={1} slotProps={{htmlInput:{'aria-label':t[step.label],maxLength:1000,'data-text-case':'preserve'}}} onChange={ev=>patch(step.field,ev.target.value)}/>:<TextField fullWidth size="small" label={t[step.label]} value={routeStopText(step.name,step.value)||t.notSpecified} multiline minRows={1} slotProps={{input:{readOnly:true},htmlInput:{'aria-label':t[step.label],tabIndex:-1},inputLabel:{shrink:true}}}/>}<Box sx={{gridColumn:{xs:2,sm:'auto'},minWidth:0}}>{date(index===0?'plannedDate':'routeDate'+step.node,index===0?e.plannedDate:({ko:'\uB0A0\uC9DC',en:'Date',vi:'Ng\u00E0y'}[languageCode]||'Date')+' '+(index+1))}</Box></Box>)}</Stack></EntityDetailSection>
     <EntityDetailSection title={t.cargo}><Stack spacing={2}>
      <Box data-shipping-cargo-summary sx={{display:'grid',gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',sm:'minmax(0,2fr) repeat(4,minmax(0,1fr))'},gap:1,alignItems:'start'}}><Box sx={{gridColumn:{xs:'1 / -1',sm:'auto'},minWidth:0}}>{field('cargo',e.cargo,/[\r\n]/.test(value.cargo||''),1)}</Box>{numeric('quantity',t.packageCount)}{choice('unit',e.unit,['PKG','CTN','PLT','PCS','BAG','BOX','CRATE','DRUM','ROLL'])}{numeric('weightKg',e.weightKg)}{numeric('cbm',e.cbm)}</Box>
 
