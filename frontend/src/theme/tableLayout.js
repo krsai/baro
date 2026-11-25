@@ -20,7 +20,7 @@ export const responsiveTableStyles={
   '& > tbody > tr:not([data-table-status]) > td[align="right"]':{whiteSpace:'nowrap'},
   '& > thead > tr > th,& > tbody > tr:not([data-table-status]) > td':{paddingInline:ui.table.fitHorizontalPadding},
  },
- [`& > tbody > tr:not([data-table-status]) > td${actions}`]:{position:'sticky',right:0,zIndex:2,backgroundColor:ui.color.surface,whiteSpace:'nowrap'},
+ [`& > tbody > tr:not([data-table-status]) > td${actions}`]:{position:'sticky',right:0,zIndex:2,backgroundColor:`var(--table-row-background, ${ui.color.surface})`,whiteSpace:'nowrap'},
  [`& > tbody > tr:not([data-table-status]).MuiTableRow-hover:hover > td${actions}`]:{backgroundColor:ui.color.hover},
  [`& > tbody > tr:not([data-table-status]).Mui-selected > td${actions}, & > tbody > tr:not([data-table-status]).Mui-selected.MuiTableRow-hover:hover > td${actions}`]:{backgroundColor:getLabelPalette('blue').background},
  [`${hasActions} > thead > tr:first-of-type > th:last-child`]:{position:'sticky',right:0,zIndex:3,backgroundColor:ui.color.header},

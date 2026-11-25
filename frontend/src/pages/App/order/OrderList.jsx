@@ -3692,6 +3692,7 @@ const OrderList = () => {
                         onFocusCapture={event => {if (!event.target.closest('[data-order-color-drag]')) handleItemRowFocusCapture(item.id);}}
                         onBlurCapture={(event) => handleItemRowBlurCapture(item.id, event)}
                         sx={{
+                          '--table-row-background': groupPastelStyle.background,
                           '& > td': {
                             backgroundColor: groupPastelStyle.background,
                             borderBottomColor: groupPastelStyle.border,
@@ -4126,6 +4127,7 @@ const OrderList = () => {
                               handleItemRowBlurCapture(colorTargetIds, event)
                             }
                             sx={{
+                              '--table-row-background': groupPastelStyle.background,
                               '& > td': {
                                 backgroundColor: groupPastelStyle.background,
                                 borderBottomColor: groupPastelStyle.border,
