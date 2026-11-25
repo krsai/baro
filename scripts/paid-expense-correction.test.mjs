@@ -30,7 +30,7 @@ test('paid code/evidence edit replaces payment atomically, preserves money/histo
   // Existing pending edits must remain approvable when a payment arrives later.
   // Use the real approved registration flow for the payment.
   const {requestChangeApproval:request}=require('../backend/dist/services/changeApprovals');
-  const bank={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{entryKind:'BANK',clientKey:randomUUID(),accountId:s.account.id,transactionDate:'2026-11-16',direction:'OUT',amount:'40',accountingCodeId:s.code.id,evidenceType:'EXPENSE',paymentScheduleId:installment,expenseItems:[{itemId:doc.items[0].id,amount:'40'}],counterparty:{kind:'PARTNER',id:s.vendor.id}}]};
+  const bank={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{entryKind:'BANK',remark:'Expense payment',clientKey:randomUUID(),accountId:s.account.id,transactionDate:'2026-11-16',direction:'OUT',amount:'40',accountingCodeId:s.code.id,evidenceType:'EXPENSE',paymentScheduleId:installment,expenseItems:[{itemId:doc.items[0].id,amount:'40'}],counterparty:{kind:'PARTNER',id:s.vendor.id}}]};
   const registration=await request(db,org,author,{menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:bank.clientKey,payload:bank,selection:{step1EmployeeId:s.people.junior.id,step2EmployeeId:s.people.lead.id},clientKey:randomUUID()});
   if(registration.status==='PENDING'){await decideChangeApproval(db,org,s.people.junior.id,registration.id,{decision:'APPROVED'});await decideChangeApproval(db,org,s.people.lead.id,registration.id,{decision:'APPROVED'});}
   const original=await db.bankLedgerEntry.findFirst({where:{orgId:org,voidedAt:null}});assert.ok(original);
@@ -72,7 +72,7 @@ test('highest admin code correction follows allocated expense FKs for every part
   const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor.id,{remark:'Expense purpose',partnerOrgId:s.vendor.id,automaticRequestDate:true,clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'100',vatRate:'0',details:{reference:'REF',evidenceFile:'receipt.pdf'}}]}));
   const originals=[];
   for(const amount of ['40','60']){
-   const bank={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{entryKind:'BANK',clientKey:randomUUID(),accountId:s.account.id,transactionDate:'2026-11-16',direction:'OUT',amount,remark:'Partial payment: balance due later',purpose:'Partial payment',accountingCodeId:codes[0].id,evidenceType:'EXPENSE',expenseRequestId:doc.id,expenseVersion:doc.version,expenseItems:[{itemId:doc.items[0].id,amount}],counterparty:{kind:'PARTNER',id:s.vendor.id}}]};
+   const bank={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{entryKind:'BANK',remark:'Expense payment',clientKey:randomUUID(),accountId:s.account.id,transactionDate:'2026-11-16',direction:'OUT',amount,paymentNote:'Partial payment: balance due later',purpose:'Partial payment',accountingCodeId:codes[0].id,evidenceType:'EXPENSE',expenseRequestId:doc.id,expenseVersion:doc.version,expenseItems:[{itemId:doc.items[0].id,amount}],counterparty:{kind:'PARTNER',id:s.vendor.id}}]};
    const registered=await requestChangeApproval(db,org,actor.id,{menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:bank.clientKey,payload:bank,clientKey:randomUUID()});
    assert.equal(registered.status,'APPROVED');originals.push(await db.bankLedgerEntry.findUnique({where:{orgId_clientKey:{orgId:org,clientKey:bank.rows[0].clientKey}}}));
   }
@@ -108,7 +108,7 @@ test('highest admin code correction follows allocated expense FKs for every part
   // A payment spanning two newly different codes has no unique representative.
   // Reject it atomically rather than silently copying the first item's code.
   const mixed=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor.id,{remark:'Expense purpose',partnerOrgId:s.vendor.id,automaticRequestDate:true,clientKey:randomUUID(),items:[1,2].map(()=>({transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'50',vatRate:'0',details:{reference:'MIX',evidenceFile:'receipt.pdf'}}))}));
-  const mixedBank={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{entryKind:'BANK',clientKey:randomUUID(),accountId:s.account.id,transactionDate:'2026-11-16',direction:'OUT',amount:'100',accountingCodeId:s.code.id,evidenceType:'EXPENSE',expenseItems:mixed.items.map(i=>({itemId:i.id,amount:'50'})),counterparty:{kind:'PARTNER',id:s.vendor.id}}]};
+  const mixedBank={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{entryKind:'BANK',remark:'Expense payment',clientKey:randomUUID(),accountId:s.account.id,transactionDate:'2026-11-16',direction:'OUT',amount:'100',accountingCodeId:s.code.id,evidenceType:'EXPENSE',expenseItems:mixed.items.map(i=>({itemId:i.id,amount:'50'})),counterparty:{kind:'PARTNER',id:s.vendor.id}}]};
   await requestChangeApproval(db,org,actor.id,{menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:mixedBank.clientKey,payload:mixedBank,clientKey:randomUUID()});
   const mixedSource=await loadExpenseEditorSource(db,org,'request',String(mixed.id)),mixedForm=expenseEditorForm(mixedSource);
   await assert.rejects(requestChangeApproval(db,org,actor.id,{menu:'EXPENSE',operation:'UPDATE',sourceKind:'request',sourceId:String(mixed.id),reason:'Ambiguous codes',clientKey:randomUUID(),payload:{...mixedForm,clientKey:randomUUID(),items:mixedForm.items.map((i,index)=>({...i,transactionCodeId:codes[index].id}))}}),/PAID_EXPENSE_CORRECTION_COMPLEX/);
@@ -127,19 +127,22 @@ test('dashboard correction explicitly links a registered material to a paid lega
   const {ledgerEntryRevision}=require('../backend/dist/services/bankLedgerEdit');
   await saveApprovalActionBatch(db,org,actor.id,[{menu:'BANK_LEDGER',operation:'CREATE',settings:{revision:0,drafterScope:{role:'ALL',gradeId:null},registrationStages:[{role:'ADMIN',gradeMatch:'ANY',gradeId:null}]}}]);
   const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor.id,{remark:'Expense purpose',partnerOrgId:s.vendor.id,requestDate:'2026-11-20',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'10',unitPrice:'10',vatRate:'0',details:{evidenceFile:'carton.pdf'}}]}));
-  const bank={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{entryKind:'BANK',clientKey:randomUUID(),accountId:s.account.id,transactionDate:'2026-11-20',direction:'OUT',amount:'100',accountingCodeId:s.code.id,evidenceType:'EXPENSE',expenseRequestId:doc.id,expenseVersion:doc.version,expenseItems:[{itemId:doc.items[0].id,amount:'100'}],counterparty:{kind:'PARTNER',id:s.vendor.id}}]};
+  const bank={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{entryKind:'BANK',remark:'Expense payment',clientKey:randomUUID(),accountId:s.account.id,transactionDate:'2026-11-20',direction:'OUT',amount:'100',accountingCodeId:s.code.id,evidenceType:'EXPENSE',expenseRequestId:doc.id,expenseVersion:doc.version,expenseItems:[{itemId:doc.items[0].id,amount:'100'}],counterparty:{kind:'PARTNER',id:s.vendor.id}}]};
   const payment=await requestChangeApproval(db,org,actor.id,{menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:bank.clientKey,payload:bank,clientKey:randomUUID()});assert.equal(payment.status,'APPROVED');
   const original=await db.bankLedgerEntry.findFirst({where:{orgId:org,voidedAt:null}});
-  const base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}}),unit=await db.expenseUnit.create({data:{code:'PAIDBOX',nameEn:'Box',nameKo:'박스',nameVi:'Thùng'}});
+  const oldBase=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}});
+  const base=await db.transactionCodeBase.create({data:{code:'CTN',nameEn:'Carton',nameKo:'Carton',nameVi:'Carton',entryMode:'GENERAL',serviceTypeId:oldBase.serviceTypeId,expenseTypeId:oldBase.expenseTypeId}}),unit=await db.expenseUnit.create({data:{code:'PAIDBOX',nameEn:'Box',nameKo:'박스',nameVi:'Thùng'}});
   await db.accountingCodeIndustry.create({data:{baseId:base.id,systemIndustryId:base.serviceTypeId}});
   await db.settingServiceDefault.update({where:{id:base.serviceTypeId},data:{materialManagement:true}});
   await db.transactionCodeBase.update({where:{id:base.id},data:{materialUnitId:unit.id,materialSettings:{enabled:true,stockFields:['unit'],unitInput:'REQUIRED',colorInput:'HIDDEN',masterInputs:{owner:'REQUIRED',type:'HIDDEN',color:'HIDDEN'}}}});
+  const correctedDefault=await db.settingTransactionCodeDefault.create({data:{code:'CTNV',nameEn:'Carton',nameKo:'Carton',nameVi:'Carton',serviceTypeId:base.serviceTypeId,baseId:base.id,taxTreatmentId:s.code.taxTreatmentId}});
+  const correctedCode=await db.transactionCode.create({data:{code:'CTNV',nameEn:'Carton',nameKo:'Carton',nameVi:'Carton',ownerOrgId:org,serviceTypeId:s.code.serviceTypeId,baseId:base.id,taxTreatmentId:s.code.taxTreatmentId,systemDefaultId:correctedDefault.id}});
   const [system]=await systemMaterialOptions(db,org,base.id),selection=await seedExpenseVariant(db,s,system.id);
   const [variant]=await db.$queryRaw`SELECT * FROM "InventoryVariant" WHERE id=${selection.materialVariantId}`;
   const master=await db.materialItem.findUnique({where:{id:selection.materialItemId}}),a=variant.attributes;
   const material={...master,data:{...master.data,variantId:variant.id,variantRevision:variant.revision,itemOwnerOrgId:a.owner.id,itemOwnerSnapshot:a.owner,itemTypeId:null,itemAttributeSnapshot:{type:null},color:null,details:{}}};
   const form=expenseEditorForm(await loadExpenseEditorSource(db,org,'request',String(doc.id)));
-  const input=expenseCodeCorrectionInput(form,doc.items[0].id,s.code.id,randomUUID(),{entryId:original.id,revision:ledgerEntryRevision(original)},material);
+  const input=expenseCodeCorrectionInput(form,doc.items[0].id,correctedCode.id,randomUUID(),{entryId:original.id,revision:ledgerEntryRevision(original)},material);
   const result=await requestChangeApproval(db,org,actor.id,{...input,clientKey:randomUUID(),reason:'Link the selected carton item'});assert.equal(result.status,'APPROVED');
   const cost=await db.partnerTransactionCost.findUnique({where:{id:doc.items[0].id}});
   assert.equal(cost.materialItemSnapshot.variantId,variant.id);assert.equal(cost.unitId,unit.id);assert.equal(String(cost.quantity),'10');assert.equal(String(cost.unitPrice),'10');assert.equal(String(cost.amount),'100');assert.equal(String(cost.vatRate),'0');

@@ -106,7 +106,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, units =
       if(!material||scope.current!==company)return;
       if(paidCorrectionOnly&&line.unitId&&line.unitId!==material.unitId){showNotification((changeApprovalText[languageCode]||changeApprovalText.en).PAID_MATERIAL_UNIT_MISMATCH,'error');return;}
       const reset=!sameCode&&!paidCorrectionOnly?{workOrderId:'',styleId:'',linkedOrderIds:[],linkedStyles:[],styleProcessId:'',styleProcessIds:[],assignmentPlanId:'',details:{},enabled:{order:false,style:false,process:false}}:{};
-      onChange(line.key,{...reset,transactionCodeId:selected.id,...(!sameCode&&!paidCorrectionOnly?{vatRate:selected.vatEnabled?String(settings.defaultVatRate):'0'}:{}),...materialLineSelection({...line,...reset},material)});setDetailsOpen(true);return;
+      onChange(line.key,{...reset,transactionCodeId:selected.id,...(!sameCode&&!paidCorrectionOnly?{vatRate:selected.vatEnabled?String(settings.defaultVatRate):'0'}:{}),...materialLineSelection({...line,...reset},material)});if(!paidCorrectionOnly)setDetailsOpen(true);return;
     }
     if(sameCode)return;
     if(paidCorrectionOnly){onChange(line.key,{transactionCodeId:selected?.id||''});return;}
