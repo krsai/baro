@@ -1,4 +1,5 @@
 - Route date inputs: implemented; backend/frontend builds, 8 regression tests, encoding and i18n checks passed; production deployment and user acceptance unverified. First stop uses existing Cargo Ready Date; other dates remain semantically unassigned.
+- 배정 편집 이력 버튼 위치 정정: 구현·프런트 빌드 확인 / 운영 배포·인수 미확인. 되돌리기·다시하기·배정 초기화를 SEARCH 카드 바로 아래 별도 우측 정렬/줄바꿈 행으로 이동했다. 검색 조건 초기화·기간·청구 완료 포함은 SEARCH에 유지하며 기존 이력/저장/포커스/비활성 조건은 변경하지 않는다.
 - 청구 제외 주문의 배정 청구 완료 분류: 구현·관련 검증 완료 / 운영 배포·인수 미확인. 현재 판매 회사의 실제 OrderInvoicePolicy/WorkOrder FK를 배정 조회와 공장 남은 부하 계산에 반영한다. 제외 주문 배정은 생산 완료 여부를 바꾸지 않고 청구 완료 목록으로 분류하며 기본 숨김/포함 보기 및 제외 해제 후 실제 상태 복원을 유지한다. 기존 실적·월별 실제 생산·CT/ST/원본 snapshot·청구/수금/원장은 보존하며 신규 migration·운영 원자료 변경 없음. 제외/포함 재전환·판매 회사 범위·실제 정책/감사·선청구/부분청구·형제 배정·로딩·CT/ST·원본 보존 관련 53건, 한영베 청구 완료 목록 기본 숨김/포함/복원·모바일 배치, 양쪽 빌드·번역/인코딩 통과.
 # 작업 상태
 - 운송 목록 표시 정리: 구현·관련 검증 완료 / 운영 배포·인수 미확인. SR 일자를 첫 열로 이동하고 오른쪽 SR 조회는 문서 아이콘과 툴팁·접근성 이름으로 제공한다. 출발지·도착지는 실제 업무 범위 지점의 저장된 대표명(label)을 우선하며 없으면 기존 주소를 표시한다. 공통 운송 방식 표시의 FCL/LCL에서 해상 접두어를 제거했다. 원본·FK·회사 권한·행 업무 진입은 유지한다. 한영베 PC/모바일 6조합의 SR 조회·검색·업무 탭/초안 보존 회귀와 프런트 빌드·번역·인코딩 검사 통과.
