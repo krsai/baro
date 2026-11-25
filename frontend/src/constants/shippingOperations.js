@@ -4,6 +4,10 @@ export const shippingOperationText={
  vi:{title:'Nghiệp Vụ Vận Chuyển',overview:'Thông Tin Nghiệp Vụ',schedule:'Phụ Trách & Lịch Trình',assignee:'Người Phụ Trách',vessel:'Tên Tàu',voyage:'Chuyến Tàu',flight:'Chuyến Bay',flightNumber:'Số Hiệu Chuyến Bay',etd:'Ngày Đi Dự Kiến',eta:'Ngày Đến Dự Kiến',customer:'Khách Hàng',route:'Tuyến Vận Chuyển',cargo:'Hàng Hóa',parties:'Các Bên Vận Chuyển',shipper:'Shipper',consignee:'Consignee',notify:'Notify Party',request:'Xem Yêu Cầu',received:'Thông Tin Tiếp Nhận',documents:'Chứng Từ Liên Kết',progress:'Tiến Độ',charges:'Nháp Chi Phí',save:'Lưu',retry:'Thử Lại Cùng Yêu Cầu',failed:'Không Thể Lưu. Kiểm Tra Dữ Liệu Và Phiên Bản.',conflict:'Dữ Liệu Đã Thay Đổi. Nội Dung Nhập Được Giữ Lại. Kiểm Tra Bản Mới Nhất.',saved:'Đã Lưu.',close:'Đóng'}
 };
 
+Object.assign(shippingOperationText.ko,{arAp:'AR/AP 입력',terms:'거래·운임 조건',packageCount:'포장 수량',applyDimensions:'치수 합계 적용'});
+Object.assign(shippingOperationText.en,{arAp:'AR/AP Entry',terms:'Trade & Freight Terms',packageCount:'Package Count',applyDimensions:'Apply Dimension Totals'});
+Object.assign(shippingOperationText.vi,{arAp:'Nhập AR/AP',terms:'Điều Kiện Thương Mại & Cước',packageCount:'Số Kiện',applyDimensions:'Áp Dụng Tổng Kích Thước'});
+
 Object.assign(shippingOperationText.ko,{"refresh":"최신 자료 확인","review":"최신 자료를 불러왔습니다. 유지된 입력을 확인한 뒤 저장하세요."});
 
 Object.assign(shippingOperationText.en,{"refresh":"Review Latest Record","review":"Latest record loaded. Review your preserved input before saving."});

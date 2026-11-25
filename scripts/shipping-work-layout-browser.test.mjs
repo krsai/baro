@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
+import {chromium} from 'playwright-core';
+import {shippingOperationText} from '../frontend/src/constants/shippingOperations.js';
+import {shippingBillText} from '../frontend/src/constants/shippingBills.js';
+import {shippingWorkbenchText} from '../frontend/src/constants/shippingWorkbench.js';
+import {titleCaseWords} from '../frontend/src/utils/humanTextCase.mjs';
+const html='frontend/shipping-work-layout-test.html',port=43563;
+assert.ok(!existsSync(html));
+writeFileSync(html,`<html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module">
+import React from 'react';import{createRoot}from'react-dom/client';import{MemoryRouter,Routes,Route}from'react-router-dom';import{ThemeProvider,CssBaseline}from'@mui/material';import{appThemes}from'/src/theme';import Page from'/src/pages/App/FreightJobs';import'/src/styles/form.css';
+const theme=new URLSearchParams(location.search).get('theme');createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,{initialEntries:['/shipping/job1']},React.createElement(ThemeProvider,{theme:appThemes[theme]},React.createElement(CssBaseline),React.createElement(Routes,null,React.createElement(Route,{path:'/shipping/:jobId',element:React.createElement(Page)})))));
+</script></html>`);
+const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:'frontend',stdio:'ignore',windowsHide:true});let browser;
+try{
+ for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/shipping-work-layout-test.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
+ browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+ for(const lang of ['ko','en','vi'])for(const width of [1440,390])for(const mode of ['FCL','LCL','AIR','EXPRESS']){
+  if(process.argv.includes('--preview-only')&&(lang!=='ko'||width!==1440||mode!=='FCL'))continue;
+  if(process.argv.includes('--scope-only')&&(lang!=='ko'||width!==1440||mode!=='LCL'))continue;
+  const page=await browser.newPage({viewport:{width,height:1050}}),errors=[],writes=[],chargeWrites=[],t=shippingOperationText[lang],b=shippingBillText[lang],w=shippingWorkbenchText[lang];
+  page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.dismiss());
+  await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:7,activeOrgType:"SERVICE"});'}));
+  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
+  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={showNotification(){},setUnsavedChangesGuard(){},clearUnsavedChangesGuard(){},markTabChanged(){},clearTabChanged(){},navigateToPath(){}};export const useAppActions=()=>a;'}));
+  await page.route('**/text-acronyms',r=>r.fulfill({json:{revision:0,entries:[{acronym:'MBL'},{acronym:'HBL'},{acronym:'AR'},{acronym:'AP'}]}}));
+  const customer={id:11,name:'CUSTOMER'},job={id:'job1',number:'JOB-000001',orgId:7,mode:['FCL','LCL'].includes(mode)?'SEA':'AIR',service:mode==='EXPRESS'?'EXPRESS':'GENERAL',receiptStatus:'ACCEPTED',status:'DRAFT',version:1,bills:[],documents:[],data:{customer,shipmentType:mode,shipper:'SENDER\nSender Address',consignee:'BUYER\nBuyer Address',notify:'NOTIFY',origin:'Origin Address',destination:'Destination Address',originPortCode:'VNHPH',destinationPortCode:'KRINC',cargo:'Garment',marks:'PRESERVE MARKS',placeOfReceipt:'PRESERVE RECEIPT',placeOfDelivery:'PRESERVE DELIVERY',incoterms:'CIF',freightTerms:'Prepaid',quantity:'99',cbm:'88',weightKg:'120',unit:'PKG',containers:mode==='FCL'?[{size:'20',type:'DC',count:'1'}]:[],packages:mode==='FCL'?[]:[{quantity:'3',lengthM:'0.1',widthM:'0.2',heightM:'0.3'}]}},original=structuredClone(job.data);
+  if(mode==='LCL')job.bills=[{id:'shared-master',jobId:'source-job',kind:'MASTER',number:'M-001',data:{}},{id:'own-house',jobId:'job1',kind:'HOUSE',number:'H-001',data:{}}];
+  const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'},charges=[];
+  await page.route('**/freight/**',async route=>{const req=route.request();if(req.method()==='OPTIONS')return route.fulfill({headers});const key=new URL(req.url()).pathname.split('/freight/')[1];let json;
+   if(key==='options')json=[customer];else if(key==='transport-jobs/options')json={forwarder:{id:7,name:'DEX LOGIS'},employees:[],currencies:[{code:'USD'}]};else if(key==='transport-jobs/job1')json=job;
+   else if(key==='transport-jobs/job1/operation-details'){const body=req.postDataJSON();writes.push(body);job.data.workDetails={...job.data.workDetails,...body.fields};job.version++;json=job;}
+   else throw Error('Unexpected freight API '+key);return route.fulfill({headers,json});});
+  await page.route('**/shipping-requests/**',async route=>{const req=route.request();if(req.method()==='OPTIONS')return route.fulfill({headers});const key=new URL(req.url()).pathname.split('/shipping-requests/')[1];let json;
+   if(key==='job1/charges'&&req.method()==='POST'){const body=req.postDataJSON();chargeWrites.push(body);if(chargeWrites.length===1)return route.fulfill({headers,status:503,json:{error:'UNCONFIRMED'}});json={...body,version:1};charges.push(json);}
+   else if(key==='job1/charges')json={rows:charges,currencies:[{code:'USD'}],parties:[customer]};else json=[];return route.fulfill({headers,json});});
+  await page.goto(`http://127.0.0.1:${port}/shipping-work-layout-test.html?theme=${width===390?'standard':'compact'}`);
+  const form=page.getByTestId('shipping-operations-form');await form.waitFor();const main=page.locator('[data-shipping-work-main]'),side=page.locator('[data-shipping-work-side]'),actions=page.locator('[data-shipping-work-actions]');
+  const a=await main.boundingBox(),c=await side.boundingBox(),toolbar=await actions.boundingBox();assert.ok(width>1000?a.x+a.width<=c.x+1:a.y<c.y);assert.ok(toolbar.y<a.y);assert.ok(toolbar.width>=a.width);
+  assert.equal(await form.locator('[name=marks],[name=placeOfReceipt],[name=placeOfDelivery]').count(),0);assert.equal(await main.locator('[name=incoterms]').count(),0);assert.equal(await side.locator('[name=incoterms]').inputValue(),'CIF');assert.equal(await form.locator('input[name=quantity]').inputValue(),'99');assert.equal(writes.length,0);
+  if(mode==='FCL'){await page.getByRole('button',{name:'MBL (0)',exact:true}).click();await page.getByRole('button',{name:t.newMaster,exact:true}).waitFor();await page.getByRole('button',{name:t.linkMaster,exact:true}).waitFor();await page.getByRole('button',{name:'MBL (0)',exact:true}).click();await page.getByRole('button',{name:'HBL (0)',exact:true}).click();await page.getByRole('button',{name:t.newHouse,exact:true}).waitFor();await page.getByRole('button',{name:'HBL (0)',exact:true}).click();assert.equal(await form.locator('[data-container-row]').count(),1);}
+  else{await page.getByRole('button',{name:new RegExp(t.applyDimensions)}).click();assert.equal(await form.locator('input[name=quantity]').inputValue(),'3');assert.equal(await form.locator('input[name=cbm]').inputValue(),'0.0180');const row=form.locator('[data-package-row]').first();await row.locator('input').last().fill('0.4');}
+  await form.locator('textarea[name=cargo]').first().fill('Working Garment');
+  await page.getByRole('button',{name:t.arAp,exact:true}).click();const dialog=page.getByRole('dialog');await dialog.locator('[data-shipping-charges]').waitFor();await dialog.getByRole('button',{name:t.close,exact:true}).click();assert.equal(await form.locator('textarea[name=cargo]').first().inputValue(),'Working Garment');
+  await page.locator('.app-page-header').getByRole('button',{name:t.save,exact:true}).click();await page.waitForFunction(()=>document.querySelector('.app-page-header button')?.disabled);assert.equal(writes.length,1);for(const key of ['marks','placeOfReceipt','placeOfDelivery'])assert.equal(Object.hasOwn(writes[0].fields,key),false);assert.equal(job.data.marks,original.marks);assert.equal(job.data.cargo,original.cargo);
+  if(mode!=='FCL'){assert.equal(job.data.workDetails.packages[0].heightM,'0.4');assert.equal(job.data.workDetails.cbm,'0.0180');assert.equal(job.data.packages[0].heightM,'0.3');}
+  await page.getByRole('button',{name:t.arAp,exact:true}).click();const charge=dialog.locator('[data-shipping-charges]');await charge.getByRole('button',{name:w.addCharge,exact:true}).click();await charge.getByRole('textbox',{name:titleCaseWords(w.description),exact:true}).fill('DELIVERY');await charge.getByRole('textbox',{name:titleCaseWords(b.unitPrice),exact:true}).fill('20');await charge.getByRole('button',{name:w.save,exact:true}).click();await charge.getByRole('button',{name:w.retry,exact:true}).waitFor();await dialog.getByRole('button',{name:t.close,exact:true}).click();assert.ok(await dialog.isVisible());await charge.getByRole('button',{name:w.retry,exact:true}).click();await charge.getByRole('cell',{name:'Delivery',exact:true}).waitFor();assert.deepEqual(chargeWrites[0],chargeWrites[1]);await charge.getByRole('button',{name:w.cancel,exact:true}).click();
+  if(mode==='LCL'){
+   await dialog.getByRole('combobox').first().click();await page.getByRole('option',{name:/MBL.*M-001/}).click();await dialog.getByText(t.sourceCharges,{exact:true}).waitFor();assert.equal(await dialog.getByRole('button',{name:w.addCharge,exact:true}).count(),0);
+   await dialog.getByRole('combobox').first().click();await page.getByRole('option',{name:/HBL.*H-001/}).click();const house=dialog.locator('[data-shipping-charges="own-house"]');await house.getByRole('button',{name:w.addCharge,exact:true}).click();await house.getByRole('textbox',{name:titleCaseWords(w.description),exact:true}).fill('HOUSE COST');await house.getByRole('textbox',{name:titleCaseWords(b.unitPrice),exact:true}).fill('30');await house.getByRole('button',{name:w.save,exact:true}).click();await house.getByRole('cell',{name:'House Cost',exact:true}).waitFor();assert.equal(chargeWrites.at(-1).billId,'own-house');await house.getByRole('button',{name:w.cancel,exact:true}).click();
+  }
+  await dialog.getByRole('button',{name:t.close,exact:true}).click();
+  assert.deepEqual(errors,[]);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await dialog.waitFor({state:'hidden'});if(lang==='ko'&&width===1440&&mode==='FCL')await page.screenshot({path:'logs/shipping-work-layout-preview.png',fullPage:true});console.log('PASS work layout, cargo, preserved source and AR/AP exact retry',lang,width,mode);await page.close();
+ }
+}finally{await browser?.close();server.kill();if(existsSync(html))unlinkSync(html);}

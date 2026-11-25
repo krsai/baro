@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Box,Button,Chip,Stack,TextField,Typography} from '@mui/material';
+import {Box,Button,Chip,MenuItem,Stack,TextField,Typography} from '@mui/material';
 import EntityDetailSection from './EntityDetailSection';
 import SearchableSelect from './SearchableSelect';
 import AppNotice from './AppNotice';
@@ -7,7 +7,7 @@ import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import {shippingOperationText} from '../constants/shippingOperations';
 import {humanTextDisplay} from '../utils/humanTextDisplay.mjs';
 import {workRoute} from '../utils/shippingWorkPresentation.mjs';
-import {shippingWorkValues as values,shippingWorkData} from '../utils/shippingWorkData.mjs';
+import {shippingWorkValues as values,shippingWorkData,shippingPackageTotals} from '../utils/shippingWorkData.mjs';
 import ShippingCargoRows from './ShippingCargoRows';
 import {shippingModeLabel} from '../utils/shippingPresentation';
 import {freightText} from '../constants/freight';
@@ -15,11 +15,10 @@ import {freightJobEditorText} from '../constants/freightJobEditor';
 import {shippingWorkbenchText} from '../constants/shippingWorkbench';
 import {shippingRequestDate} from '../utils/shippingPresentation';
 import {shippingEditorText} from '../constants/shippingEditor';
-import {routeScopeText} from '../constants/freightRouteScope';
 
 const grid={display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))'},gap:2};
-export default function ShippingOperations({job,employees,languageCode,busy,formId,onSave,onReload,onDirtyChange,onStateChange,documents}){
- const t=shippingOperationText[languageCode]||shippingOperationText.en,f=freightText[languageCode]||freightText.en,e=freightJobEditorText[languageCode]||freightJobEditorText.en,w=shippingWorkbenchText[languageCode]||shippingWorkbenchText.en,x=shippingEditorText[languageCode]||shippingEditorText.en,r=routeScopeText[languageCode]||routeScopeText.en;
+export default function ShippingOperations({job,employees,languageCode,busy,formId,onSave,onReload,onDirtyChange,onStateChange}){
+ const t=shippingOperationText[languageCode]||shippingOperationText.en,f=freightText[languageCode]||freightText.en,e=freightJobEditorText[languageCode]||freightJobEditorText.en,w=shippingWorkbenchText[languageCode]||shippingWorkbenchText.en,x=shippingEditorText[languageCode]||shippingEditorText.en;
  const [value,setValue]=useState(()=>values(job)),baseline=useRef(values(job)),[saving,setSaving]=useState(false),[uncertain,setUncertain]=useState(false),[error,setError]=useState(''),pending=useRef(null),lock=useRef(false),live=useRef(true);
  const version=useRef(job.version),[conflict,setConflict]=useState(false),[reloading,setReloading]=useState(false);
  const dirty=JSON.stringify(value)!==JSON.stringify(baseline.current),readOnly=job.receiptStatus!=='ACCEPTED'||job.status==='CANCELLED',blocked=busy||saving||reloading||uncertain||readOnly;
@@ -46,24 +45,31 @@ export default function ShippingOperations({job,employees,languageCode,busy,form
  const detail=(label,text)=><Box sx={{minWidth:0}}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2" sx={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{text||'—'}</Typography></Box>;
  const field=(key,label,multiline=false)=><TextField fullWidth size="small" key={key} name={key==='voyage'?'voyageNumber':key} label={label} value={value[key]??''} disabled={blocked} multiline={multiline} minRows={multiline?3:undefined} required={['shipper','consignee','origin','destination'].includes(key)} slotProps={{htmlInput:{'aria-label':label,'data-text-case':key==='incoterms'?'preserve':undefined,maxLength:['cargo','remark'].includes(key)?4000:['shipper','consignee','notify','marks'].includes(key)?2000:['origin','destination','placeOfReceipt','placeOfDelivery'].includes(key)?1000:200}}} onChange={ev=>patch(key,ev.target.value)}/>;
  const date=key=><TextField fullWidth size="small" key={key} name={key} type="date" label={key==='plannedDate'?e.plannedDate:t[key]} value={value[key]||''} disabled={blocked} slotProps={{inputLabel:{shrink:true}}} onChange={ev=>patch(key,ev.target.value)}/>;
+ const choice=(key,label,options)=><TextField fullWidth select name={key} label={label} value={value[key]||''} disabled={blocked} onChange={ev=>patch(key,ev.target.value)}><MenuItem value="">—</MenuItem>{[...new Set([...(value[key]?[value[key]]:[]),...options])].map(option=><MenuItem key={option} value={option}>{option}</MenuItem>)}</TextField>;
+ const numeric=(key,label)=><TextField fullWidth name={key} label={label} value={value[key]??''} disabled={blocked} slotProps={{htmlInput:{inputMode:'decimal',maxLength:21}}} onChange={ev=>{if(/^\d*(\.\d*)?$/.test(ev.target.value))patch(key,ev.target.value);}}/>;
+ const fcl=job.mode==='SEA'&&source.shipmentType==='FCL';
+ const packageTotals=shippingPackageTotals(value.packages);
  return <Box component="form" id={formId} onSubmit={save} data-testid="shipping-operations-form">
   {error&&<AppNotice severity={error===t.review?'info':'error'} action={conflict&&onReload?<Button disabled={reloading} onClick={reload}>{t.refresh}</Button>:undefined}>{error}</AppNotice>}
-  <Box data-shipping-work-columns sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:'minmax(300px,1fr) minmax(0,2fr)'},gap:2,alignItems:'start'}}>
+  <Box data-shipping-work-columns sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:'minmax(0,2fr) minmax(300px,1fr)'},gap:2,alignItems:'start'}}>
+   <Stack spacing={2} data-shipping-work-main sx={{minWidth:0}}>
+    <EntityDetailSection title={t.parties}><Box sx={grid}><Stack spacing={2}>{field('shipper',t.shipper,true)}{field('consignee',t.consignee,true)}</Stack>{field('notify',t.notify,true)}</Box></EntityDetailSection>
+    <EntityDetailSection title={t.route}><Box sx={grid}>{field('origin',t.pickup,true)}{field('destination',t.delivery,true)}{job.service!=='EXPRESS'&&['SEA','AIR'].includes(job.mode)&&<>{detail(t[route.from.label],route.from.value||t.notSpecified)}{detail(t[route.to.label],route.to.value||t.notSpecified)}</>}</Box></EntityDetailSection>
+    <EntityDetailSection title={t.cargo}><Stack spacing={2}>
+     {field('cargo',e.cargo,true)}
+     {fcl&&<Stack spacing={1.5}><Typography variant="subtitle2">{e.containerType}</Typography>{value.containers.length?<ShippingCargoRows rows={value.containers} containers disabled={blocked} onChange={rows=>patch('containers',rows)} t={x} e={e}/>:<Button type="button" variant="outlined" disabled={blocked} onClick={()=>patch('containers',[{size:'',type:'',count:''}])}>{x.add}</Button>}</Stack>}
+     <Box sx={{...grid,gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',md:'repeat(4,minmax(0,1fr))'}}}>{numeric('quantity',t.packageCount)}{choice('unit',e.unit,['PKG','CTN','PLT','PCS','BAG','BOX','CRATE','DRUM','ROLL'])}{numeric('weightKg',e.weightKg)}{numeric('cbm',e.cbm)}</Box>
+     {!fcl&&<Stack spacing={1.5}><Stack direction="row" useFlexGap flexWrap="wrap" alignItems="center" justifyContent="space-between" gap={1}><Typography variant="subtitle2">{x.packages}</Typography><Button type="button" disabled={blocked||!packageTotals} onClick={()=>setValue(old=>({...old,...packageTotals}))}>{t.applyDimensions}{packageTotals?` · ${packageTotals.quantity} / ${packageTotals.cbm} CBM`:''}</Button></Stack>{value.packages.length?<ShippingCargoRows rows={value.packages} disabled={blocked} express={job.service==='EXPRESS'} onChange={rows=>patch('packages',rows)} t={x} e={e}/>:<Button type="button" variant="outlined" disabled={blocked} onClick={()=>patch('packages',[{quantity:'',lengthM:'',widthM:'',heightM:''}])}>{x.add}</Button>}</Stack>}
+     {job.mode==='AIR'&&numeric('chargeableWeightKg',x.chargeableWeightKg)}
+     {source.hsCode&&detail(x.hsCode,source.hsCode)}{source.dangerousGoods&&detail(e.dangerousGoods,[source.dgClass,source.unNumber,source.dangerousGoodsDetails].filter(Boolean).join(' · '))}
+     {source.outOfGauge&&<Stack spacing={1}>{detail(x.oog,source.oogDetails)}{source.oogPackages?.map((row,index)=><Box key={index}>{detail(x.oogDimensions,`${row.quantity} × ${row.lengthM} × ${row.widthM} × ${row.heightM} m`)}</Box>)}</Stack>}
+    </Stack></EntityDetailSection>
+   </Stack>
    <Stack spacing={2} data-shipping-work-side>
     <EntityDetailSection title={t.overview}><Stack spacing={2}><Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>{detail(t.customer,customer)}<Chip size="small" label={shippingModeLabel(job,languageCode)}/></Stack>{detail(w.summaryDate,shippingRequestDate(job))}<SearchableSelect label={t.assignee} languageCode={languageCode} options={employees} value={employees.find(row=>row.id===value.assigneeId)||(job.assignee?.id===value.assigneeId?job.assignee:null)} getOptionLabel={row=>row.name} getLookupCode={row=>row.employeeNo||''} isOptionEqualToValue={(a,b)=>a.id===b.id} disabled={blocked} onChange={(_,row)=>patch('assigneeId',row?.id??null)}/>{date('plannedDate')}</Stack></EntityDetailSection>
     {!hasMaster&&<EntityDetailSection title={t.schedule}><Stack spacing={2}>{job.service!=='EXPRESS'&&['SEA','AIR'].includes(job.mode)&&<>{field('vessel',job.mode==='AIR'?t.flight:t.vessel)}{field('voyage',job.mode==='AIR'?t.flightNumber:t.voyage)}</>}<Box sx={grid}>{date('etd')}{date('eta')}</Box></Stack></EntityDetailSection>}
-    {documents}
+    <EntityDetailSection title={t.terms}><Stack spacing={2}>{choice('incoterms',e.incoterms,['EXW','FCA','FAS','FOB','CFR','CIF','CPT','CIP','DAP','DPU','DDP'])}{field('freightTerms',f.freightTerms)}</Stack></EntityDetailSection>
     <EntityDetailSection title={f.remark}>{field('remark',f.remark,true)}</EntityDetailSection>
-   </Stack>
-   <Stack spacing={0} data-shipping-work-main sx={{border:1,borderColor:'divider',borderRadius:2,overflow:'hidden',bgcolor:'background.paper','& > section':{border:0,borderBottom:1,borderColor:'divider',borderRadius:0}}}>
-    <EntityDetailSection title={t.parties}><Box sx={grid}><Stack spacing={2}>{field('shipper',t.shipper,true)}{field('consignee',t.consignee,true)}</Stack><Stack spacing={2}>{field('notify',t.notify,true)}<Box sx={grid}>{field('freightTerms',f.freightTerms)}{field('incoterms',e.incoterms)}</Box></Stack></Box></EntityDetailSection>
-    <EntityDetailSection title={t.route}><Box sx={grid}>{field('origin',t.pickup,true)}{field('destination',t.delivery,true)}{job.service!=='EXPRESS'&&['SEA','AIR'].includes(job.mode)&&<>{detail(t[route.from.label],route.from.value||t.notSpecified)}{detail(t[route.to.label],route.to.value||t.notSpecified)}</>}{field('placeOfReceipt',t.placeOfReceipt)}{field('placeOfDelivery',t.placeOfDelivery)}</Box></EntityDetailSection>
-    <EntityDetailSection title={t.cargo}><Stack spacing={2}><Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'minmax(0,1fr) minmax(0,2fr)'},gap:2}}>{field('marks',f.marks,true)}{field('cargo',f.cargo,true)}</Box>
-     <Box sx={{...grid,gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',md:'repeat(4,minmax(0,1fr))'}}}>{['quantity','unit','weightKg','cbm'].map(key=>field(key,f[key]))}</Box>
-     {job.mode==='SEA'&&source.shipmentType==='FCL'&&<ShippingCargoRows rows={value.containers} containers disabled={blocked} onChange={rows=>patch('containers',rows)} t={x} e={e}/>}
-     {source.hsCode&&detail(x.hsCode,source.hsCode)}{source.dangerousGoods&&detail(e.dangerousGoods,[source.dgClass,source.unNumber,source.dangerousGoodsDetails].filter(Boolean).join(' · '))}
-     {(source.packages||[]).map((row,index)=><Box key={index}>{detail(x.packages,`${row.quantity} × ${row.lengthM} × ${row.widthM} × ${row.heightM} m`)}</Box>)}
-    </Stack></EntityDetailSection>
    </Stack>
   </Box>
  </Box>;

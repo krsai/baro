@@ -1,4 +1,5 @@
 import {linkedJobBills} from './freightMasterLinks';
+import {Prisma} from '@prisma/client';
 import {workFieldLimits,shippingWorkData} from './shippingWorkData';
 import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
@@ -15,28 +16,34 @@ const writable=(row:any)=>{if(row.receiptStatus!=='ACCEPTED'||row.status==='CANC
 // Operational edits never resubmit or revalidate the customer's request form.
 export async function saveJobOperationDetails(db:any,orgId:number,actorId:number,id:string,input:any){
  await freightForwarder(db,orgId,actorId);
- const keys=['assigneeId','vessel','voyage','etd','eta',...Object.keys(workFieldLimits),'containers'];
+ const keys=['assigneeId','vessel','voyage','etd','eta',...Object.keys(workFieldLimits),'containers','packages'];
  if(!input||Object.keys(input).some(key=>!['version','requestId','fields'].includes(key))||!Number.isSafeInteger(input.version)||typeof input.requestId!=='string'||!/^[a-zA-Z0-9_-]{8,80}$/.test(input.requestId)||!input.fields||typeof input.fields!=='object'||Array.isArray(input.fields)||!Object.keys(input.fields).length||Object.keys(input.fields).some(key=>!keys.includes(key)))fail('FREIGHT_INVALID_INPUT');
  const fields:any={};
  for(const key of keys)if(Object.hasOwn(input.fields,key)){
   const value=input.fields[key];
   if(key==='assigneeId'){if(value!==null&&(!Number.isSafeInteger(value)||value<=0))fail('FREIGHT_INVALID_INPUT');fields[key]=value;}
-  else if(key==='containers'){
+  else if(key==='packages'){
+   if(!Array.isArray(value)||value.length>50||value.some((r:any)=>!r||Array.isArray(r)||typeof r!=='object'||Object.keys(r).some(k=>!['quantity','lengthM','widthM','heightM'].includes(k))||typeof r.quantity!=='string'||!/^\d{1,8}$/.test(r.quantity)||Number(r.quantity)<1||['lengthM','widthM','heightM'].some(k=>typeof r[k]!=='string'||r[k]!==''&&(!/^\d{1,10}(?:\.\d{1,6})?$/.test(r[k])||Number(r[k])<=0))))fail('FREIGHT_INVALID_INPUT');
+   fields[key]=value.map((r:any)=>({quantity:r.quantity,lengthM:r.lengthM,widthM:r.widthM,heightM:r.heightM}));
+   const volume=fields[key].reduce((sum:any,r:any)=>sum.add(new Prisma.Decimal(r.quantity).mul(r.lengthM||0).mul(r.widthM||0).mul(r.heightM||0)),new Prisma.Decimal(0));
+   if(volume.gte('1000000000000'))fail('FREIGHT_INVALID_INPUT');
+  }else if(key==='containers'){
    const allowed=['20DC','40DC','40HQ','45HQ','20RF','40RF','40RH','20OT','40OT','40OH','20FR','40FR','40FH','20TK'];
    if(!Array.isArray(value)||value.length>100||value.some((r:any)=>!r||Object.keys(r).some(k=>!['size','type','count'].includes(k))||!allowed.includes(String(r.size)+String(r.type))||!/^\d{1,6}$/.test(String(r.count))||Number(r.count)<1))fail('FREIGHT_INVALID_INPUT');
    fields[key]=value.map((r:any)=>({size:String(r.size),type:String(r.type),count:String(r.count)}));
   }else if(key==='etd'||key==='eta'||key==='plannedDate'){
    if(value!==null&&(typeof value!=='string'||!/^\d{4}-\d\d-\d\d$/.test(value)||!Number.isFinite(Date.parse(value))||new Date(value).toISOString().slice(0,10)!==value))fail('FREIGHT_INVALID_INPUT');fields[key]=value;
-  }else {fields[key]=text(value,workFieldLimits[key]??(key==='vessel'?160:100));if(['shipper','consignee','origin','destination'].includes(key)&&!fields[key])fail('FREIGHT_REQUIRED');if(['quantity','weightKg','cbm'].includes(key)&&fields[key]&&!/^\d{1,16}(?:\.\d{1,4})?$/.test(fields[key]))fail('FREIGHT_INVALID_INPUT');}
+  }else {fields[key]=text(value,workFieldLimits[key]??(key==='vessel'?160:100));if(['shipper','consignee','origin','destination'].includes(key)&&!fields[key])fail('FREIGHT_REQUIRED');if(['quantity','weightKg','cbm','chargeableWeightKg'].includes(key)&&fields[key]&&!/^\d{1,16}(?:\.\d{1,4})?$/.test(fields[key]))fail('FREIGHT_INVALID_INPUT');}
  }
  const requestHash=hash({version:input.version,fields});
  return retryEditTransaction(db,async(tx:any)=>{
   await freightForwarder(tx,orgId,actorId);const row=await lockedJob(tx,orgId,id);writable(row);
+  if(fields.packages?.some((r:any)=>['lengthM','widthM','heightM'].some(k=>!r[k]))&&row.service!=='EXPRESS')fail('FREIGHT_INVALID_INPUT');
   const prior=await tx.$queryRawUnsafe('SELECT "after" FROM "FreightAudit" WHERE "orgId"=$1 AND entity=\'operation-details\' AND "sourceId"=$2 AND "after"->\'data\'->\'operationEdit\'->>\'id\'=$3',orgId,id,input.requestId);
   if(prior.length){if(prior[0].after.data.operationEdit.hash!==requestHash)fail('FREIGHT_CHANGED',409);return row;}
   if(row.version!==input.version)fail('FREIGHT_CHANGED',409);
   if(fields.assigneeId&&!await tx.employee.findFirst({where:{id:fields.assigneeId,orgId,status:'ACTIVE',orgRole:'OPERATOR'},select:{id:true}}))fail('FREIGHT_ASSIGNEE_SCOPE',403);
-  const working=Object.fromEntries(Object.entries(fields).filter(([key])=>Object.hasOwn(workFieldLimits,key)||key==='containers'));
+  const working=Object.fromEntries(Object.entries(fields).filter(([key])=>Object.hasOwn(workFieldLimits,key)||key==='containers'||key==='packages'));
   const base=Object.fromEntries(Object.entries(fields).filter(([key])=>!Object.hasOwn(working,key)));
   const data={...row.data,...base,...(Object.keys(working).length?{workDetails:{...row.data.workDetails,...working}}:{}),operationEdit:{id:input.requestId,hash:requestHash}};
   const updated=(await tx.$queryRawUnsafe('UPDATE "FreightJob" SET data=$1::jsonb,version=version+1,"updatedByEmployeeId"=$2,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$3 AND "orgId"=$4 RETURNING *',JSON.stringify(data),actorId,id,orgId))[0];

@@ -5,7 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
 import {initialBillData} from '../frontend/src/utils/shippingBillData.mjs';
-import {shippingWorkValues} from '../frontend/src/utils/shippingWorkData.mjs';
+import {shippingWorkValues,shippingPackageTotals} from '../frontend/src/utils/shippingWorkData.mjs';
 const require=createRequire(import.meta.url);
 const {saveFreight}=require('../backend/dist/services/freightOperations');
 const {saveJobBill,jobOptions,jobDetail}=require('../backend/dist/services/freightJobs');
@@ -17,6 +17,28 @@ test('new bills start from editable working values and saved bill values remain 
  assert.equal(shippingWorkValues(job).shipper,'WORK SENDER\nNew Address');
  assert.equal(initialBillData(job,{data:{}}).cargo,'Working Cargo');assert.equal(initialBillData(job,{data:{}}).shipper,'WORK SENDER\nNew Address');
  assert.equal(initialBillData(job,{data:{cargo:'Saved Bill Cargo'}}).cargo,'Saved Bill Cargo');
+});
+
+test('dimension totals use metres and exact rounding only when explicitly applied',()=>{
+ assert.deepEqual(shippingPackageTotals([{quantity:'3',lengthM:'0.1',widthM:'0.2',heightM:'0.3'}]),{quantity:'3',cbm:'0.0180'});
+ assert.deepEqual(shippingPackageTotals([{quantity:'1',lengthM:'1',widthM:'1',heightM:'0.00005'}]),{quantity:'1',cbm:'0.0001'});
+ for(const rows of [[],[null],[{quantity:'1',lengthM:'',widthM:'1',heightM:'1'}],[{quantity:'1',lengthM:'1000000',widthM:'1000000',heightM:'1000000'}]])assert.equal(shippingPackageTotals(rows),null);
+ const job={data:{quantity:'99',cbm:'88',packages:[{quantity:'3',lengthM:'0.1',widthM:'0.2',heightM:'0.3'}]}};
+ assert.equal(shippingWorkValues(job).quantity,'99');assert.equal(shippingWorkValues(job).cbm,'88');
+});
+
+test('editable package dimensions preserve original cargo and reject malformed, missing and excessive dimensions',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
+  const job=await saveFreight(db,org,actor,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,mode:'AIR',data:{cargo:'Original Cargo',marks:'Original Marks',placeOfReceipt:'Original Receipt'}});
+  const packages=[{quantity:'3',lengthM:'0.1',widthM:'0.2',heightM:'0.3'}],input=fields=>({version:job.version,requestId:randomUUID(),fields});
+  for(const value of [null,{},[null],[{...packages[0],quantity:'1.5'}],[{...packages[0],lengthM:''}],[{...packages[0],widthM:'-1'}],[{...packages[0],heightM:'1e3'}],[{...packages[0],lengthM:'1000000',widthM:'1000000',heightM:'1000000'}],[{...packages[0],orgId:999}],Array(51).fill(packages[0])])await assert.rejects(saveJobOperationDetails(db,org,actor,job.id,input({packages:value})),/FREIGHT_INVALID_INPUT/);
+  const fields={packages,...shippingPackageTotals(packages),chargeableWeightKg:'12.5'},request=input(fields);
+  const saved=await saveJobOperationDetails(db,org,actor,job.id,request);
+  assert.deepEqual(saved.data.workDetails,fields);assert.equal(saved.data.marks,'Original Marks');assert.equal(saved.data.placeOfReceipt,job.data.placeOfReceipt);assert.deepEqual(saved.requestSnapshot,job.requestSnapshot);
+  assert.equal((await saveJobOperationDetails(db,org,actor,job.id,request)).version,saved.version);
+  assert.equal(transportSnapshot(saved).data.workDetails,undefined);
+ }finally{await f.close();}
 });
 
 test('operational patch changes only selected fields and preserves request, progress, documents and financial records',async()=>{

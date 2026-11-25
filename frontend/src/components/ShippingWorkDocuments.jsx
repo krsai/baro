@@ -11,10 +11,11 @@ import {usePageDialogs} from './PageDialogProvider';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {shippingOperationText} from '../constants/shippingOperations';
 
-export default function ShippingWorkDocuments({job,orgId,languageCode,compact=false,onOpen,onCreate,onChanged,onDirtyChange,busy=false}){
+export default function ShippingWorkDocuments({job,orgId,languageCode,compact=false,toolbar=false,actions,onOpen,onCreate,onChanged,onDirtyChange,busy=false}){
  const labels=shippingOperationText[languageCode]||shippingOperationText.en,t=job.mode==='AIR'&&job.service!=='EXPRESS'?Object.fromEntries(Object.entries(labels).map(([key,value])=>[key,value.replaceAll('MBL','MAWB').replaceAll('HBL','HAWB')])):labels,dialogs=usePageDialogs();
  const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[rows,setRows]=useState([]),[selected,setSelected]=useState(null),[loading,setLoading]=useState(false),[loadError,setLoadError]=useState(false),[reload,setReload]=useState(0),[working,setWorking]=useState(false),[uncertain,setUncertain]=useState(false),[error,setError]=useState('');
  const pending=useRef(null),lock=useRef(false),canEdit=job.receiptStatus==='ACCEPTED'&&job.status!=='CANCELLED',masters=job.bills.filter(row=>row.kind==='MASTER'),houses=job.bills.filter(row=>row.kind==='HOUSE');
+ const [panel,setPanel]=useState(null),hasBills=job.service!=='EXPRESS'&&['SEA','AIR'].includes(job.mode)||job.bills.length>0;
  useEffect(()=>{onDirtyChange?.(working||uncertain);return()=>onDirtyChange?.(false);},[working,uncertain,onDirtyChange]);
  useEffect(()=>{if(!open)return;let live=true;setLoading(true);setLoadError(false);const timer=setTimeout(()=>{requestJSON('/freight/transport-jobs/'+job.id+'/master-bills'+buildQueryString({orgId,q:query}),{skipCache:true}).then(value=>{if(live)setRows(value.rows);}).catch(()=>live&&setLoadError(true)).finally(()=>live&&setLoading(false));},150);return()=>{live=false;clearTimeout(timer);};},[open,query,reload,job.id,orgId]);
  const act=async(row,remove=false)=>{
@@ -33,10 +34,14 @@ export default function ShippingWorkDocuments({job,orgId,languageCode,compact=fa
   <Button type="button" size="small" disabled={blocked} onClick={()=>onOpen(row.id)}>{t.openDocument}</Button>{kind==='MASTER'&&canEdit&&<Button type="button" size="small" disabled={blocked} onClick={()=>act(row,true)}>{t.unlink}</Button>}
  </Stack>;
  return <Stack spacing={1.5} data-shipping-work-documents>
+  {toolbar&&<Box data-shipping-work-actions sx={{display:'grid',gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',sm:`repeat(${hasBills?4:2},minmax(0,1fr))`},gap:1}}>
+   {hasBills&&['MASTER','HOUSE'].map(kind=><Button key={kind} type="button" variant={panel===kind?'contained':'outlined'} disabled={blocked} aria-expanded={panel===kind} aria-controls={`shipping-${job.id}-${kind}`} onClick={()=>setPanel(old=>old===kind?null:kind)}>{job.mode==='AIR'?(kind==='MASTER'?'MAWB':'HAWB'):(kind==='MASTER'?'MBL':'HBL')} ({kind==='MASTER'?masters.length:houses.length})</Button>)}
+   {actions}
+  </Box>}
   {error&&!open&&<AppNotice severity="error" action={uncertain?<Button onClick={()=>act({id:pending.current.masterId})}>{t.retry}</Button>:undefined}>{error}</AppNotice>}
-  <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:compact?'minmax(0,1fr)':'repeat(2,minmax(0,1fr))'},gap:2}}>
-   <EntityDetailSection title={t.masterSection} actions={canEdit&&<Stack direction="row" useFlexGap flexWrap="wrap" gap={1}><Button type="button" disabled={blocked} onClick={()=>{setError('');setOpen(true);}}>{t.linkMaster}</Button><Button type="button" disabled={blocked} onClick={()=>onCreate('MASTER')}>{t.newMaster}</Button></Stack>}>{masters.length?masters.map(row=>entry(row,'MASTER')):<Typography variant="body2" color="text.secondary">{t.noMaster}</Typography>}</EntityDetailSection>
-   <EntityDetailSection title={t.houseSection} actions={canEdit&&<Button type="button" disabled={blocked} onClick={()=>onCreate('HOUSE',masters.length===1?masters[0].id:null)}>{t.newHouse}</Button>}>{houses.length?houses.map(row=>entry(row,'HOUSE')):<Typography variant="body2" color="text.secondary">{t.noHouse}</Typography>}</EntityDetailSection>
+  <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:compact||toolbar?'minmax(0,1fr)':'repeat(2,minmax(0,1fr))'},gap:toolbar&&!panel?0:2}}>
+   {(!toolbar||panel==='MASTER')&&<Box id={`shipping-${job.id}-MASTER`}><EntityDetailSection title={t.masterSection} actions={canEdit&&<Stack direction="row" useFlexGap flexWrap="wrap" gap={1}><Button type="button" disabled={blocked} onClick={()=>{setError('');setOpen(true);}}>{t.linkMaster}</Button><Button type="button" disabled={blocked} onClick={()=>onCreate('MASTER')}>{t.newMaster}</Button></Stack>}>{masters.length?masters.map(row=>entry(row,'MASTER')):<Typography variant="body2" color="text.secondary">{t.noMaster}</Typography>}</EntityDetailSection></Box>}
+   {(!toolbar||panel==='HOUSE')&&<Box id={`shipping-${job.id}-HOUSE`}><EntityDetailSection title={t.houseSection} actions={canEdit&&<Button type="button" disabled={blocked} onClick={()=>onCreate('HOUSE',masters.length===1?masters[0].id:null)}>{t.newHouse}</Button>}>{houses.length?houses.map(row=>entry(row,'HOUSE')):<Typography variant="body2" color="text.secondary">{t.noHouse}</Typography>}</EntityDetailSection></Box>}
   </Box>
   {open&&<ListDetailDialog open maxWidth="lg" title={t.linkMaster} onClose={()=>{if(!working&&!uncertain)setOpen(false);}}
    search={<SearchInput value={query} onChange={e=>setQuery(e.target.value)} label={t.masterSearch}/>}
