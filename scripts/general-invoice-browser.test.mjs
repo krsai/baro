@@ -1,3 +1,4 @@
+import {accountingDirectionText} from '../frontend/src/constants/accountingDirection.js';
 import {invoicePaymentAccountText} from '../frontend/src/constants/invoicePaymentAccount.js';
 import {materialItemText} from '../frontend/src/constants/materialItems.js';
 import {invoicePartyText} from '../frontend/src/constants/invoiceParty.js';
@@ -154,6 +155,7 @@ try{
    assert.equal(await page.locator('[data-invoice-form-header] .invoice-document-identifiers .invoice-cell').count(),2);assert.equal(await page.locator('[data-invoice-entry-metadata]').count(),0);
    if(lang==='ko'&&width===1440)await page.screenshot({path:'logs/invoice-currencies-preview.png',fullPage:true});
   }
+  assert.equal(await page.evaluate(message=>(window.testNotices||[]).includes(message),accountingDirectionText[lang].mismatch),false,'Customer invoice must not warn about supplier cash direction');
   const paymentText=invoicePaymentAccountText[lang];await page.getByRole('button',{name:roleName(paymentText.select)}).click();const bankDialog=page.getByRole('dialog');await bankDialog.waitFor();await bankDialog.getByRole('row').filter({hasText:'CHOSEN-002'}).getByRole('checkbox').check();await bankDialog.getByRole('button',{name:roleName(paymentText.apply)}).click();await bankDialog.waitFor({state:'hidden'});assert.match(await page.getByTestId('invoice-payment-account').innerText(),/ASCBVNVX/);
   await page.getByRole('checkbox',{name:roleName(t.review)}).check();const issue=page.getByRole('button',{name:roleName(u.issue)});await issue.click();
 
