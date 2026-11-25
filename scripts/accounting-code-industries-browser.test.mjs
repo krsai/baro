@@ -48,7 +48,7 @@ try{
    assert.equal(writes.length,0,'viewing restrictions must not submit a delete request');await page.keyboard.press('Escape');await usageDialog.waitFor({state:'hidden'});
   }
   await page.setViewportSize({width:1440,height:1000});
-  await page.getByText(TRANSACTION_CLASSIFICATION_FLOW[lang],{exact:true}).waitFor();
+  assert.equal(await page.getByText(TRANSACTION_CLASSIFICATION_FLOW[lang],{exact:true}).count(),0);
   if(process.argv.includes('--subtitle-only')){for(const width of [1440,390]){await page.setViewportSize({width,height:900});assert.equal(await page.getByText(usageText.explanation,{exact:true}).count(),0);await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();}assert.deepEqual(errors,[]);await page.close();continue;}
   const nav=page.getByRole('navigation');await nav.getByRole('button',{name:'ZIPPER 1',exact:true}).click();assert.equal(await page.locator('tbody tr').count(),1);
   const edit=lang==='ko'?'수정':lang==='vi'?'Sửa':'Edit',save=lang==='ko'?'저장':lang==='vi'?'Lưu':'Save',cancel=lang==='ko'?'취소':lang==='vi'?'Hủy':'Cancel',industry=lang==='ko'?'세부 업종':lang==='vi'?'Ngành nghề':'Industry';
@@ -99,5 +99,5 @@ try{
   const old=page.locator('tbody tr').filter({has:page.getByRole('cell',{name:'OLD',exact:true})});await old.waitFor();assert.equal(await old.locator('td').nth(5).innerText(),usageCountLabel(0,lang));await old.getByRole('button',{name:edit,exact:true}).click();assert.equal(await dialog.locator('input[type="checkbox"]').count(),0);assert.equal(await dialog.locator('input[value="PURCHASE"]').count(),0);await page.keyboard.press('Escape');
   assert.deepEqual(errors,[]);await page.close();
  }
- console.log(process.argv.includes('--subtitle-only')?'PASS accounting code subtitle removed: ko/en/vi desktop/mobile, usage labels and classification flow retained.':'Accounting code industries ko/en/vi: N:M edit, unique category counts, source-prefilled creation, fixed used input mode/FKs, stale edit recovery, persistence and mobile passed.');
+ console.log(process.argv.includes('--subtitle-only')?'PASS accounting code subtitle removed: ko/en/vi desktop/mobile, usage labels retained and classification explanation removed.':'Accounting code industries ko/en/vi: N:M edit, unique category counts, source-prefilled creation, fixed used input mode/FKs, stale edit recovery, persistence and mobile passed.');
 }finally{await browser?.close();server.kill();if(existsSync(fixture))unlinkSync(fixture);}

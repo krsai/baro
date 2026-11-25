@@ -117,16 +117,14 @@ test('sales report is routed and permissioned', () => {
   assert.match(page, /useState\(false\).*includeCompleted|includeCompleted.*useState\(false\)/s);
   assert.match(page, /!includeCompleted && row\.status === 'COMPLETED'/);
   assert.doesNotMatch(page, /<Alert severity="info">\{text\.note\}<\/Alert>/);
-  assert.match(page, /includeCompleted: '완료 포함'/);
-  assert.match(page, /includeCompleted: 'Include completed'/);
-  assert.match(page, /includeCompleted: 'Bao gồm đã hoàn thành'/);
   assert.match(messages, /customerProductionReport:\s*\{ ko: '현황판', en: 'Status Board', vi: 'Bảng tình hình' \}/);
   assert.match(page, /title: '현황판'/);
   assert.match(page, /title: 'Status Board'/);
   assert.match(page, /title: 'Bảng tình hình'/);
   assert.match(page, /displayEmpty/);
   assert.match(page, /renderValue=.*text\.allCustomers/);
-  assert.match(page, /selectedCustomer \? customerLabel\(selectedCustomer, languageCode\) : text\.allCustomers/);
+  assert.match(page, /<CompletionFilter include=\{includeCompleted\} onChange=\{setIncludeCompleted\}/);
+  assert.doesNotMatch(page, /text\.generated|selectedCustomer|<Switch|<FormControlLabel/);
   assert.match(page, /import SearchPanel from/);
   assert.match(page, /import SearchInput from/);
   assert.match(page, /toolbar=\{<SearchPanel/);

@@ -1,5 +1,4 @@
 import { normalizeLocalizedName, hasLocalizedName } from '../../../../utils/localizedName.mjs';
-import { LOCALIZED_NAME_HELP } from '../../../../components/LocalizedNameFields';
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { Box, Button, Chip, CircularProgress, Stack, TextField, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -131,7 +130,7 @@ const FactoryWarehouseSection = forwardRef(({ factoryId, onDirtyChange }, ref) =
   return (
     <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 2 }}>
       <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>{text.title}</Typography>
-      <Typography variant="caption" color="text.secondary">{LOCALIZED_NAME_HELP[languageCode] || LOCALIZED_NAME_HELP.en}</Typography>
+
       {!factoryId ? (
         <Typography variant="body2" sx={{ mt: 2 }} color="text.secondary">{text.saveFactory}</Typography>
       ) : loading ? (

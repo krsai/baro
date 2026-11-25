@@ -5,7 +5,6 @@ import {calendarPayrollText} from '../../../../constants/calendarPayroll';
 import {useAuth} from '../../../../context/AuthContext';
 import { applicableMonthVersion } from '../../../../utils/versionApplication.mjs';
 import MonthVersionBoard from '../../../../components/MonthVersionBoard';
-import { LOCALIZED_NAME_HELP } from '../../../../components/LocalizedNameFields';
 import { normalizeLocalizedName, hasLocalizedName } from '../../../../utils/localizedName.mjs';
 import useUnsavedChanges from '../../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -186,7 +185,7 @@ const getExtraText = (languageCode) => {
   };
 };
 
-const SectionBlock = ({ title, description, children }) => (
+const SectionBlock = ({ title, children }) => (
   <Stack
     spacing={2}
     sx={{
@@ -202,11 +201,7 @@ const SectionBlock = ({ title, description, children }) => (
       <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
         {title}
       </Typography>
-      {description ? (
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-          {description}
-        </Typography>
-      ) : null}
+
     </Box>
     {children}
   </Stack>
@@ -541,12 +536,10 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
           </IconButton>
         </Box>
 
-
-
         <Stack spacing={2}>
           <SectionBlock
             title={extraText.identitySection}
-            description={extraText.identityDescription}
+
           >
             <Grid container spacing={2}>
               <Grid item xs={12} sm={8}>
@@ -612,7 +605,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
 
           <SectionBlock
             title={extraText.localizedSection}
-            description={extraText.localizedDescription}
+
           >
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6}>
@@ -640,7 +633,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
 
           <SectionBlock
             title={extraText.contactSection}
-            description={extraText.contactDescription}
+
           >
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}><EntityCountryPhoneFields countryField={<TextField
@@ -680,7 +673,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
 
           <SectionBlock
             title={extraText.payrollSection}
-            description={extraText.payrollDescription}
+
           >
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6}>

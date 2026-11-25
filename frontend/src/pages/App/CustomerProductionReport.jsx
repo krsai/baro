@@ -1,9 +1,10 @@
+import CompletionFilter from '../../components/CompletionFilter';
 import Dialog from '../../components/AppDialog';
 import ActionNotice from '../../components/ActionNotice';
 import SearchPanel from '../../components/SearchPanel';
 import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {Box,Button,Chip,CircularProgress,DialogContent,DialogTitle,FormControl,FormControlLabel,InputLabel,LinearProgress,IconButton,Menu,MenuItem,Paper,Select,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Tooltip,Typography,Switch} from '@mui/material';
+import {Box,Button,Chip,CircularProgress,DialogContent,DialogTitle,FormControl,InputLabel,LinearProgress,IconButton,Menu,MenuItem,Paper,Select,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Tooltip,Typography} from '@mui/material';
 import Alert from "../../components/AppNotice";
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
@@ -22,36 +23,33 @@ const TEXT = {
   ko: {
     copy: '이미지 복사', copying: '복사 중…', copied: '이미지가 클립보드에 복사되었습니다. 붙여넣기로 공유하세요.', copyError: '이미지를 복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.',
     title: '현황판', customer: '고객', allCustomers: '전체 고객', search: '주문번호·스타일 검색', orderTotal: '주문 전체',
-    generated: '기준 시각', order: '주문번호', style: '스타일', due: '납기',
+    order: '주문번호', style: '스타일', due: '납기',
     quantity: '완성품/주문', produced: '완성품 수량', progress: '공정 진행률', status: '상태', schedule: '스케줄',
     scheduleNote: '본 스케줄은 생산 완료 일정이며, 출고 일자와는 다릅니다.',
     empty: '조건에 맞는 현황판 항목이 없습니다.',
     loadError: '생산 현황판을 불러오지 못했습니다.',
-    includeCompleted: '완료 포함',
     completedCount: (count, total) => `완료 ${count}/${total}`,
     dailyProduced: '일일 내역', dailyProducedTitle: '일일 완성품 수량', close: '닫기', noDailyProduced: '등록된 일일 완성품 내역이 없습니다.',
   },
   en: {
     copy: 'Copy image', copying: 'Copying…', copied: 'Image copied to clipboard. Paste it to share.', copyError: 'Unable to copy the image. Check your browser clipboard permissions.',
     title: 'Status Board', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style', orderTotal: 'Order total',
-    generated: 'As of', order: 'Order', style: 'Style', due: 'Due', quantity: 'Finished/Order',
+    order: 'Order', style: 'Style', due: 'Due', quantity: 'Finished/Order',
     produced: 'Finished qty', progress: 'Process progress', status: 'Status', schedule: 'Schedule',
     scheduleNote: 'This schedule shows production completion dates, which differ from shipment dates.',
     empty: 'No report rows match the filters.',
     loadError: 'Failed to load the production progress report.',
-    includeCompleted: 'Include completed',
     completedCount: (count, total) => `${count}/${total} completed`,
     dailyProduced: 'Daily details', dailyProducedTitle: 'Daily finished quantity', close: 'Close', noDailyProduced: 'No daily finished quantities are recorded.',
   },
   vi: {
     copy: 'Sao chép ảnh', copying: 'Đang sao chép…', copied: 'Đã sao chép ảnh vào bộ nhớ tạm. Dán để chia sẻ.', copyError: 'Không thể sao chép ảnh. Vui lòng kiểm tra quyền truy cập bộ nhớ tạm của trình duyệt.',
     title: 'Bảng tình hình', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng', orderTotal: 'Toàn bộ đơn hàng',
-    generated: 'Thời điểm', order: 'Đơn hàng', style: 'Kiểu dáng', due: 'Hạn giao', quantity: 'Thành phẩm/Đơn hàng',
+    order: 'Đơn hàng', style: 'Kiểu dáng', due: 'Hạn giao', quantity: 'Thành phẩm/Đơn hàng',
     produced: 'Số lượng thành phẩm', progress: 'Tiến độ công đoạn', status: 'Trạng thái', schedule: 'Lịch',
     scheduleNote: 'Lịch này thể hiện thời gian hoàn thành sản xuất, khác với ngày xuất hàng.',
     empty: 'Không có dữ liệu phù hợp.',
     loadError: 'Không thể tải báo cáo tiến độ sản xuất.',
-    includeCompleted: 'Bao gồm đã hoàn thành',
     completedCount: (count, total) => `Hoàn thành ${count}/${total}`,
     dailyProduced: 'Chi tiết ngày', dailyProducedTitle: 'Số lượng thành phẩm theo ngày', close: 'Đóng', noDailyProduced: 'Không có số lượng thành phẩm theo ngày.',
   },
@@ -247,7 +245,6 @@ const CustomerProductionReport = () => {
       );
     });
   }, [customerId, data.rows, includeCompleted, search]);
-  const selectedCustomer = data.customers.find((item) => String(item.id) === customerId) || null;
   const handleRowContextMenu = useCallback((event, styleRow) => {
     event.preventDefault();
     setContextMenuState({
@@ -270,10 +267,9 @@ const CustomerProductionReport = () => {
 
   return <AppPageContainer
     title={text.title}
-    toolbar={<SearchPanel onReset={()=>{setSearch('');setIncludeCompleted(false);setCustomerId('');}}  search={<SearchInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search}  />} filters={<><FormControlLabel control={<Switch size="small" checked={includeCompleted} onChange={(event) => setIncludeCompleted(event.target.checked)} />} label={text.includeCompleted} sx={{ whiteSpace: 'nowrap', m: 0 }} /><FormControl size="small" sx={{ width: { xs: '100%', sm: 220 }, flexShrink: 0 }}><InputLabel shrink>{text.customer}</InputLabel><Select value={customerId} label={text.customer} displayEmpty onChange={(event) => setCustomerId(event.target.value)} renderValue={(value) => value ? customerLabel(data.customers.find((customer) => String(customer.id) === String(value)), languageCode) : text.allCustomers}><MenuItem value="">{text.allCustomers}</MenuItem>{data.customers.map((customer) => <MenuItem key={customer.id} value={String(customer.id)}>{customerLabel(customer, languageCode)}</MenuItem>)}</Select></FormControl></>} />}
+    toolbar={<SearchPanel onReset={()=>{setSearch('');setIncludeCompleted(false);setCustomerId('');}}  search={<SearchInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search}  />} filters={<><CompletionFilter include={includeCompleted} onChange={setIncludeCompleted} /><FormControl size="small" sx={{ width: { xs: '100%', sm: 220 }, flexShrink: 0 }}><InputLabel shrink>{text.customer}</InputLabel><Select value={customerId} label={text.customer} displayEmpty onChange={(event) => setCustomerId(event.target.value)} renderValue={(value) => value ? customerLabel(data.customers.find((customer) => String(customer.id) === String(value)), languageCode) : text.allCustomers}><MenuItem value="">{text.allCustomers}</MenuItem>{data.customers.map((customer) => <MenuItem key={customer.id} value={String(customer.id)}>{customerLabel(customer, languageCode)}</MenuItem>)}</Select></FormControl></>} />}
   >
     <PageContentStack  className="customer-production-report">
-      <Box><Typography variant="h5">{selectedCustomer ? customerLabel(selectedCustomer, languageCode) : text.allCustomers}</Typography><Typography variant="caption" color="text.secondary">{text.generated}: {data.generatedAt ? new Date(data.generatedAt).toLocaleString() : '-'}</Typography></Box>
       {error ? <Alert severity="error">{error}</Alert> : null}
       {loading ? <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress size={30} /></Box> : rows.length === 0 ? <Paper variant="outlined" sx={{ p: 5, textAlign: 'center' }}><Typography color="text.secondary">{text.empty}</Typography></Paper> :
         <TableContainer component={Paper} variant="outlined">

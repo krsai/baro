@@ -20,7 +20,7 @@ import Alert from "../../components/AppNotice";
 import ChevronRight from '@mui/icons-material/ChevronRight';
 import StatusLabel from '../../components/StatusLabel';
 import HierarchyPanel from '../../components/HierarchyPanel';
-import { INDUSTRY_TREE_TEXT,TRANSACTION_CLASSIFICATION_FLOW } from '../../constants/industryHierarchy';
+import { INDUSTRY_TREE_TEXT } from '../../constants/industryHierarchy';
 import EditIcon from '@mui/icons-material/VisibilityOutlined';
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
@@ -93,7 +93,7 @@ export default function ExpenseMasterSettings({ units = false }) {
     {!visible.length&&<TableStatusRow colSpan={industries?5:4} languageCode={languageCode} state="empty"/>}
   </TableBody></Table></TableContainer>;
   return <AppPageContainer title={industries ? text.industries : text.types} titleActions={units?<Button variant="contained" disabled={loading} onClick={()=>{setError('');setForm({code:'',nameEn:'',nameKo:'',nameVi:'',isActive:true,sortOrder:0});}}>{unitLabels.add}</Button>:industries && <Stack direction="row" spacing={1}><Button variant="outlined" disabled={loading||saving} onClick={()=>{setRoleError('');setRoleForm({nameEn:'',nameKo:'',nameVi:''});}}>{roleText.add}</Button><Button variant="contained" disabled={loading||Boolean(error)} onClick={() => { setIndustryId(null); setOpen(true); }}>{common.addIndustry}</Button></Stack>}>
-    {industries&&<Typography variant="body2" color="text.secondary" sx={{mb:2}}>{TRANSACTION_CLASSIFICATION_FLOW[languageCode]||TRANSACTION_CLASSIFICATION_FLOW.en}</Typography>}
+
     {error&&!form&&<Alert severity="error" action={<Button onClick={load}>{common.loadError}</Button>}>{error}</Alert>}
     {loading?<CircularProgress size={24}/>:industries?<HierarchyPanel label={tree.category} items={parents.map(parent=>({id:parent.id,label:serviceName(parent,languageCode),count:rows.filter(row=>(row.partnerRoleId||0)===parent.id&&row.code!=='GENERAL').length}))} selectedId={category} onSelect={setCategory} onReorder={reorder} reorderDisabled={saving||loading}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{mb:2}}><Typography variant="subtitle2">{serviceName(selected,languageCode)}</Typography><ChevronRight fontSize="small" color="disabled"/><Typography variant="subtitle2">{tree.industry}</Typography></Stack>

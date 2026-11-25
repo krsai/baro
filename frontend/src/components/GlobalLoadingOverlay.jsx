@@ -15,11 +15,6 @@ const LOADING_TEXT = {
     en: 'Loading workspace',
     vi: 'Đang tải man hinh lam viec',
   },
-  subtitle: {
-    ko: '페이지 데이터를 안정적으로 준비하고 있습니다.',
-    en: 'Preparing page data safely.',
-    vi: 'Đang chuẩn bị du lieu trang mot cach an toan.',
-  },
   requests: {
     ko: '{count}개 요청 처리 중',
     en: '{count} requests in progress',
@@ -61,7 +56,6 @@ const GlobalLoadingOverlay = ({
   startedAt = null,
   activeRequestCount = 0,
   title,
-  subtitle,
   fullscreen = false,
 }) => {
   const { languageCode } = useLanguage();
@@ -175,9 +169,7 @@ const GlobalLoadingOverlay = ({
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                   {title ?? getLocalizedText(languageCode, 'title')}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {subtitle ?? getLocalizedText(languageCode, 'subtitle')}
-                </Typography>
+
               </Box>
             </Box>
 

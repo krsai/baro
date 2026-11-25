@@ -336,7 +336,6 @@ const buildProcessMasterTableContainerSx = (maxHeight) => ({
 
 const ProcessMasterSection = ({
   title,
-  description = '',
   rows,
   languageCode,
   sectionKey,
@@ -446,11 +445,7 @@ const ProcessMasterSection = ({
           <Typography variant="subtitle1" fontWeight={700}>
             {title}
           </Typography>
-          {description ? (
-            <Typography variant="caption" color="text.secondary">
-              {description}
-            </Typography>
-          ) : null}
+
         </Stack>
         <Button
           size="small"
@@ -635,7 +630,6 @@ const ProcessMasterSection = ({
 
 const ProcessMasterRelationTreeSection = ({
   title,
-  description,
   parentLabel,
   childLabel,
   parentRows,
@@ -690,9 +684,7 @@ const ProcessMasterRelationTreeSection = ({
         <Typography variant="subtitle1" fontWeight={700}>
           {title}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
-          {description}
-        </Typography>
+
       </Stack>
 
       <Stack spacing={1.25} sx={{ maxHeight: 480, overflow: 'auto', pr: 0.5 }}>
@@ -766,7 +758,6 @@ const ProcessMasterRelationTreeSection = ({
 
 const ProcessMasterLinkedSpecSection = ({
   title,
-  description = '',
   sectionKey,
   rows,
   languageCode,
@@ -918,11 +909,7 @@ const ProcessMasterLinkedSpecSection = ({
           <Typography variant="subtitle1" fontWeight={700}>
             {title}
           </Typography>
-          {description ? (
-            <Typography variant="caption" color="text.secondary">
-              {description}
-            </Typography>
-          ) : null}
+
           <Stack direction="row" spacing={0.75} alignItems="center">
             <Typography variant="caption" color="text.secondary">
               선택 {parentLabel}:
@@ -1747,30 +1734,6 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
       : isSpecView
         ? '규격 관리'
         : '공정 마스터';
-  const pageIntroTitle = isTargetView
-    ? '대상 마스터 관리'
-    : isActionView
-      ? '동작 마스터 관리'
-      : isSpecView
-        ? '규격 마스터 관리'
-        : '대상·동작 다국어 등록';
-  const pageIntroDescription = isTargetView
-    ? '선택형 공정에서 조합할 대상 기본 항목과 연결 규격을 관리합니다.'
-    : isActionView
-      ? '선택형 공정에서 조합할 동작 기본 항목과 연결 규격을 관리합니다.'
-      : isSpecView
-        ? '대상이나 동작에 연결해 사용할 규격 후보를 직접 입력하고 관리합니다.'
-        : '직접 텍스트 입력 공정은 그대로 사용하고, 이 메뉴는 대상·동작 선택형 공정에서 쓰는 다국어 항목을 관리합니다.';
-  const pageIntroCaption = isSpecView
-    ? '여기서 등록한 규격은 나중에 대상 관리나 동작 관리 화면에서 필요한 항목에 연결해서 사용합니다.'
-    : '스타일 공정 입력 화면에서는 대상과 동작을 각각 복수 선택할 수 있고, 선택한 항목에 연결된 규격만 함께 고를 수 있습니다.';
-  const pageIntroDetail = isTargetView
-    ? '대상을 선택하면 바로 아래에서 대상 규격을 함께 등록하고 연결할 수 있습니다.'
-    : isActionView
-      ? '동작을 선택하면 바로 아래에서 동작 규격을 함께 등록하고 연결할 수 있습니다.'
-      : isSpecView
-        ? '데이터가 없어도 규격 코드와 다국어명을 먼저 등록할 수 있고, 연결 여부는 이후 화면에서 설정됩니다.'
-        : '여기서 등록한 한국어·영어·베트남어명이 선택형 공정명 생성과 이후 표준화 기준으로 사용됩니다.';
 
   return (
     <AppPageContainer
@@ -1786,20 +1749,6 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
       contentSx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
     >
       <PageContentStack  sx={{ flex: 1, minHeight: 0 }}>
-        <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', flexShrink: 0 }}>
-          <Stack spacing={0.5}>
-            <Typography variant="subtitle2" fontWeight={700}>
-              {pageIntroTitle}
-            </Typography>
-
-            <Typography variant="caption" color="text.secondary">
-              {pageIntroCaption}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {pageIntroDetail}
-            </Typography>
-          </Stack>
-        </Paper>
 
         <Stack spacing={2} sx={{ flex: 1, minHeight: 0 }}>
           {isSpecView && (
@@ -1807,7 +1756,7 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
               <ProcessMasterSection
                 sectionKey="targetSpecs"
                 title="대상 규격 등록"
-                description="대상 관리에서 연결해 사용할 규격 후보의 다국어명을 입력합니다. 연결 자체는 대상 관리 화면에서 설정합니다."
+
                 rows={formData.targetSpecs || []}
                 languageCode={languageCode}
                 onAddRow={handleAddRow}
@@ -1826,11 +1775,7 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
               <ProcessMasterSection
                 sectionKey="targets"
                 title="대상 등록"
-                description={
-                  isSpecView
-                    ? '규격을 관리할 대상을 먼저 선택하세요. 선택한 대상에 연결된 규격을 상세 영역에서 등록하거나 해제할 수 있습니다.'
-                    : '선택형 공정에서 조합할 대상 기본 항목의 다국어명을 관리합니다. 행을 선택하면 상세 영역에서 대상 규격을 함께 등록할 수 있습니다.'
-                }
+
                 rows={formData.targets || []}
                 languageCode={languageCode}
                 onAddRow={handleAddRow}
@@ -1847,7 +1792,7 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
                   <ProcessMasterLinkedSpecSection
                     sectionKey="targetSpecs"
                     title="대상 규격"
-                    description="선택한 대상에 연결할 규격 후보의 다국어명을 관리합니다. 스타일 입력에서는 연결된 규격만 선택됩니다."
+
                     rows={formData.targetSpecs || []}
                     languageCode={languageCode}
                     onAddOrLinkRow={handleAddOrLinkTargetSpec}
@@ -1873,7 +1818,7 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
               <ProcessMasterSection
                 sectionKey="actionSpecs"
                 title="동작 규격 등록"
-                description="동작 관리에서 연결해 사용할 규격 후보의 다국어명을 입력합니다. 연결 자체는 동작 관리 화면에서 설정합니다."
+
                 rows={formData.actionSpecs || []}
                 languageCode={languageCode}
                 onAddRow={handleAddRow}
@@ -1892,11 +1837,7 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
               <ProcessMasterSection
                 sectionKey="actions"
                 title="동작 등록"
-                description={
-                  isSpecView
-                    ? '규격을 관리할 동작을 먼저 선택하세요. 선택한 동작에 연결된 규격을 상세 영역에서 등록하거나 해제할 수 있습니다.'
-                    : '선택형 공정에서 조합할 동작 기본 항목의 다국어명을 관리합니다. 행을 선택하면 상세 영역에서 동작 규격을 함께 등록할 수 있습니다.'
-                }
+
                 rows={formData.actions || []}
                 languageCode={languageCode}
                 onAddRow={handleAddRow}
@@ -1913,7 +1854,7 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
                   <ProcessMasterLinkedSpecSection
                     sectionKey="actionSpecs"
                     title="동작 규격"
-                    description="선택한 동작에 연결할 규격 후보의 다국어명을 관리합니다. 스타일 입력에서는 연결된 규격만 선택됩니다."
+
                     rows={formData.actionSpecs || []}
                     languageCode={languageCode}
                     onAddOrLinkRow={handleAddOrLinkActionSpec}

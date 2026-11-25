@@ -10,7 +10,6 @@ import useReferenceSettingsRefresh from '../../hooks/useReferenceSettingsRefresh
 import {useRequestScopeContext} from '../../context/RequestScopeContext';
 import {accountingCodeUsageText,usageCountLabel} from '../../constants/accountingCodeUsage';
 import SelectionSummaryRow from '../../components/SelectionSummaryRow';
-import {internalFundsText} from '../../constants/internalFunds';
 import {accountingDirectionText} from '../../constants/accountingDirection';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {Box,Button,Chip,DialogActions,DialogContent,DialogTitle,IconButton,MenuItem,Slide,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography,useMediaQuery} from '@mui/material';
@@ -32,8 +31,6 @@ import {hasLocalizedName} from '../../utils/localizedName.mjs';
 import {classificationName} from '../../utils/partnerClassification.mjs';
 import {useLanguage} from '../../context/LanguageContext';
 import {requestJSON} from '../../utils/apiClient';
-
-import {TRANSACTION_CLASSIFICATION_FLOW} from '../../constants/industryHierarchy';
 
 const TEXT={
  ko:{title:'취급 코드 관리',all:'전체 코드',category:'구분 · 세부 업종',industry:'세부 업종',add:'기본 코드 등록',code:'기본 코드',name:'거래 내용',edit:'상세',save:'저장',cancel:'취소',empty:'등록된 기본 코드가 없습니다.',error:'설정을 불러오거나 저장하지 못했습니다.',conflict:'같은 기본 코드 또는 변경할 회사별 코드가 이미 있습니다. 다른 코드를 입력해 주세요.',stale:'연결 세부 업종이 변경되었습니다. 다시 조회한 후 저장하세요.',mode:'입력 방식',PROCESS:'생산 실적 연결',LOGISTICS:'운송 비용',GENERAL:'일반 비용'},
@@ -77,8 +74,6 @@ export default function AccountingCodeSettings(){
   ...sourceRows.filter(row=>row.partnerRoleId===role.id).map(industry=>({id:'industry:'+industry.id,label:name(industry),depth:1,count:rows.filter(row=>inIndustry(row,industry.id)).length})),
  ])];
  const [kind,idText]=selected.split(':'),selectedId=Number(idText);
- const fundsIndustry=sourceRows.find(row=>row.code==='FUNDS');
- const fundsSelected=fundsIndustry&&(kind==='industry'?selectedId===fundsIndustry.id:kind==='role'&&selectedId===fundsIndustry.partnerRoleId);
  useEffect(()=>{if(!loading&&!items.some(item=>item.id===selected))setSelected('ALL');},[loading,roles,industries,selected]);
  const visible=selected==='ALL'?rows:rows.filter(row=>kind==='role'?inRole(row,selectedId):inIndustry(row,selectedId));
  const openCreate=()=>{
@@ -109,9 +104,9 @@ export default function AccountingCodeSettings(){
  };
  const options=sourceRows.filter(row=>row.isActive||form?.industryIds.includes(row.id)).sort((a,b)=>(roles.findIndex(row=>row.id===a.partnerRoleId)-roles.findIndex(row=>row.id===b.partnerRoleId))||a.id-b.id);
  return <AppPageContainer title={text.title} titleActions={<Button variant="contained" disabled={loading||saving} onClick={openCreate}>{text.add}</Button>}>
-  <PageContentStack><Typography variant="body2" color="text.secondary">{TRANSACTION_CLASSIFICATION_FLOW[languageCode]||TRANSACTION_CLASSIFICATION_FLOW.en}</Typography>{error&&<Alert severity="error">{error}</Alert>}
+  <PageContentStack>{error&&<Alert severity="error">{error}</Alert>}
    <HierarchyPanel label={text.category} items={items} selectedId={selected} onSelect={setSelected}>
-    <Stack direction="row" alignItems="baseline" useFlexGap flexWrap="wrap" gap={1.5} sx={{mb:2}}><Typography variant="subtitle2">{items.find(item=>item.id===selected)?.label||text.all}</Typography>{fundsSelected&&<Typography variant="caption" color="text.secondary">{internalFundsText[languageCode]||internalFundsText.en}</Typography>}</Stack>
+    <Stack direction="row" alignItems="baseline" useFlexGap flexWrap="wrap" gap={1.5} sx={{mb:2}}><Typography variant="subtitle2">{items.find(item=>item.id===selected)?.label||text.all}</Typography></Stack>
     <TableContainer><Table size="small"><TableHead><TableRow>{[text.code,text.name,text.industry,materialText.enabled,directionText.label,usageText.column,''].map((label,index)=><TableCell key={index}>{label}</TableCell>)}</TableRow></TableHead>
      <TableBody>{visible.map(row=><TableRow key={row.id}>
       <TableCell><Typography fontWeight={700}>{row.code}</Typography></TableCell><TableCell>{name(row)}</TableCell>

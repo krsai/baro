@@ -1,5 +1,4 @@
 import ActionNotice from '../../components/ActionNotice';
-import { LOCALIZED_NAME_HELP } from '../../components/LocalizedNameFields';
 import { useLanguage } from '../../context/LanguageContext';
 import { hasLocalizedName } from '../../utils/localizedName.mjs';
 import DeleteActionButton from '../../components/DeleteActionButton';
@@ -145,7 +144,7 @@ const EmployeeSystem = () => {
           </Button>
     }>
       <Box sx={{ width: "100%" }}>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{LOCALIZED_NAME_HELP[languageCode] || LOCALIZED_NAME_HELP.en}</Typography>
+
         {message && (
           <ActionNotice eventKey={message} severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>
             {message.text}

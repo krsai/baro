@@ -1,3 +1,4 @@
+import CompletionFilter from '../../components/CompletionFilter';
 import {keyboardAction} from '../../utils/keyboardPolicy.mjs';
 import {accountingSummary} from '../../utils/accountingSummary.mjs';
 import {ACCOUNTING_CODE_TEXT} from '../../constants/accountingCode';
@@ -9,7 +10,7 @@ import SearchPanel from '../../components/SearchPanel';
 import SearchInput from '../../components/SearchInput';
 import { expenseLineDescription, expenseRequestSummary } from '../../utils/expenseCodePresentation.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {Box,Button,CircularProgress,MenuItem,TextField,Checkbox,FormControlLabel} from '@mui/material';
+import {Box,Button,CircularProgress,MenuItem,TextField} from '@mui/material';
 import Alert from "../../components/AppNotice";
 import dayjs from 'dayjs';
 import { expenseRequestNumber } from '../../components/ExpenseRequestView';
@@ -151,7 +152,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
     {currentAccess?.error&&<Alert severity="error" eventKey={accessReload} action={<Button onClick={()=>{setDraftAccess(null);setAccessReload(value=>value+1);}}>{accessText.retry}</Button>}>{accessText.failed}</Alert>}
     <SearchPanel title={text.query}  disabled={loading} onReset={reset}
       search={<SearchInput value={search} onChange={event=>setSearch(event.target.value)} placeholder={text.search} inputProps={{'aria-label':text.search}} />}
-      filters={<FormControlLabel sx={{m:0}} control={<Checkbox size="small" checked={hidePaid} disabled={loading} onChange={event=>setHidePaid(event.target.checked)}/>} label={text.hideBankPaid}/> }
+      filters={<CompletionFilter kind="paid" include={!hidePaid} onChange={include => setHidePaid(!include)} disabled={loading} />}
       dates={<DateRangeSelector disabled={loading} monthOnly={false} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={changeDate(setDateFrom)} onEndChange={changeDate(setDateTo)} onShift={shiftRange} slotProps={{textField:{sx:{width:140,minWidth:140}}}} />}
 
     />

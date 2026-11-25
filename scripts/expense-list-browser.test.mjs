@@ -20,7 +20,7 @@ try {
     const text=EXPENSE_LIST_TEXT[lang],doc=EXPENSE_REQUEST_TEXT[lang],errors=[],page=await browser.newPage({viewport:{width:1440,height:1000}});
     page.on('pageerror',error=>errors.push(error.message));
     page.on('console',message=>{if(/Encountered two children with the same key/.test(message.text()))errors.push(message.text());});
-    await page.clock.install({time:new Date('2026-10-17T12:00:00+07:00')});
+    await page.clock.install({time:new Date('2026-10-17T12:00:00+07:00')});await page.clock.resume();page.setDefaultTimeout(15000);
     await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1});'}));
     await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
     await page.route('**/src/context/ManagementPeriodContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useManagementPeriod=()=>({startDate:"2026-04-01",loading:false,factories:[]});'}));
@@ -43,18 +43,20 @@ try {
     await page.waitForFunction(()=>document.querySelector('[data-expense-request="1"] .MuiIconButton-root')?.disabled===true);
     paymentLinked=false;await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{orgId:1,topics:['bank-ledger']}})));
     await page.waitForFunction(()=>document.querySelector('[data-expense-request="1"] .MuiIconButton-root')?.disabled===false);
-    const hidePaid=page.getByRole('checkbox',{name:text.hideBankPaid,exact:true});assert.equal(await hidePaid.isChecked(),false);
+    const completionText={ko:['지급 완료','포함','제외'],en:['Paid','Include','Exclude'],vi:['Đã Thanh Toán','Bao Gồm','Loại Trừ']}[lang];
+    const hidePaid=page.getByRole('combobox',{name:completionText[0],exact:false});assert.equal((await hidePaid.textContent()).trim(),completionText[1]);
     const searchBox=await page.getByRole('textbox',{name:text.search}).boundingBox(),filterBox=await hidePaid.boundingBox();assert.ok(filterBox.x>=searchBox.x+searchBox.width,'completion filter sits beside search');
     rows[2].bankPaymentComplete=true;rows[3].bankPaymentComplete=false;
     await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{orgId:1,topics:['bank-ledger']}})));
-    await page.locator('[data-expense-request="1"]').waitFor();await hidePaid.check();assert.equal(await page.locator('[data-expense-request="1"]').count(),1,'a partially paid multi-item request remains visible');
+    await page.locator('[data-expense-request="1"]').waitFor();await hidePaid.click();await page.getByRole('option',{name:completionText[2],exact:true}).click();assert.equal(await page.locator('[data-expense-request="1"]').count(),1,'a partially paid multi-item request remains visible');
     rows[3].bankPaymentComplete=true;
     await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{orgId:1,topics:['bank-ledger']}})));
     await page.locator('[data-expense-request="1"]').waitFor({state:'hidden'});assert.equal(await page.locator('.cc-total-amount').innerText().then(value=>value.includes('30.75')||value.includes('30,75')),false,'hidden requests leave displayed totals');
     rows[3].bankPaymentComplete=false;
     await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{orgId:1,topics:['bank-ledger']}})));
-    await page.locator('[data-expense-request="1"]').waitFor();assert.equal(await hidePaid.isChecked(),true,'voiding a payment returns the request without clearing the filter');
-    await page.getByRole('button',{name:text.reset,exact:true}).click();assert.equal(await hidePaid.isChecked(),false);
+    await page.locator('[data-expense-request="1"]').waitFor();assert.equal((await hidePaid.textContent()).trim(),completionText[2],'voiding a payment returns the request without clearing the filter');
+    await page.getByRole('button',{name:text.reset,exact:true}).click();assert.equal((await hidePaid.textContent()).trim(),completionText[1]);
+    if(process.argv.includes('--completion-only')){assert.deepEqual(errors,[]);await page.close();continue;}
     assert.equal(await page.locator('.cc-kicker').count(),0);
     assert.equal(await page.locator('.cc-primary.MuiButton-containedPrimary').count(),1);
     assert.notEqual(await page.locator('.cc-primary').evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
@@ -143,5 +145,5 @@ try {
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
     assert.deepEqual(errors,[]);await page.close();
   }
-  console.log('Live expense UI passed: ko/en/vi, historical search, FK filters, separate currency totals, grouping, selection, real record/document details and mobile layout.');
+  console.log(process.argv.includes('--completion-only')?'PASS expense completion filter: ko/en/vi, partial payment retained, full payment excluded, payment reversal restored and reset default preserved.':'Live expense UI passed: ko/en/vi, historical search, FK filters, separate currency totals, grouping, selection, real record/document details and mobile layout.');
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}

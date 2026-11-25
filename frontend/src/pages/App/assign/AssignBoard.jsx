@@ -1,3 +1,4 @@
+import CompletionFilter from '../../../components/CompletionFilter';
 import Dialog from '../../../components/AppDialog';
 import {assignmentCollisionDetection as assignBoardCollisionDetection,assignmentDropEvent} from '../../../utils/assignmentKeyboard.mjs';
 import { editableAssignmentStyleIds } from './utils/assignmentLoading.mjs';
@@ -8,7 +9,7 @@ import QueryFeedback from '../../../components/QueryFeedback';
 import useEditRevision, { isStaleEditError } from '../../../hooks/useEditRevision';
 import StaleEditNotice from '../../../components/StaleEditNotice';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {Box,Button,Chip,Checkbox,FormControlLabel,CircularProgress,Divider,DialogActions,DialogContent,DialogTitle,Drawer,IconButton,Menu,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import {Box,Button,Chip,CircularProgress,Divider,DialogActions,DialogContent,DialogTitle,Drawer,IconButton,Menu,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import CloseIcon from '@mui/icons-material/Close';
 import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
@@ -6842,7 +6843,7 @@ const AssignBoard = () => {
       }
       toolbar={
         <Stack spacing={1}>
-        <SearchPanel onReset={()=>{setSearchTerm('');setIncludeManagementClosed(false);const start=clampAssignmentViewDate(getMonthStartDate(),assignmentOperationStartDateKey);setViewStart(start);setViewEnd(getMonthEndDate(start));}} disabled={controlsDisabled} filters={<FormControlLabel sx={{m:0}} control={<Checkbox size="small" checked={includeManagementClosed} onChange={event=>setIncludeManagementClosed(event.target.checked)}/>} label={getUiMessage('assign.includeManagementClosed', 'Include closed assignments', languageCode)}/>} search={<SearchInput
+        <SearchPanel onReset={()=>{setSearchTerm('');setIncludeManagementClosed(false);const start=clampAssignmentViewDate(getMonthStartDate(),assignmentOperationStartDateKey);setViewStart(start);setViewEnd(getMonthEndDate(start));}} disabled={controlsDisabled} filters={<CompletionFilter kind="billed" include={includeManagementClosed} onChange={setIncludeManagementClosed} disabled={controlsDisabled} />} search={<SearchInput
             placeholder={getUiMessage(
               'assign.searchPlaceholder',
               '스타일/고객사/색상 검색',
@@ -6930,17 +6931,8 @@ const AssignBoard = () => {
               <Typography variant="subtitle2">
                 {getUiMessage('assign.factoryScopeCapacityBoard', 'Factory Capacity', languageCode)}
               </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-              </Box>
             </Box>
             <Stack spacing={1}>
-              <Typography variant="caption" color="text.secondary">
-                {getUiMessage(
-                  'assign.capacitySummaryHintFactoryPlan',
-                  'Past-month planned load reflects actual production plus the remaining assigned work. Actual output follows saved work logs only.',
-                  languageCode
-                )}
-              </Typography>
               <FactoryMonthCapacityBoard
                 rows={factoryMonthCapacityBoardRows}
                 monthKeys={visibleMonthKeys}
