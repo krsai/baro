@@ -22095,50 +22095,44 @@ const buildAssignmentPlanProgressRows = async (
         .filter((factoryId) => Number.isSafeInteger(factoryId) && factoryId > 0)
     )
   );
-  const factoryScopeRows =
-    factoryIds.length > 0
-      ? await db.factory.findMany({
-          where: { id: { in: factoryIds } },
-          select: { id: true, name: true },
-        })
-      : [];
-  const factoryNameById = new Map(
-    factoryScopeRows.map((factoryScope) => [Number(factoryScope.id), resolveOptionalString(factoryScope.name, "") || ""])
-  );
-
-  const holidayModel = (db as any).organizationHoliday;
-  const holidayRows =
-    holidayModel && typeof holidayModel.findMany === "function"
-      ? await holidayModel
-          .findMany({
-            where: { orgId },
-            select: { holidayDate: true },
-          })
-          .catch(() => [])
-      : [];
-  const holidaySet = new Set<string>(
-    ensureArray(holidayRows)
-      .map((row) => normalizeDateKey(row?.holidayDate))
-      .filter((value): value is string => Boolean(value))
-  );
-
-  const workRows = await loadAssignmentPlanProgressWorkRows({
-    orgId,
-    plans,
-    stateAssignmentsByExternalId,
-    context: "buildAssignmentPlanProgressRows",
-    db,
-  });
-  const orphanWorkRecordCountByFactoryScope = new Map<number, number>();
   const payrollLockMonthByPlanId = new Map<number, string>();
   plans.forEach((plan) => {
     const monthKey = resolveAssignmentPlanPayrollLockMonth(plan);
     if (monthKey) payrollLockMonthByPlanId.set(Number(plan.id), monthKey);
   });
-  const payrollLockedMonthSet = await loadLockedPayrollMonthSet(
-    orgId,
-    Array.from(payrollLockMonthByPlanId.values()), db
+  const holidayModel = (db as any).organizationHoliday;
+  // These reads depend only on scoped plans, not on each other's results.
+  const [factoryScopeRows, holidayRows, workRows, payrollLockedMonthSet] = await Promise.all([
+    factoryIds.length > 0
+      ? db.factory.findMany({
+          where: { id: { in: factoryIds } },
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
+    holidayModel && typeof holidayModel.findMany === "function"
+      ? holidayModel.findMany({
+          where: { orgId },
+          select: { holidayDate: true },
+        }).catch(() => [])
+      : Promise.resolve([]),
+    loadAssignmentPlanProgressWorkRows({
+      orgId,
+      plans,
+      stateAssignmentsByExternalId,
+      context: "buildAssignmentPlanProgressRows",
+      db,
+    }),
+    loadLockedPayrollMonthSet(orgId, Array.from(payrollLockMonthByPlanId.values()), db),
+  ]);
+  const factoryNameById = new Map(
+    factoryScopeRows.map((factoryScope) => [Number(factoryScope.id), resolveOptionalString(factoryScope.name, "") || ""])
   );
+  const holidaySet = new Set<string>(
+    ensureArray(holidayRows)
+      .map((row) => normalizeDateKey(row?.holidayDate))
+      .filter((value): value is string => Boolean(value))
+  );
+  const orphanWorkRecordCountByFactoryScope = new Map<number, number>();
 
   const statsByPlanId = new Map<number, AssignmentPlanWorkStats>();
   const sumByPlanId = new Map<number, number>();

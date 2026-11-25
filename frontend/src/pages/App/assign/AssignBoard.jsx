@@ -3801,6 +3801,11 @@ const AssignBoard = () => {
           summary: 1,
         });
         // Capture the revision before any of the separate board/card reads start.
+        // Factory metadata does not participate in the board edit revision.
+        const factoryMetadataPromise = Promise.all([
+          requestJSON('/factories' + orgQuery),
+          requestJSON('/factory-workers' + factoryScopeHeadcountQuery),
+        ]).then(rows => ({ rows }), error => ({ error }));
         const initialRevision = await requestJSON('/assignment-board-revision' + orgQuery, { forceRefresh: true, skipGlobalLoading: true });
         if (cancelled) return;
         const assignmentCardsSummaryPromise = requestJSON('/assignment-cards' + assignmentCardsSummaryQuery, {
@@ -3834,13 +3839,14 @@ const AssignBoard = () => {
           });
         };
 
-        const [factories, factoryScopeHeadcounts, boardState] = await Promise.all([
-          requestJSON('/factories' + orgQuery),
-          requestJSON('/factory-workers' + factoryScopeHeadcountQuery),
+        const [factoryMetadata, boardState] = await Promise.all([
+          factoryMetadataPromise,
           requestJSON('/assignment-board-view' + boardViewQuery, {
             forceRefresh: true,
           }).catch(() => null),
         ]);
+        if (factoryMetadata.error) throw factoryMetadata.error;
+        const [factories, factoryScopeHeadcounts] = factoryMetadata.rows;
         if (cancelled) return;
 
         if (!boardState || !initialRevision?.editRevision) throw new Error("Board revision unavailable");

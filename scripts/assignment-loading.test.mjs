@@ -105,7 +105,35 @@ test('actual bootstrap renders summaries first, requests editable details once a
   if(!allCompleted){assert.equal(states.some(row=>row[0]==='ready'&&row[1]),false);release();}
   await pending;assert.ok(states.some(row=>row[0]==='ready'&&row[1]));assert.equal(notices.length,0);
   assert.equal(reads.filter(path=>path.startsWith('/assignment-cards?')).length,allCompleted?1:2);
-  assert.ok(reads[0].startsWith('/assignment-board-revision?'));assert.equal(styles.length,2);assert.equal(styles[0].id,1);
+  assert.ok(reads.findIndex(path=>path.startsWith('/factories?')) < reads.findIndex(path=>path.startsWith('/assignment-board-revision?')));
+  assert.ok(reads.findIndex(path=>path.startsWith('/factory-workers?')) < reads.findIndex(path=>path.startsWith('/assignment-board-revision?')));
+  assert.ok(reads.findIndex(path=>path.startsWith('/assignment-board-revision?')) < reads.findIndex(path=>path.startsWith('/assignment-cards?')));assert.equal(styles.length,2);assert.equal(styles[0].id,1);
   assert.equal(JSON.stringify({cards,assignments}),before);
+ }
+});
+
+
+test('progress source reads start together and preserve scoped inputs and failure behavior', async () => {
+ const source=readFileSync('backend/src/index.ts','utf8');
+ const start=source.indexOf('const buildAssignmentPlanProgressRows =');
+ const end=source.indexOf('  const statsByPlanId',start);
+ const ts=require('../backend/node_modules/typescript');
+ const code=source.slice(start,end)+'return {factoryNameById,holidaySet,workRows,payrollLockedMonthSet}; };';
+ for(const failure of [null,'work','holiday','payroll']) {
+  const started=[],releases=[];
+  const read=(kind,value)=>{started.push(kind);return new Promise((resolve,reject)=>releases.push(()=>failure===kind?reject(Error(kind)):resolve(value)));};
+  const db={factory:{findMany:args=>{assert.deepEqual(args.where,{id:{in:[8]}});return read('factory',[{id:8,name:'Factory'}]);}},organizationHoliday:{findMany:args=>{assert.equal(args.where.orgId,3);return read('holiday',[{holidayDate:'2026-11-01'}]);}}};
+  const deps={prisma:db,ensureArray:v=>Array.isArray(v)?v:[],resolveOptionalString:(v,f)=>v||f,normalizeDateKey:v=>v,
+   findAssignmentPlansWithSelectFallback:async args=>{assert.equal(args.where.orgId,3);return [{id:1,externalId:'a',factoryId:8}];},
+   ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION:{},ASSIGNMENT_PLAN_SELECT_WITH_CLOSE:{},ASSIGNMENT_PLAN_SELECT_CORE:{},ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY:{},ASSIGNMENT_PLAN_SELECT_LEGACY:{},
+   resolveAssignmentPlanPayrollLockMonth:()=> '2026-11',
+   loadAssignmentPlanProgressWorkRows:args=>{assert.equal(args.db,db);assert.equal(args.orgId,3);return read('work',[{id:7}]);},
+   loadLockedPayrollMonthSet:(orgId,months,client)=>{assert.equal(orgId,3);assert.deepEqual(months,['2026-11']);assert.equal(client,db);return read('payroll',new Set(['2026-11']));},
+  };
+  const run=new Function(...Object.keys(deps),ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText+'return buildAssignmentPlanProgressRows;')(...Object.values(deps));
+  const pending=run(3,['a'],{db});await Promise.resolve();
+  assert.deepEqual(started,['factory','holiday','work','payroll']);releases.forEach(release=>release());
+  if(failure && failure!=='holiday')await assert.rejects(pending,new RegExp(failure));
+  else {const result=await pending;assert.equal(result.factoryNameById.get(8),'Factory');assert.deepEqual(result.workRows,[{id:7}]);assert.ok(result.payrollLockedMonthSet.has('2026-11'));assert.equal(result.holidaySet.size,failure==='holiday'?0:1);}
  }
 });
