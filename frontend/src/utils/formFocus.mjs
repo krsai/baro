@@ -41,7 +41,7 @@ export function textInputKeyDown(event){
 }
 // Wait for MUI's popup focus restoration and the parent's inert state to settle.
 // A later key/click cancels this move; an asynchronous rerender never wins over the user.
-export function advanceAfterSelection(origin,{popup,afterGroup=false,afterContainer}={}){
+export function advanceAfterSelection(origin,{popup,afterGroup=false,afterContainer,restoreOnly=false,targetSelector}={}){
  if(!origin)return;
  const anchor=afterContainer||origin.closest('[data-focus-next-selector]'),scope=navigationScope(origin);
  const token={},manager=installed,version=installed?.interaction;
@@ -53,7 +53,8 @@ export function advanceAfterSelection(origin,{popup,afterGroup=false,afterContai
    if(++frames<60)requestAnimationFrame(run);return;
   }
   if(origin.isConnected&&active!==origin&&active!==origin.ownerDocument.body&&!popup?.contains(active)&&!active?.matches('.MuiDialog-paper,.MuiPopover-paper'))return;
-  if(anchor?.dataset.focusNextSelector){pending.delete(origin);focus([...scope.querySelectorAll(anchor.dataset.focusNextSelector)].find(canFocus));return;}
+  if(restoreOnly){pending.delete(origin);focus(origin);return;}
+  if(targetSelector||anchor?.dataset.focusNextSelector){pending.delete(origin);focus([...scope.querySelectorAll(targetSelector||anchor.dataset.focusNextSelector)].find(canFocus));return;}
   pending.delete(origin);advanceFormFocus(origin,{afterGroup,afterContainer});
  };
  requestAnimationFrame(()=>requestAnimationFrame(run));

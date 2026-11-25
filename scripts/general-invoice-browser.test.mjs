@@ -33,14 +33,14 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/${path.basename(html)}`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const [lang,width,failure] of [...['ko','en','vi'].flatMap(lang=>[1440,390].map(width=>[lang,width,'none'])),['en',1440,'save'],['en',1440,'issue']]){
-  if((process.argv.includes('--customer-only')||process.argv.includes('--layout-only')||process.argv.includes('--codes-only')||process.argv.includes('--selection-only')||process.argv.includes('--tabs-only')||process.argv.includes('--currencies-only'))&&failure!=='none')continue;
+  if((process.argv.includes('--customer-only')||process.argv.includes('--layout-only')||process.argv.includes('--codes-only')||process.argv.includes('--selection-only')||process.argv.includes('--tabs-only')||process.argv.includes('--currencies-only')||process.argv.includes('--focus-only'))&&failure!=='none')continue;
   if(process.argv.includes('--service')&&lang!=='en')continue;
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],saves=[],issues=[],sourceReads=[];let failed=false;
   console.log('Checking general invoice',lang,width,failure,process.argv.includes('--material-only')?'material':'standard');
   await page.addInitScript(language=>localStorage.setItem('baro_language_override',language),lang);
-  page.on('pageerror',error=>errors.push(error.message));page.on('dialog',dialog=>dialog.accept());
+  page.on('pageerror',error=>{errors.push(error.message);if(process.argv.includes('--focus-only'))console.error('Page error:',error.message);});page.on('dialog',dialog=>dialog.accept());
   await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useAuth=()=>({activeOrgId:1,activeProfile:{orgType:'${process.argv.includes('--service')?'SERVICE':'MANUFACTURER'}'}});`}));
-  await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
+  await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`import React from '/node_modules/.vite/deps/react.js';export const LanguageContext=React.createContext({languageCode:'${lang}'});export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'const actions={navigateToPath:(path,options)=>{window.issued=true;window.invoiceNav?.(path,options);},showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;'}));
   await page.route('**/src/components/PageDialogProvider.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const usePageDialogs=()=>({confirm:async()=>true,prompt:async()=>"Correction"});'}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
@@ -90,9 +90,12 @@ try{
   if(process.argv.includes('--codes-only')){
    for(const [query,expected]of [['POL','PBGV'],['TRK','TRKV'],['폴리백','PBGV']]){await code.fill(query);await code.press('Enter');const dialog=page.getByRole('dialog');await dialog.waitFor();const candidate=dialog.getByRole('row').filter({has:page.getByRole('cell',{name:expected,exact:true})});await candidate.getByRole('button').click();await dialog.waitFor({state:'hidden'});assert.equal(await code.inputValue(),expected);}
   }else if(process.argv.includes('--material-only')){
-   await code.fill('PBGV');await code.press('Enter');
+   if(process.argv.includes('--focus-only')){
+    await code.fill('PBG');await code.press('Enter');const codeDialog=page.getByRole('dialog').filter({has:page.getByRole('cell',{name:'PBGV',exact:true})});await codeDialog.waitFor();await codeDialog.getByRole('row').filter({has:page.getByRole('cell',{name:'PBGV',exact:true})}).getByRole('button').click();await codeDialog.waitFor({state:'hidden'});
+   }else{await code.fill('PBGV');await code.press('Enter');}
    const materialDialog=page.getByRole('dialog');await materialDialog.waitFor();
    await materialDialog.getByRole('row').filter({hasText:'Poly Bag Material'}).getByRole('button').click();await materialDialog.waitFor({state:'hidden'});
+   if(process.argv.includes('--focus-only'))await row.getByRole('textbox',{name:roleName(t.description)}).and(page.locator(':focus')).waitFor({timeout:3000});
    assert.equal(await row.getByRole('textbox',{name:roleName(t.description)}).inputValue(),'Poly Bag Material / 30 × 40 × 0.08 Mm');
    const materialButton=row.getByRole('button',{name:materialItemText[lang].select,exact:true});
    assert.equal(await materialButton.innerText(),'','Material selection uses an icon without repeating the description');
@@ -101,6 +104,22 @@ try{
    await materialButton.click();await materialDialog.waitFor();await page.keyboard.press('Escape');await materialDialog.waitFor({state:'hidden'});
    assert.equal(await row.getByRole('textbox',{name:roleName(t.description)}).inputValue(),'Poly Bag Material / 30 × 40 × 0.08 Mm');
    assert.equal(await row.getByRole('textbox',{name:roleName(t.unit)}).inputValue(),({ko:'\uAC1C',en:'Pcs',vi:'C\u00e1i'})[lang]);
+   if(process.argv.includes('--focus-only')){
+    const description=row.getByRole('textbox',{name:roleName(t.description)}),qty=row.getByRole('textbox',{name:roleName(t.quantity)}),currency=row.getByRole('combobox',{name:roleName(t.currency)}),price=row.getByRole('textbox',{name:roleName(t.price)}),vat=row.getByRole('textbox',{name:roleName(t.vat)}),add=row.getByRole('button',{name:roleName(t.add)});
+    const focused=control=>control.and(page.locator(':focus')).waitFor({timeout:3000});
+    await description.dispatchEvent('keydown',{key:'Enter',code:'Enter',isComposing:true,bubbles:true});await focused(description);
+    await focused(description);await description.press('Tab');await focused(qty);await qty.press('Shift+Tab');await focused(description);await description.press('Enter');await focused(qty);
+    await qty.press('Enter');await focused(currency);await currency.press('Shift+Tab');await focused(qty);
+    await description.focus();await description.press('F2');await materialDialog.waitFor();await materialDialog.getByRole('row').filter({hasText:'Poly Bag Material'}).getByRole('button').click();await materialDialog.waitFor({state:'hidden'});await focused(qty);
+    await qty.press('Tab');await focused(currency);await currency.press('Enter');await page.getByRole('option',{name:'USD',exact:true}).click();await focused(price);
+    await price.press('Shift+Tab');await focused(currency);await currency.press('Enter');await page.getByRole('option',{name:'VND',exact:true}).click();await focused(price);
+    await price.press('Enter');await focused(vat);await vat.press('Enter');await focused(add);await add.press('Enter');
+    const second=page.getByTestId('general-invoice-line').nth(1);await focused(second.getByRole('textbox',{name:roleName(ACCOUNTING_CODE_TEXT[lang].code)}));assert.match(await second.getByRole('combobox',{name:roleName(t.currency)}).textContent(),/VND/);
+    await second.getByRole('textbox',{name:roleName(t.quantity)}).focus();await page.keyboard.press('Enter');const unit=second.getByRole('combobox',{name:roleName(t.unit)});await focused(unit);await unit.press('Enter');await page.getByRole('option',{name:({ko:'\uAC1C',en:'Pcs',vi:'C\u00e1i'})[lang],exact:true}).click();await focused(second.getByRole('combobox',{name:roleName(t.currency)}));
+    const secondPrice=second.getByRole('textbox',{name:roleName(t.price)});await secondPrice.focus();await secondPrice.press('Enter');const secondAdd=second.getByRole('button',{name:roleName(t.add)});await focused(secondAdd);await secondAdd.press('Shift+Tab');await focused(secondPrice);
+    await second.getByRole('button',{name:roleName(t.remove)}).click();await focused(code);await code.press('Enter');await focused(description);assert.equal(await page.getByRole('dialog').count(),0);
+    await description.fill('Manual material note');await description.press('F2');await materialDialog.waitFor();await page.keyboard.press('Escape');await materialDialog.waitFor({state:'hidden'});await focused(description);assert.equal(await description.inputValue(),'Manual Material Note');assert.equal(saves.length,0);
+   }
   }else{await code.fill('GENV');await code.press('Enter');assert.match(await row.getByRole('textbox',{name:roleName(t.description)}).inputValue(),roleName(({ko:'\uC77C\uBC18 \uB9E4\uCD9C',en:'General sales',vi:'Doanh thu kh\u00e1c'})[lang]));}
   const quantity=row.getByRole('textbox',{name:roleName(t.quantity)});await quantity.click();await page.waitForFunction(()=>{const input=document.activeElement;return input?.value==='1'&&input.selectionStart===0&&input.selectionEnd===1;});await page.keyboard.type('2');assert.equal(await quantity.inputValue(),'2');
   await row.getByRole('textbox',{name:roleName(t.description)}).fill('Polybag agency purchase');
@@ -146,5 +165,5 @@ try{
   }
   await page.close();
  }
- console.log(process.argv.includes('--currencies-only')?'PASS: row currencies, inheritance, mixed totals, header number/date, issue and PDF; ko/en/vi desktop/mobile.':process.argv.includes('--tabs-only')?'PASS: invoice draft survives material/list page round trips without extra reads or saves; issued form closes and reopens empty; ko/en/vi desktop/mobile.':process.argv.includes('--selection-only')?'PASS: material name/specification, reselect/cancel, unit/FK and issuance; ko/en/vi desktop/mobile.':process.argv.includes('--codes-only')?'PASS: three-row company details without internal codes, POL/Poly Bag/Korean and transport code selection, scoped FK through VAT/issue/PDF; '+(process.argv.includes('--service')?'SERVICE en desktop/mobile':'MANUFACTURER ko/en/vi desktop/mobile'):process.argv.includes('--layout-only')?'PASS: invoice currency metadata, 36px controls, party/address alignment, item input alignment, codes/VAT/issue and PDF; ko/en/vi desktop/mobile.':process.argv.includes('--customer-only')?'PASS: invoice customer code column, code search/selection and original buyer ID; ko/en/vi desktop/mobile.':'General invoice workspace: ko/en/vi desktop/mobile, customer without orders, codes/items/VAT, bank confirmation, issue and uncertain save/issue retries passed.');
+ console.log(process.argv.includes('--focus-only')?'PASS: invoice material dialog focus, F2/cancel, Tab/Shift+Tab/Enter, IME, readonly/disabled skipping and added/deleted row focus; ko/en/vi desktop/mobile.':process.argv.includes('--currencies-only')?'PASS: row currencies, inheritance, mixed totals, header number/date, issue and PDF; ko/en/vi desktop/mobile.':process.argv.includes('--tabs-only')?'PASS: invoice draft survives material/list page round trips without extra reads or saves; issued form closes and reopens empty; ko/en/vi desktop/mobile.':process.argv.includes('--selection-only')?'PASS: material name/specification, reselect/cancel, unit/FK and issuance; ko/en/vi desktop/mobile.':process.argv.includes('--codes-only')?'PASS: three-row company details without internal codes, POL/Poly Bag/Korean and transport code selection, scoped FK through VAT/issue/PDF; '+(process.argv.includes('--service')?'SERVICE en desktop/mobile':'MANUFACTURER ko/en/vi desktop/mobile'):process.argv.includes('--layout-only')?'PASS: invoice currency metadata, 36px controls, party/address alignment, item input alignment, codes/VAT/issue and PDF; ko/en/vi desktop/mobile.':process.argv.includes('--customer-only')?'PASS: invoice customer code column, code search/selection and original buyer ID; ko/en/vi desktop/mobile.':'General invoice workspace: ko/en/vi desktop/mobile, customer without orders, codes/items/VAT, bank confirmation, issue and uncertain save/issue retries passed.');
 }finally{await browser?.close();server.kill();for(const file of [html,jsx])if(existsSync(file))unlinkSync(file);}
