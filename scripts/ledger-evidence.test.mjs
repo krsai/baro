@@ -148,7 +148,7 @@ test('expense item requires sequential approvals for current version, checks all
 });
 test('service validates invoice scope, actual receipt and fees without forcing full settlement',async()=>{
  const invoices=[{id:'i',sellerOrgId:1,invoiceNumber:'INV-1',status:'ISSUED',currencyCode:'USD',total:'10000'}];
- const tx={accountingOpeningItem:{findMany:async()=>[]},$queryRawUnsafe:async()=>[],invoice:{findFirst:async({where})=>invoices.find(i=>Object.entries(where).every(([k,v])=>i[k]===v))},bankLedgerEvidenceAllocation:{findMany:async()=>[]}};
+ const tx={accountingOpeningItem:{findMany:async()=>[]},$queryRawUnsafe:async()=>[],invoice:{findFirst:async({where})=>invoices.find(i=>Object.entries(where).every(([k,v])=>k==='OR'?v.some(clause=>clause.currencyCode===i.currencyCode):i[k]===v))},bankLedgerEvidenceAllocation:{findMany:async()=>[]}};
  const body={evidenceType:'INVOICE',direction:'IN',evidenceNumber:'INV-1',amount:'4980',bankFee:'20'};
  const result=await resolveEvidence(tx,1,{currencyCode:'USD'},body);assert.equal(result.allocations[0].amount,'5000.00');
  await assert.rejects(resolveEvidence(tx,2,{currencyCode:'USD'},body),/INVOICE_NOT_FOUND/);
