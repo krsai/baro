@@ -219,7 +219,7 @@ const CustomerProductionReport = () => {
       return result;
     } catch (loadError) {
       setError(loadError?.message || text.loadError);
-      return null;
+      return false;
     } finally { setLoading(false); }
   }, [activeOrgId, text.loadError]);
 

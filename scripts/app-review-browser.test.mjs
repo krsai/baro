@@ -27,7 +27,7 @@ try {
     assert.equal(await page.locator('input[name="name"]').count(),0,'failed load must not produce a dummy editable style');
     const save=page.locator('button.MuiButton-contained').first();assert.equal(await save.isDisabled(),true);
     await page.getByRole('button',{name:retry,exact:true}).click();
-    await page.locator('input[name="name"]').waitFor();assert.equal(await page.locator('input[name="name"]').inputValue(),'Real saved style');assert.equal(reads,2);
+    await page.locator('input[name="name"]').waitFor();assert.equal(await page.locator('input[name="name"]').inputValue(),'Real Saved Style');assert.equal(reads,2);
     serverName='Updated server style';
     const fresh=await page.evaluate(async()=>{const {fetchStyleById}=await import('/src/utils/styleApi.js');return fetchStyleById(1,{orgId:1,forceRefresh:true});});
     assert.equal(fresh.name,serverName,'force refresh must bypass the common API cache as well');

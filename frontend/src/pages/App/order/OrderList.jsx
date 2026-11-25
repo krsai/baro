@@ -1371,8 +1371,9 @@ const OrderList = () => {
       const items = await fetchStylesFromApi({ orgId, compact: true, forceRefresh });
       setStyles(items);
     } catch (error) {
-      setStyles([]);
+      if (!forceRefresh) setStyles([]);
       showNotification(error?.message || orderPageText.stylesLoadError, 'error');
+      return false;
     }
   }, [orderPageText.stylesLoadError, showNotification]);
 
@@ -1418,8 +1419,9 @@ const OrderList = () => {
     } catch (error) {
       if (!cancelledRef?.current) {
         setQueryFailed(true);
-        setOrders([]);
+        if (!forceRefresh) setOrders([]);
         showNotification(error?.message || orderPageText.ordersLoadError, 'error');
+        return false;
       }
     } finally {
       if (!cancelledRef?.current) {

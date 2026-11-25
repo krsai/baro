@@ -37,8 +37,17 @@ function harness() {
   const messageExports = {};
   vm.runInNewContext(ts.transpileModule(messages, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports: messageExports });
   const dependencies = {
+    '../../../components/AppDialog': {default:'Dialog'},
+    '../../../components/AppNotice': {default:'Alert'},
+    '../../../components/SearchPanel': {default:'SearchPanel'},
+    '../../../components/SearchInput': {default:'SearchInput'},
+    '../../../utils/invoiceStyleRows.mjs': {invoiceNumber: String},
+    '../../../components/ManagementTargetSettingsButton': {default:'ManagementTargetSettingsButton'},
+    '../../../components/InvoicePartyPicker': {default:'CustomerSelect'},
+    './GeneralInvoiceEditor': {default:'GeneralInvoiceEditor'},
+    '../../../constants/generalInvoice': {generalInvoiceText:{en:{},ko:{}}},
     react: { ...react, default: react },
-    '@mui/material': Object.fromEntries(['Alert', 'Box', 'Button', 'Checkbox', 'CircularProgress', 'Paper', 'Stack', 'Table', 'TableBody', 'TableCell', 'TableHead', 'TableRow', 'TextField', 'Typography'].map(name => [name, name])),
+    '@mui/material': Object.fromEntries(['Alert', 'Box', 'Button', 'Checkbox', 'CircularProgress', 'Paper', 'Stack', 'Table', 'TableBody', 'TableCell', 'TableHead', 'TableRow', 'TextField', 'Typography','DialogTitle','DialogContent','DialogActions','MenuItem'].map(name => [name, name])),
     '../../../components/AppPageContainer': { default: 'Container' },
     '../../../components/SearchableSelect': { default: 'CustomerSelect' },
     '../../../context/AuthContext': { useAuth: () => ({ activeOrgId: 7 }) },
@@ -50,7 +59,7 @@ function harness() {
     },
     '../../../constants/invoiceMessages': messageExports,
     './InvoiceEditor': { default: 'InvoiceEditor' },
-    'react-router-dom': {useLocation:()=>({search:''})},
+    'react-router-dom': {useLocation:()=>({search:''}),useParams:()=>({})},
     '../../../constants/invoiceUi':{invoiceUi:{en:{},ko:{continue:'continue'}}},
     '../../../components/PageContentStack':{default:'PageContentStack'},
     './InvoiceList': { default: 'InvoiceList' },
@@ -79,7 +88,7 @@ test('invoice menu opens on issued history and enters a separate creation screen
   assert.equal(app.find(tree, 'CustomerSelect').length, 0);
   assert.equal(app.requests.length, 0);
   assert.equal(app.find(tree, 'InvoiceList').length, 1);
-  const create = [tree.props.titleActions,...app.find(tree, 'Button')].find(node => node.props.children?.includes?.('청구서 작성'));
+  const create = app.find(tree.props.titleActions, 'Button')[0];
   create.props.onClick();
   assert.equal(app.navigations.at(-1), '/invoices/new');
   tree = app.menu('editor');
@@ -89,32 +98,39 @@ test('invoice menu opens on issued history and enters a separate creation screen
   assert.equal(app.find(app.menu(), 'Table').length, 0);
 });
 
-test('one page always contains the editor and customer/order selectors without a continue step',async()=>{
+
+const customer = (app, tree, value) => app.find(app.controls(tree),'CustomerSelect')[0].props.onChange(value);
+const openOrders = (app, tree) => app.find(app.controls(tree),'Button')[0].props.onClick();
+const choose = (app, tree, number) => app.find(app.controls(tree),'Button').find(node=>node.props.children?.includes(number)).props.onClick();
+const apply = (app, tree) => app.find(app.controls(tree),'DialogActions')[0].props.children[0].props.onClick();
+test('editor keeps customer selection and explicitly applies order candidates',async()=>{
  const app=harness();let tree=app.render();assert.equal(tree.type,'InvoiceEditor');assert.deepEqual([...tree.props.orderIds],[]);
  app.requests[0].resolve({rows:[{id:8,name:'A'}]});await flush();tree=app.render();
- const controls=app.controls(tree),selects=app.find(controls,'CustomerSelect');assert.equal(selects.length,2);assert.equal(selects[1].props.multiple,true);assert.equal(selects[1].props.disabled,true);
- selects[0].props.onChange(null,{id:8,name:'A'});app.render();app.tick();assert.match(app.requests[1].url,/buyerOrgId=8/);
+ assert.equal(app.find(app.controls(tree),'CustomerSelect').length,1);
+ assert.equal(app.find(app.controls(tree),'Button')[0].props.disabled,true);
+ customer(app,tree,{id:8,name:'A'});app.render();app.tick();assert.match(app.requests[1].url,/buyerOrgId=8/);
  app.requests[1].resolve({rows:[{orderId:'first',orderNumber:'PO1'}],hasMore:false});await flush();tree=app.render();
- app.find(app.controls(tree),'CustomerSelect')[1].props.onChange(null,[{orderId:'first',orderNumber:'PO1'}]);tree=app.render();
- assert.equal(tree.type,'InvoiceEditor');assert.deepEqual([...tree.props.orderIds],['first']);assert.equal(tree.props.buyerOrgId,8);
+ openOrders(app,tree);tree=app.render();choose(app,tree,'PO1');tree=app.render();assert.deepEqual([...tree.props.orderIds],[]);
+ apply(app,tree);tree=app.render();assert.deepEqual([...tree.props.orderIds],['first']);assert.equal(tree.props.buyerOrgId,8);
 });
-test('customer changes clear selections and ignore stale order responses',async()=>{
+test('customer changes ignore stale responses and clear selected order FKs',async()=>{
  const app=harness();let tree=app.render();app.requests[0].resolve({rows:[]});await flush();tree=app.render();
- app.find(app.controls(tree),'CustomerSelect')[0].props.onChange(null,{id:8,name:'A'});app.render();app.tick();
- tree=app.render();app.find(app.controls(tree),'CustomerSelect')[0].props.onChange(null,{id:9,name:'B'});app.render();app.tick();
- app.requests[1].resolve({rows:[{orderId:'wrong'}],hasMore:false});await flush();tree=app.render();
- assert.deepEqual([...app.find(app.controls(tree),'CustomerSelect')[1].props.options],[]);assert.match(app.requests[2].url,/buyerOrgId=9/);
+ customer(app,tree,{id:8,name:'A'});app.render();app.tick();tree=app.render();
+ customer(app,tree,{id:9,name:'B'});app.render();app.tick();
+ app.requests[1].resolve({rows:[{orderId:'wrong',orderNumber:'WRONG'}],hasMore:false});await flush();tree=app.render();
+ assert.equal(app.find(app.controls(tree),'Button').some(node=>node.props.children?.includes('WRONG')),false);assert.match(app.requests[2].url,/buyerOrgId=9/);
  app.requests[2].resolve({rows:[{orderId:'correct',orderNumber:'PO-B'}],hasMore:false});await flush();tree=app.render();
- assert.equal(app.find(app.controls(tree),'CustomerSelect')[1].props.options[0].orderId,'correct');
- app.find(app.controls(tree),'CustomerSelect')[0].props.onChange(null,null);tree=app.render();assert.deepEqual([...tree.props.orderIds],[]);assert.equal(app.find(app.controls(tree),'CustomerSelect')[1].props.disabled,true);
+ openOrders(app,tree);tree=app.render();choose(app,tree,'PO-B');tree=app.render();apply(app,tree);tree=app.render();assert.deepEqual([...tree.props.orderIds],['correct']);
+ customer(app,tree,null);tree=app.render();assert.deepEqual([...tree.props.orderIds],[]);assert.equal(app.find(app.controls(tree),'Button')[0].props.disabled,true);
 });
-test('searching more orders keeps already selected order FKs on the same form',async()=>{
+test('search and pagination preserve applied selections and closing candidates does not apply',async()=>{
  const app=harness();let tree=app.render();app.requests[0].resolve({rows:[]});await flush();tree=app.render();
- app.find(app.controls(tree),'CustomerSelect')[0].props.onChange(null,{id:8,name:'A'});app.render();app.tick();
- const first={orderId:'first',orderNumber:'PO1'};app.requests[1].resolve({rows:[first],hasMore:true});await flush();tree=app.render();
- app.find(app.controls(tree),'CustomerSelect')[1].props.onChange(null,[first]);tree=app.render();
- app.find(app.controls(tree),'CustomerSelect')[1].props.onInputChange(null,'PO2','input');app.render();app.tick();
- assert.match(app.requests[2].url,/search=PO2/);app.requests[2].resolve({rows:[{orderId:'second',orderNumber:'PO2'}],hasMore:false});await flush();tree=app.render();
- assert.deepEqual([...tree.props.orderIds],['first']);const orderSelect=app.find(app.controls(tree),'CustomerSelect')[1];
- assert.equal(orderSelect.props.value[0].orderId,'first');assert.equal(orderSelect.props.options.length,2);
+ customer(app,tree,{id:8,name:'A'});app.render();app.tick();
+ app.requests[1].resolve({rows:[{orderId:'first',orderNumber:'PO1'}],hasMore:true});await flush();tree=app.render();
+ openOrders(app,tree);tree=app.render();choose(app,tree,'PO1');tree=app.render();apply(app,tree);tree=app.render();
+ openOrders(app,tree);tree=app.render();app.find(app.controls(tree),'SearchPanel')[0].props.search.props.onChange({target:{value:'PO2'}});app.render();app.tick();
+ assert.match(app.requests[2].url,/search=PO2/);app.requests[2].resolve({rows:[{orderId:'second',orderNumber:'PO2'}],hasMore:true});await flush();tree=app.render();
+ choose(app,tree,'PO2');tree=app.render();assert.deepEqual([...tree.props.orderIds],['first']);
+ app.find(app.controls(tree),'Dialog')[0].props.onClose();tree=app.render();assert.deepEqual([...tree.props.orderIds],['first']);
+ openOrders(app,tree);tree=app.render();assert.deepEqual([...tree.props.orderIds],['first']);
 });

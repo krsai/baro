@@ -16,6 +16,7 @@ try{
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:null});'}));
   let codeReads=0,industryReads=0,revision=0;
   const role={id:1,code:'SUPPLIER',nameKo:'CATEGORY',nameEn:'CATEGORY',nameVi:'CATEGORY'},source=()=>({id:10,code:'SUBTYPE',partnerRoleId:1,partnerRole:role,nameKo:'SUBTYPE-'+revision,nameEn:'SUBTYPE-'+revision,nameVi:'SUBTYPE-'+revision,isActive:true,hasUsageHistory:revision===0,_count:{partnerClassifications:revision===0?1:0},services:[]});
+  await page.route('**/text-acronyms',r=>r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{revision:0,entries:[]}}));
   const settingsRoute=r=>{
    const req=r.request(),path=new URL(req.url()).pathname,headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
    if(req.method()==='OPTIONS')return r.fulfill({headers,status:204});
@@ -30,7 +31,7 @@ try{
   await page.getByRole('button',{name:'Industries tab',exact:true}).click();await page.getByRole('cell',{name:'SUBTYPE-1',exact:true}).waitFor();assert.equal(await page.getByRole('row').filter({hasText:'SUBTYPE-1'}).locator('[data-table-action=delete]').isDisabled(),false,'usage removal enables deletion after settings refresh');const hiddenReads=codeReads;
   await page.evaluate(()=>window.mutate('/system-setting-defaults/code-bases/7'));await page.getByRole('cell',{name:'SUBTYPE-2',exact:true}).waitFor();assert.equal(codeReads,hiddenReads,'inactive accounting tab defers reads');
   await page.getByRole('button',{name:'Codes tab',exact:true}).click();await page.getByRole('cell',{name:'BASE-2',exact:true}).waitFor();
-  const edit={ko:'수정',en:'Edit',vi:'Sửa'}[lang];await page.getByRole('button',{name:edit,exact:true}).first().click();const dialog=page.getByRole('dialog');await dialog.waitFor();
+  const edit={ko:'상세',en:'Details',vi:'Chi Tiết'}[lang];await page.getByRole('button',{name:new RegExp('^'+edit+'$','i')}).first().click();const dialog=page.getByRole('dialog');await dialog.waitFor();
   const input=dialog.getByRole('textbox').first();await input.fill('XYZ');const draftReads=codeReads;
   await page.evaluate(()=>window.mutate('/system-setting-defaults/services/10'));await page.waitForTimeout(100);assert.equal(codeReads,draftReads,'open editor defers reference refresh');assert.equal(await input.inputValue(),'XYZ');
   await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});await page.getByRole('cell',{name:'BASE-3',exact:true}).waitFor();

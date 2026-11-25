@@ -1,3 +1,5 @@
+- 갱신·회귀 복구·생산 동기화 안정화: 구현 완료 / 로컬 통합 408개 및 추가 회귀 검증 통과 / 운영 migration·배포·실계정 인수 미확인. 공통 갱신 실패의 pending 보존·창 복귀 재시도·조회별 탭 변경 표시, 공장 설정 알림 누락·수량 검토의 잘못된 저장 알림, 휴일 변경의 배정 초안 보호, 급여 이전 자료/최근 성공 시각/명시 재시도를 반영했다. 일반·외주 실적과 같은 트랜잭션의 회사/배정 FK revision 및 서버 재시도 worker를 추가했으며 원본·완료/확정 snapshot·급여·원장 보정은 하지 않았다. 공통 선택 버튼의 테마 중복 정의로 사라진 포커스 표시도 복구했다. 전용 검수는 `test:workspace-refresh-recovery`, `test:assignment-progress-retry`다.
+
 - Login company selector: fixed group/button height mismatch, consistent inset spacing, white selected tab and keyboard focus. Encoding/i18n checks passed; production deployment and visual acceptance unverified.
 
 - 물류사 현황판: 구현·양쪽 빌드·권한/업종/메뉴/기존 봉제 현황판/입출금 권한 정합성 등 66검사·한영베 PC/모바일 기본/컴팩트 12조합 통과 / 운영 배포·실계정 인수 미확인. 물류 → 현황판에서 실제 고객 FK별 접수 운송건의 운송번호·화물·구간·MBL별 ETD/ETA·완료 건 배송일·컨테이너/수량/중량/부피·진행 상태·업무 비고를 표시한다. 검색·고객·완료 포함·50건 페이지와 운송 업무 이동, 실패 시 조건/기존 표 보존·직접 재시도를 제공한다. 독립 PRODUCTION_STATUS 권한과 역할 schema 20/업종 최초 계승 후 명시 거부를 유지하고 금융/감사/고객 공유 범위는 확장하지 않는다. DB migration·원문 보정 없음. 전용 검사: test:logistics-status.
@@ -1470,15 +1472,15 @@
 
 ### U088 · 열린 화면 갱신과 UI
 
-상태: 미확인. [원래 문맥](https://github.com/krsai/baro/blob/49a5a676/todo.md#L1375).
+상태: 공통 계층·관련 화면 로컬 검증 완료 / 운영 인수 미확인. [원래 문맥](https://github.com/krsai/baro/blob/49a5a676/todo.md#L1375).
 
-- [ ] 같은 창의 활성·비활성 업무 탭과 별도 브라우저 탭에서 갱신·변경 표시·미저장 입력 보호·저장/취소 후 재조회·실패 시 표시 유지가 동작하는지 검증한다. 저장 기능별 발행 주제와 영향 화면을 기록한다.
+- [x] 공통 계층의 활성·비활성 탭·창 복귀·초안 보호·실패 표시 보존·복수 구독자 변경 표시를 로컬 검증했다. 발행 주제와 영향 화면은 개발 참고 자료에 기록했다. 회사 전환·실패 재시도·휴일/급여는 한·영·베트남어 × 기본/컴팩트 × PC/터치 회귀를 추가했다. 전체 업무별 운영 인수는 미확인.
 
 ### U089 · 열린 화면 갱신과 UI
 
-상태: 미확인. [원래 문맥](https://github.com/krsai/baro/blob/49a5a676/todo.md#L1376).
+상태: 공통 계층·관련 화면 로컬 검증 완료 / 운영 인수 미확인. [원래 문맥](https://github.com/krsai/baro/blob/49a5a676/todo.md#L1376).
 
-- [ ] PayrollBoard 백그라운드 갱신 실패 시 기존 값을 유지하며 stale 표시/최근 성공 시각을 제공한다.
+- [x] PayrollBoard 백그라운드 갱신 실패 시 기존 값을 유지하며 stale 표시/최근 성공 시각을 제공한다.
 
 ### U090 · 열린 화면 갱신과 UI
 
@@ -1874,7 +1876,7 @@
 
 상태: 미확인. [원래 문맥](https://github.com/krsai/baro/blob/49a5a676/todo.md#L1636).
 
-- [ ] WorkLog 저장 후 진행률 snapshot 동기화 실패를 영속 기록하고 재시도하는 구조를 추가한다.
+- [x] WorkLog 저장 후 진행률 snapshot 동기화 실패를 영속 기록하고 재시도하는 구조를 추가한다. (AssignmentProgressSync migration / retry worker / rollback·회사 FK·경합·재시작 회귀 통과, 운영 적용 미확인.)
 
 ### U156 · 데이터 무결성
 
@@ -2268,7 +2270,7 @@ BOM에는 단순한 “한 벌당 숫자”만 저장하지 않는다. 기준 �
 
 ### 데이터 무결성
 
-- [ ] WorkLog 저장 후 진행률 snapshot 동기화 실패를 영속 기록하고 재시도하는 구조를 추가한다.
+- [x] WorkLog 저장 후 진행률 snapshot 동기화 실패를 영속 기록하고 재시도하는 구조를 추가한다. (AssignmentProgressSync migration / retry worker / rollback·회사 FK·경합·재시작 회귀 통과, 운영 적용 미확인.)
 - [ ] `AssignmentPlan.cardId` 사용처를 UI 외부 식별자와 관계 매칭 용도로 분류하고 관계 용도만 실제 FK로 전환한다.
 - [ ] `PUT /assignment-board-state`에 version 또는 `updatedAt` 기반 optimistic locking을 추가한다.
 
@@ -2350,3 +2352,4 @@ BOM에는 단순한 “한 벌당 숫자”만 저장하지 않는다. 기준 �
 
 - 클릭 조작 전역 공통화: 구현·공통 클릭 한영베 기본/컴팩트 PC/터치 12조합·배정 카드/생산 현황/가입 심사 메뉴·키보드·드래그 18조합·검색 후보 포인터/키보드 6조합·당사자/고객/주소/항만 미리보기·Enter·초안 보호 24조합·키보드/배정/탭 단위 7건·JSX/공통 UI/번역/인코딩 검사 통과 / 최종 프런트 빌드 통과, 운영 배포·실계정 인수 미확인. 일반 업무 목록의 원클릭 선택, 더블클릭/Enter 열기, Space 선택을 RecordInteractionScope/RecordRow로 통일하고 RecordOpenButton으로 원클릭/터치 진입을 제공했다. 기존 우클릭에는 동일 콜백의 RecordMenuButton을 제공하며 입력·링크의 기본 메뉴, 자식 컨트롤·portal 모달/메뉴, 다중 선택·펼치기·좌우 상세·초안을 보호한다. AGENTS.md·공통 UI README와 check:ui-consistency/test:record-interaction에 재발 방지 기준을 연결했다. 별도 Codex 전역 C:/Users/krsai/.codex/AGENTS.md에도 이후 다른 앱 개발에 적용할 사용자 선호를 등록했다(저장소 밖 개인 설정). 변경하지 않은 InvoiceWorkspace/기존 invoice-workspace.test 4건은 AppDialog mock 누락으로 실패하므로 전체 회귀 통과로 처리하지 않는다.
 
+- 추가 운송 브라우저 검사 미완료: shipping-requests-browser는 항구 코드가 주소 표시에서 Title Case로 변환되는 VNHPH/Vnhph 차이를 확인했고, freight-jobs-browser는 현행 SR 요약과 다른 과거 package-row 기대에서 중단됐다. 통합 408개 통과와 구분하며 두 검사를 통과로 처리하지 않는다. 기존 서류/주소 원문을 일괄 변경하거나 폐기된 포장 입력을 복원하지 않았다.

@@ -309,7 +309,7 @@ const AttendanceList = () => {
   });
   const fileInputRef = useRef(null);
 
-  const { holidaySet } = useHolidayCalendar(activeOrgId);
+  const { holidaySet } = useHolidayCalendar(activeOrgId, {isBlocked: () => importingFile || Boolean(importReview)});
 
   useEffect(() => {
     let cancelled = false;

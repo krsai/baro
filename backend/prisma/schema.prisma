@@ -2661,6 +2661,7 @@ model CustomerSalesPrice {
 }
 
 model AssignmentPlan {
+  progressSync AssignmentProgressSync?
   id                        Int                   @id @default(autoincrement())
   orgId                     Int
   factoryId                 Int
@@ -3914,4 +3915,19 @@ model MaterialItem {
  @@unique([orgId,clientKey],map:"MaterialItem_request_key")
  @@unique([orgId,baseId,identityKey],map:"MaterialItem_identity_key")
  @@index([orgId,baseId],map:"MaterialItem_company_code_idx")
+}
+
+// Operational retry state; canonical records and confirmed history remain independent.
+model AssignmentProgressSync {
+  assignmentPlanId Int
+  orgId Int
+  revision BigInt @default(1)
+  syncedRevision BigInt @default(0)
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now()) @db.Timestamp(3)
+  lastError String?
+  updatedAt DateTime @default(now()) @db.Timestamp(3)
+  syncedAt DateTime? @db.Timestamp(3)
+  assignmentPlan AssignmentPlan @relation(fields:[assignmentPlanId,orgId],references:[id,orgId],onDelete:Cascade,onUpdate:Restrict)
+  @@id([assignmentPlanId,orgId])
 }

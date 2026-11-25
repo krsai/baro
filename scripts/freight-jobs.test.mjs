@@ -11,7 +11,8 @@ test('job registration validates scoped parties, preserves cargo details and sta
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
   const routes=new Map();require('../backend/dist/services/freightJobs').registerJobRoutes({get:(path,fn)=>routes.set(path,fn),post:(path,fn)=>routes.set(path,fn),put:()=>{},delete:()=>{}},db,async()=>({orgId:org,actorId:actor}));
   const create=async body=>{let value;await routes.get('/freight/transport-jobs')({params:{},body},{json:row=>{value=row;}});return value;};
-  let options;await routes.get('/freight/transport-jobs/options')({},{json:value=>{options=value;}});assert.equal(options.forwarder.id,org);assert.ok(options.employees.some(row=>row.id===actor));assert.equal(options.employees.length,await db.employee.count({where:{orgId:org,status:'ACTIVE'}}));
+  const operator=await db.employee.create({data:{orgId:org,name:'Dispatcher',gradeId:s.people.admin.gradeId,status:'ACTIVE',orgRole:'OPERATOR'}});
+  let options;await routes.get('/freight/transport-jobs/options')({},{json:value=>{options=value;}});assert.equal(options.forwarder.id,org);assert.ok(options.employees.some(row=>row.id===operator.id));assert.equal(options.employees.length,await db.employee.count({where:{orgId:org,status:'ACTIVE',orgRole:'OPERATOR'}}));
   const receiver=await db.organization.create({data:{name:'Receiver',type:'BRAND',ownerOrgId:org}});
   const body={clientKey:randomUUID(),customerId:s.vendor.id,mode:'SEA',status:'DELIVERED',data:{customerRole:'shipper',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'},exportCustoms:'OUR_SCOPE',importCustoms:'NOT_OUR_SCOPE',billTo:'Destination forwarder',shipperId:s.vendor.id,consigneeId:receiver.id,shipmentType:'FCL',incoterms:'FOB Hai Phong',cargo:'Garments',quantity:'20',weightKg:'250.5',cbm:'4.25',containerType:'40HC',containerCount:'2',pickupRequired:true,pickupAddress:'Separate warehouse',dangerousGoods:true,dangerousGoodsDetails:'UN 1993'}};
   await assert.rejects(create({...body,data:{...body.data,consigneeId:s.vendor.id}}),/SHIPPING_PARTIES_OVERLAP/);
@@ -49,7 +50,7 @@ test('job registration validates scoped parties, preserves cargo details and sta
   const road=await create({...body,clientKey:randomUUID(),mode:'ROAD',data:{...body.data,shipmentType:'ROAD',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'}}});assert.equal(road.mode,'ROAD');
  }finally{await f.close();}
 });
-test('SR jobs have Master-first BLs with scoped House links and protected history',async()=>{
+test('SR jobs allow standalone House bills with optional scoped Master links and protected history',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
   const create=()=>saveFreight(db,org,actor,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,mode:'ROAD'});
@@ -58,14 +59,14 @@ test('SR jobs have Master-first BLs with scoped House links and protected histor
   const changed=await saveFreight(db,org,actor,'jobs',{...job,clientKey:randomUUID(),data:{...job.data,assigneeId:actor,plannedDate:'2026-11-06',jobType:'DOMESTIC'}},job.id);assert.equal(changed.data.assigneeId,actor);assert.equal(changed.data.plannedDate,'2026-11-06');assert.notEqual(job.number,other.number);
   assert.deepEqual((await jobDetail(db,org,actor,job.id)).bills,[]);
   const add=(kind,number,masterId=null,jobId=job.id)=>saveJobBill(db,org,actor,jobId,{id:randomUUID(),kind,number,issuer:'Issuer',masterId});
-  await assert.rejects(add('HOUSE','ORPHAN'),/FREIGHT_MASTER_REQUIRED/);
+  const standalone=await add('HOUSE','STANDALONE');assert.equal(standalone.masterId,null);
   const master=await add('MASTER','MASTER-1'),second=await add('MASTER','MASTER-2');
   const house=await add('HOUSE','HOUSE-1',master.id);assert.equal(house.masterId,master.id);
   const update=(bill,masterId)=>saveJobBill(db,org,actor,job.id,{...bill,masterId},bill.id);
   let h=await update(house,master.id);const h2=await add('HOUSE','HOUSE-2',master.id),unlinked=await add('HOUSE','HOUSE-3',second.id);
   let detail=await jobDetail(db,org,actor,job.id);assert.equal(detail.bills.filter(row=>row.masterId===master.id).length,2);assert.equal(detail.bills.filter(row=>row.kind==='MASTER').length,2);
   await assert.rejects(saveJobBill(db,org,actor,job.id,{version:master.version},master.id,true),/FREIGHT_MASTER_HAS_HOUSES/);
-  h=await update(h,second.id);await assert.rejects(update(h,null),/FREIGHT_MASTER_REQUIRED/);assert.equal(h.jobId,job.id);assert.equal(h.masterId,second.id);
+  h=await update(h,null);assert.equal(h.masterId,null);h=await update(h,second.id);assert.equal(h.jobId,job.id);assert.equal(h.masterId,second.id);
   await assert.rejects(saveJobBill(db,org,actor,job.id,{...h,masterIds:[master.id,second.id]},h.id),/FREIGHT_INVALID_INPUT/);
   const foreign=await add('MASTER','FOREIGN',null,other.id);
   await assert.rejects(update(h,foreign.id),/FREIGHT_MASTER_SCOPE/);
@@ -103,13 +104,15 @@ test('legacy migration copies only real BLs per job and preserves original opera
   const b=await saveFreight(db,org,actor,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,mode:'AIR',masterId:master.id});
   const c=await saveFreight(db,org,actor,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,houseStatus:'UNKNOWN'});
   const before=await db.$queryRawUnsafe('SELECT * FROM "FreightJob" ORDER BY id');
-  await f.pg.exec('ALTER TABLE "ShippingChargeDraft" DROP CONSTRAINT "ShippingChargeDraft_bill_scope_fkey";DROP TABLE "FreightTransportTask";DROP TABLE "FreightTransportTarget";DROP TABLE "FreightBill";DROP FUNCTION baro_job_bill_guard();DROP FUNCTION baro_job_task_scope();');
+  await f.pg.exec('ALTER TABLE "ShippingChargeDraft" DROP CONSTRAINT "ShippingChargeDraft_bill_scope_fkey";DROP TABLE "FreightTransportTask";DROP TABLE "FreightTransportTarget";DROP TABLE "FreightJobMaster";DROP TABLE "FreightBill";DROP FUNCTION baro_job_bill_guard();DROP FUNCTION baro_job_task_scope();');
   await f.pg.exec(readFileSync('backend/prisma/migrations/20261105140000_job_bills/migration.sql','utf8'));
   assert.deepEqual(await db.$queryRawUnsafe('SELECT * FROM "FreightJob" ORDER BY id'),before);
-  const first=await jobDetail(db,org,actor,a.id),second=await jobDetail(db,org,actor,b.id);
+  // Inspect this migration's historical schema directly; current jobDetail also requires later shared-master tables.
+  const legacyDetail=async id=>({bills:await db.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE "jobId"=$1 AND "orgId"=$2 AND "deletedAt" IS NULL',id,org)});
+  const first=await legacyDetail(a.id),second=await legacyDetail(b.id);
   assert.equal(first.bills.length,2);assert.equal(second.bills.length,1);assert.equal(first.bills.find(row=>row.kind==='HOUSE').masterId,first.bills.find(row=>row.kind==='MASTER').id);
   assert.notEqual(first.bills.find(row=>row.kind==='MASTER').id,second.bills[0].id);
-  assert.equal((await jobDetail(db,org,actor,c.id)).bills.length,0);
+  assert.equal((await legacyDetail(c.id)).bills.length,0);
   assert.equal((await db.$queryRawUnsafe('SELECT number FROM "FreightMaster" WHERE id=$1',master.id))[0].number,'REAL-MASTER');
   const constraints=await db.$queryRawUnsafe('SELECT conname FROM pg_constraint WHERE conrelid=\'"FreightBill"\'::regclass');
   assert.ok(constraints.some(row=>row.conname==='FreightBill_masterId_jobId_orgId_masterKind_fkey'));

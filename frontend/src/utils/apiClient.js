@@ -656,7 +656,10 @@ export const requestJSON = async (path, options = {}) => {
         if (/^\/(freight|shipping-requests)(\/|\?|$)/.test(path) && !/\/(charges|documents\/share)(\?|$)/.test(path)) {
           emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.SHIPPING], orgId: new URL(path, 'http://baro.local').searchParams.get('orgId') || requestContext.orgId, source: 'shipping' });
         }
-        if (/^\/(attendance-entries|work-logs)(\/|\?|$)/.test(path) && data?.ok!==false && !data?.error) {
+        if (/^\/factories(?:\/[^/?]+(?:\/production-allowance-version-boundaries)?)?(?:\?|$)/.test(path) && data?.ok!==false && !data?.error) {
+          emitWorkspaceDataChanged({topics:['employees','attendance','assignment-board','payroll-sources','production-allowance-settings'],orgId:new URL(path,'http://baro.local').searchParams.get('orgId')||requestContext.orgId,source:'factory-settings'});
+        }
+        if (/^\/(attendance-entries|work-logs)(\/|\?|$)/.test(path) && data?.ok!==false && !data?.error && data?.requiresQuantityReview!==true) {
           emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.PAYROLL_SOURCES, ...(/^\/attendance-entries/.test(path) ? ['attendance'] : [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD])], orgId: new URL(path, 'http://baro.local').searchParams.get('orgId') || requestContext.orgId, source: 'payroll-source' });
         }
       }

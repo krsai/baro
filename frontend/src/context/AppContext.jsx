@@ -29,6 +29,7 @@ const AppProviderState = ({ children }) => {
   // --- Tab State ---
   const [openTabs, setOpenTabs] = useState([]);
   const unsavedGuardsRef = useRef(new Map());
+  const externalChangeSourcesRef = useRef(new Map());
 
   const setTabEditing = useCallback((tabId, editing) => {
     setOpenTabs((tabs) => {
@@ -124,9 +125,12 @@ const AppProviderState = ({ children }) => {
     });
   }, []);
 
-  const markTabChanged = useCallback((tabId) => {
+  const markTabChanged = useCallback((tabId, source = 'default') => {
     const normalizedTabId = String(tabId || '').trim();
     if (!normalizedTabId) return;
+    const sources = externalChangeSourcesRef.current.get(normalizedTabId) || new Set();
+    sources.add(source);
+    externalChangeSourcesRef.current.set(normalizedTabId, sources);
     setOpenTabs((prev) => {
       let changed = false;
       const next = prev.map((tab) => {
@@ -138,9 +142,13 @@ const AppProviderState = ({ children }) => {
     });
   }, []);
 
-  const clearTabChanged = useCallback((tabId) => {
+  const clearTabChanged = useCallback((tabId, source = 'default') => {
     const normalizedTabId = String(tabId || '').trim();
     if (!normalizedTabId) return;
+    const sources = externalChangeSourcesRef.current.get(normalizedTabId);
+    if (!sources?.delete(source)) return;
+    if (sources.size) return;
+    externalChangeSourcesRef.current.delete(normalizedTabId);
     setOpenTabs((prev) => {
       let changed = false;
       const next = prev.map((tab) => {

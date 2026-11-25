@@ -3006,7 +3006,7 @@ const AssignBoard = () => {
   const historySnapshotRef = useRef('');
   const historyApplyingRef = useRef(false);
   const [historyStatus, setHistoryStatus] = useState({ undoCount: 0, redoCount: 0 });
-  const { holidaySet } = useHolidayCalendar(activeOrgId);
+  const { holidaySet } = useHolidayCalendar(activeOrgId, {isBlocked: () => loading || persisting || isDirty});
   const [viewStart, setViewStart] = useState(() =>
     clampAssignmentViewDate(getMonthStartDate(), DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY)
   );

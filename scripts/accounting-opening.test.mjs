@@ -79,7 +79,7 @@ test('bill lookup and replacement manage one balance, preserve source and cash, 
 test('expense bill lookup fills the actual item code, party and currency and rolls back the whole replacement on stale versions',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,scope={orgId:org,actorId:s.people.admin.id,actor:s.people.admin.email};
-  const expense=await db.$transaction(tx=>registerExpenseRequest(tx,org,scope.actorId,{clientKey:randomUUID(),partnerOrgId:s.vendor.id,requestDate:'2026-10-20',paymentMethod:'CASH',plannedInstallments:1,dueDate:'2026-11-10',items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'150',vatRate:'0',details:{evidenceFile:'bill.pdf',reference:'BILL'}}]}));
+  const expense=await db.$transaction(tx=>registerExpenseRequest(tx,org,scope.actorId,{remark:'Fixture expense',clientKey:randomUUID(),partnerOrgId:s.vendor.id,requestDate:'2026-10-20',paymentMethod:'CASH',plannedInstallments:1,dueDate:'2026-11-10',items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'150',vatRate:'0',details:{evidenceFile:'bill.pdf',reference:'BILL'}}]}));
   const bill=(await readAccountingOpening(db,org,scope.actorId,{balanceDate:'2026-11-01',search:expense.managementNumber})).documents[0];
   assert.equal(bill.accountingCodeId,s.code.id);assert.deepEqual(bill.counterparty,{kind:'PARTNER',id:s.vendor.id});assert.equal(bill.currencyCode,'USD');
   const row={kind:'OPENING',side:'AP',currencyCode:'USD',amount:'100',accountingCodeId:bill.accountingCodeId,counterparty:bill.counterparty,source:{side:bill.side,sourceId:bill.id,sourceVersion:bill.sourceVersion,expectedRemaining:bill.remaining}};
@@ -155,7 +155,7 @@ test('prior invoice settlement clears only remaining debt, preserves source, blo
 test('expense exclusions preserve cost evidence and opening payments wait for final approval',async()=>{
  const f=await changeApprovalFixture({registration:true});try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,scope={orgId:org,actorId:s.people.admin.id,actor:s.people.admin.email};
-  const expense=await db.$transaction(tx=>registerExpenseRequest(tx,org,s.people.admin.id,{partnerOrgId:s.vendor.id,requestDate:'2026-10-30',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'70',vatRate:'0',details:{evidenceFile:'prior.pdf',reference:'PRIOR'}}]}));
+  const expense=await db.$transaction(tx=>registerExpenseRequest(tx,org,s.people.admin.id,{remark:'Fixture expense',partnerOrgId:s.vendor.id,requestDate:'2026-10-30',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'70',vatRate:'0',details:{evidenceFile:'prior.pdf',reference:'PRIOR'}}]}));
   const cost=expense.items[0];
   const input={clientKey:randomUUID(),balanceDate:'2026-11-01',reason:'Prior payment',accounts:[],openingRows:[{kind:'EXCLUDED',side:'AP',sourceId:cost.id,sourceVersion:expense.version,expectedRemaining:String(cost.amount)}]};
   await reconcileLedgerBalances(db,scope,input);assert.equal(String((await db.partnerTransactionCost.findUnique({where:{id:cost.id}})).amount),'70');

@@ -37,7 +37,7 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
       CREATE TABLE "SystemUser"(id INT PRIMARY KEY,email TEXT,"systemRole" TEXT);
       CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,status TEXT DEFAULT 'ACTIVE',"orgRole" TEXT DEFAULT 'ADMIN',"gradeId" INT,UNIQUE(id,"orgId"));
       CREATE TABLE "PayrollSnapshot"(id SERIAL PRIMARY KEY,"orgId" INT,"factoryId" INT,month TEXT,data JSONB,"isProvisional" BOOLEAN DEFAULT true,revision INT DEFAULT 1,"updatedByEmployeeId" INT);
-      CREATE TABLE "OutsourcedWorkRecord"(id INT PRIMARY KEY,"orgId" INT);
+      CREATE TABLE "OutsourcedWorkRecord"(id INT PRIMARY KEY,"orgId" INT,"assignmentPlanId" INT); CREATE TABLE "WorkRecord"(id INT PRIMARY KEY,"orgId" INT,"assignmentPlanId" INT);
       CREATE TABLE "Style"(id INT PRIMARY KEY,"orgId" INT,"customerOrgId" INT);
       CREATE TABLE "PartnerTransactionCost"("transactionCodeId" INT,id TEXT PRIMARY KEY,"orgId" INT,"partnerOrgId" INT,"styleId" INT,currency TEXT,amount NUMERIC,"outsourcedWorkRecordId" INT);
       INSERT INTO "Organization"(id,"ownerOrgId") VALUES(1,NULL),(11,1); INSERT INTO "Employee"(id,"orgId") VALUES(20,1);
@@ -49,7 +49,7 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
       CREATE TABLE "SettingTransactionCodeDefault"(id INT,"serviceTypeId" INT,"baseId" INT,"taxTreatmentId" INT,code TEXT,"nameKo" TEXT,"nameEn" TEXT,"nameVi" TEXT,"vatEnabled" BOOL,"isActive" BOOL DEFAULT true,"isEnabled" BOOL DEFAULT true,UNIQUE("baseId","taxTreatmentId"));
       CREATE TABLE "OrganizationOutsourcingServiceType"("partnerOrgId" INT,"ownerOrgId" INT,"serviceTypeId" INT,"createdAt" TIMESTAMP,PRIMARY KEY("partnerOrgId","serviceTypeId"));
       ${['WorkLog','WorkOrder','AssignmentPlan'].map(table=>`CREATE TABLE "${table}"(id INT);`).join('\n')}`);
-    await db.exec('ALTER TABLE "WorkOrder" ADD COLUMN "orgId" INT, ADD COLUMN "sellerOrgId" INT; CREATE UNIQUE INDEX "WorkOrder_id_orgId_key" ON "WorkOrder"(id,"orgId"); CREATE UNIQUE INDEX "Style_id_orgId_key" ON "Style"(id,"orgId");');
+    await db.exec('ALTER TABLE "AssignmentPlan" ADD COLUMN "orgId" INT; CREATE UNIQUE INDEX "AssignmentPlan_id_orgId_key" ON "AssignmentPlan"(id,"orgId"); ALTER TABLE "WorkOrder" ADD COLUMN "orgId" INT, ADD COLUMN "sellerOrgId" INT; CREATE UNIQUE INDEX "WorkOrder_id_orgId_key" ON "WorkOrder"(id,"orgId"); CREATE UNIQUE INDEX "Style_id_orgId_key" ON "Style"(id,"orgId");');
     await db.exec('CREATE TABLE "WorkOrderItem"(id INT PRIMARY KEY,"workOrderId" INT,"styleId" INT,"colorId" INT,gender TEXT,"sizeQuantities" JSONB)');
     await db.exec(`CREATE TYPE "InvoiceStatus" AS ENUM ('ISSUED','CANCELLED','SUPERSEDED'); CREATE TABLE "Invoice"(id TEXT PRIMARY KEY,"sellerOrgId" INT,status TEXT,"currencyCode" TEXT,total NUMERIC,"receivableAdded" NUMERIC DEFAULT 0,"pricingBasis" TEXT NOT NULL DEFAULT 'MANUFACTURING_SERVICE_PRICE'); CREATE TABLE "InvoiceDraft"(id TEXT PRIMARY KEY,"sellerOrgId" INT,content JSONB)`);
     await db.exec('CREATE TABLE "InvoiceOrder"(id INT PRIMARY KEY,"invoiceId" TEXT); CREATE TABLE "InvoiceLine"(id INT PRIMARY KEY,"invoiceId" TEXT)');

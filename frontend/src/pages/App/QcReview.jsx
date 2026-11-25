@@ -403,7 +403,7 @@ const QcReview = () => {
     async ({ forceRefresh = false } = {}) => {
       const factoryId = toPositiveIntOrNull(selectedFactoryId);
       if (!factoryId) {
-        setRows([]);
+        if (!forceRefresh) setRows([]);
         setLoadError('');
         return;
       }
@@ -515,7 +515,7 @@ const QcReview = () => {
         }
         setLoadError('');
       } catch (error) {
-        setRows([]);
+        if (!forceRefresh) setRows([]);
         setLoadError(
           resolveQcReviewApiErrorMessage({
             error,
@@ -523,6 +523,7 @@ const QcReview = () => {
             selectedFactoryId: factoryId,
           })
         );
+        return false;
       } finally {
         setLoading(false);
       }
@@ -675,6 +676,7 @@ const QcReview = () => {
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
     topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+    isBlocked: Boolean(savingQcPlanId) || Boolean(expandedRowId),
     onRefresh: () => loadRows({ forceRefresh: true }),
   });
 

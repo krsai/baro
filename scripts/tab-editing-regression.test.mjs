@@ -69,24 +69,21 @@ test('tab editing aggregates all guards and clears only after every form is save
   assert.ok(tabs.every(tab => !tab.isEditing));
 });
 
-test('background refresh stays queued; foreground refresh clears the notice', async () => {
-  const source = fs.readFileSync(new URL('../frontend/src/hooks/useWorkspaceRefreshOnEvent.js', import.meta.url), 'utf8');
-  const section = source.slice(source.indexOf('    const runRefresh = async'), source.indexOf('    const unsubscribe'));
-  for (const visible of [false, true]) {
-    const events = [];
-    const context = vm.createContext({
-      document:{visibilityState:'visible'},
-      cancelled: false,
-      pendingRefreshRef: { current: true }, isActiveRef: { current: true },
-      isBlockedRef: { current: false }, refreshInFlightRef: { current: false },
-      blockedNoticeShownRef: { current: false }, isTabVisibleRef: { current: visible },
-      tabPathRef: { current: '/order' }, onRefreshRef: { current: async () => events.push('loaded') },
-      clearTabChanged: path => events.push(`clear:${path}`), markTabChanged: path => events.push(`mark:${path}`),
-    });
-    await vm.runInContext(section + '\nrunRefresh();', context);
-    assert.deepEqual(events, visible?['loaded','clear:/order']:[]);
-    assert.equal(context.pendingRefreshRef.current,!visible);
-  }
+
+function refreshHarness(initial={}) {
+ const slots=[],effects=[],events=[],listeners=new Set();let index=0,options={orgId:1,topics:['styles'],isActive:true,isBlocked:false,onRefresh:async()=>events.push('loaded'),...initial};
+ const actions={markTabChanged:path=>events.push('mark:'+path),clearTabChanged:path=>events.push('clear:'+path)};
+ const useRef=value=>{const slot=index++;return slots[slot]??= {current:value};};
+ const useEffect=(run,deps)=>{const slot=index++,old=slots[slot];if(!old||!deps||deps.some((v,i)=>!Object.is(v,old.deps[i]))){effects.push(()=>{old?.cleanup?.();slots[slot]={deps,cleanup:run()};});}};
+ const useCallback=(run,deps)=>{const slot=index++,old=slots[slot];if(!old||deps.some((v,i)=>!Object.is(v,old.deps[i])))slots[slot]={deps,value:run};return slots[slot].value;};
+ const source=fs.readFileSync('frontend/src/hooks/useWorkspaceRefreshOnEvent.js','utf8').replace(/^import .*;\r?\n/gm,'').replace('export default function','function');
+ const hook=new Function('useRef','useEffect','useCallback','useLocation','useAppActions','subscribeWorkspaceDataChanged','document','window',source+';return useWorkspaceRefreshOnEvent;')(useRef,useEffect,useCallback,()=>({pathname:'/style'}),()=>actions,listener=>{listeners.add(listener);return()=>listeners.delete(listener);},{visibilityState:'visible',addEventListener(){},removeEventListener(){}},{addEventListener(){},removeEventListener(){}});
+ const render=patch=>{options={...options,...patch};index=0;hook(options);while(effects.length)effects.shift()();};render();
+ return {events,render,emit:()=>{for(const listener of listeners)listener({orgId:1,topics:['styles']});},flush:()=>new Promise(resolve=>setImmediate(resolve))};
+}
+test('background refresh stays queued; foreground refresh clears the notice',async()=>{
+ const h=refreshHarness({isActive:false});h.emit();await h.flush();assert.deepEqual(h.events,['mark:/style']);
+ h.render({isActive:true});await h.flush();assert.deepEqual(h.events,['mark:/style','loaded','clear:/style']);
 });
 
 test('tab states use compact separate indicators without recoloring the title', () => {
@@ -103,23 +100,23 @@ test('tab states use compact separate indicators without recoloring the title', 
   assert.match(indicators, /변경된 자료가 있습니다/);
 });
 
-test('failed refresh stays pending without a request loop and succeeds on the next refresh event', async () => {
-  const source = fs.readFileSync('frontend/src/hooks/useWorkspaceRefreshOnEvent.js', 'utf8');
-  for (const pending of [false, true]) {
-    const start = source.indexOf(pending ? '    const runPendingRefresh = async' : '    const runRefresh = async');
-    const end = source.indexOf(pending ? '\n    void runPendingRefresh();' : '\n    const unsubscribe', start);
-    let calls = 0;
-    const context = vm.createContext({document:{visibilityState:'visible'},cancelled: false, pendingRefreshRef: {current: true}, isActiveRef: {current: true}, isBlockedRef: {current: false}, refreshInFlightRef: {current: false}, blockedNoticeShownRef: {current: false}, isTabVisibleRef: {current: true}, tabPathRef: {current: '/style'}, clearTabChanged: () => {}, markTabChanged: () => {}, onRefreshRef: {current: async () => { calls++; throw Error('offline'); }}});
-    const name = pending ? 'runPendingRefresh' : 'runRefresh';
-    await vm.runInContext(source.slice(start, end) + `\n${name}();`, context);
-    assert.equal(calls, 1);
-    assert.equal(context.pendingRefreshRef.current, true);
-    assert.equal(context.refreshInFlightRef.current, false);
-    context.onRefreshRef.current = async () => { calls++; };
-    await vm.runInContext(`${name}();`, context);
-    assert.equal(calls, 2);
-    assert.equal(context.pendingRefreshRef.current, false);
-  }
+test('one successful consumer cannot clear another consumer pending or failed refresh',()=>{
+ const source=fs.readFileSync('frontend/src/context/AppContext.jsx','utf8');let tabs=[{id:'/style'}];
+ const context=vm.createContext({useCallback:fn=>fn,externalChangeSourcesRef:{current:new Map()},setOpenTabs:fn=>{tabs=fn(tabs);}});
+ vm.runInContext(source.slice(source.indexOf('  const markTabChanged ='),source.indexOf('  const closeTab ='))+';globalThis.mark=markTabChanged;globalThis.clear=clearTabChanged;',context);
+ const first=Symbol('orders'),second=Symbol('holidays');context.mark('/style',first);context.mark('/style',second);
+ context.clear('/style',first);assert.equal(tabs[0].hasExternalChanges,true);context.clear('/style',first);assert.equal(tabs[0].hasExternalChanges,true);
+ context.clear('/style',second);assert.equal(tabs[0].hasExternalChanges,undefined);assert.equal(context.externalChangeSourcesRef.current.size,0);
+});
+
+
+test('failed refresh stays pending without a request loop and succeeds on the next refresh event',async()=>{
+ for(const failure of ['throw','false']){
+  let calls=0;const h=refreshHarness({onRefresh:async()=>{calls++;if(failure==='throw')throw Error('offline');return false;}});
+  h.emit();await h.flush();assert.equal(calls,1);assert.deepEqual(h.events,['mark:/style','mark:/style']);await h.flush();assert.equal(calls,1);
+  h.render({isBlocked:true});h.render({isBlocked:false});await h.flush();assert.equal(calls,1,'a loader releasing its own busy flag must not retry a failure');
+  h.render({onRefresh:async()=>{calls++;}});h.emit();await h.flush();assert.equal(calls,2);assert.deepEqual(h.events,['mark:/style','mark:/style','mark:/style','clear:/style']);
+ }
 });
 
 test('close all confirms every dirty tab before changing anything and closes the active tab after neutral navigation',async()=>{

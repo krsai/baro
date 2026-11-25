@@ -52,11 +52,13 @@ export const workspaceTopics=(path:string):string[]=>{
   [/^\/entities\/[^/]+\/bank-accounts(?:\/|$)/,['bank-ledger','business-partners']],
   [/^\/organization-profile(?:\/|$)/,['organization-profile','business-partners','customers']],
   [/^\/accounting-opening(?:\/|$)/,['bank-ledger','issued-invoices','expense-requests','payroll-sources']],
+  [/^\/factories(?:\/[^/]+(?:\/production-allowance-version-boundaries)?)?\/?$/,['employees','attendance','assignment-board','payroll-sources','production-allowance-settings']],
+  [/^\/(payroll|salary|production-allowance)/,['payroll-sources','salary-system-settings','production-allowance-settings','employees']],
   [/^\/styles/,['styles','assignment-board']],
   [/^\/(assignment|work-logs|production)/,['assignment-board','payroll-sources','styles']],
   [/^\/holidays/,['holidays','payroll-sources']],
   [/^\/(employees|org-memberships|attendance|leave|work-time)/,['employees','payroll-sources']],
-  [/^\/(payroll|salary|production-allowance)/,['payroll-sources','salary-system-settings','production-allowance-settings','employees']],
+
   [/^\/(expense|change-approval|bank-ledger|bank-accounts|management-targets)/,['expense-requests','expense-approvals','change-approvals','bank-ledger','payroll-sources']],
   [/^\/invoices/,['issued-invoices','invoice-drafts','bank-ledger','change-approvals']],
   [/^\/(partner-classifications|partner-editor|customers|partners|business-partners|organizations|organization-profile|sales-prices)/,['customers','business-partners','sales-prices']],
@@ -92,7 +94,7 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
   if(topics.length&&['POST','PUT','PATCH','DELETE'].includes(req.method)){
    let notified=false;
    const notify=(body:any)=>{
-    const employeeId=getCurrentRequestActorEmployeeId(),successful=res.statusCode>=200&&res.statusCode<300&&body?.ok!==false&&!body?.error;
+    const employeeId=getCurrentRequestActorEmployeeId(),successful=res.statusCode>=200&&res.statusCode<300&&body?.ok!==false&&!body?.error&&body?.requiresQuantityReview!==true;
     if(notified||!successful)return;
     notified=true;
     if(successful&&isReferencePath(req.path)&&gates.requireSystemAdmin){

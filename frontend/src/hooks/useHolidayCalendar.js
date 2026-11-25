@@ -1,8 +1,7 @@
-import {subscribeWorkspaceDataChanged} from '../utils/workspaceDataEvents';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import useWorkspaceRefreshOnEvent from './useWorkspaceRefreshOnEvent';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchHolidayKeys,
-  HOLIDAY_UPDATED_EVENT,
   normalizeHolidayList,
 } from '../utils/holidayApi';
 
@@ -15,10 +14,14 @@ export default function useHolidayCalendar(
   orgId,
   {
     skipGlobalLoading = true,
+    isBlocked = () => false,
   } = {}
 ) {
   const normalizedOrgId = useMemo(() => normalizeOrgId(orgId), [orgId]);
+  const blocked = useRef(isBlocked); blocked.current = isBlocked;
+  const currentOrg = useRef(normalizedOrgId); currentOrg.current = normalizedOrgId;
   const [holidayKeys, setHolidayKeys] = useState([]);
+  const [holidayOrg, setHolidayOrg] = useState(null);
   const [loading, setLoading] = useState(Boolean(normalizedOrgId));
   const [error, setError] = useState(null);
 
@@ -41,15 +44,18 @@ export default function useHolidayCalendar(
           skipGlobalLoading,
           forceRefresh,
         });
+        if (currentOrg.current !== normalizedOrgId || blocked.current()) return false;
         const normalizedKeys = normalizeHolidayList(nextKeys);
         setHolidayKeys(normalizedKeys);
+        setHolidayOrg(normalizedOrgId);
         setError(null);
         return normalizedKeys;
       } catch (nextError) {
+        if (currentOrg.current !== normalizedOrgId) return false;
         setError(nextError);
         throw nextError;
       } finally {
-        if (!silent) {
+        if (!silent && currentOrg.current === normalizedOrgId) {
           setLoading(false);
         }
       }
@@ -80,6 +86,7 @@ export default function useHolidayCalendar(
       .then((nextKeys) => {
         if (cancelled) return;
         setHolidayKeys(normalizeHolidayList(nextKeys));
+        setHolidayOrg(normalizedOrgId);
         setError(null);
       })
       .catch((nextError) => {
@@ -99,37 +106,22 @@ export default function useHolidayCalendar(
     };
   }, [normalizedOrgId, skipGlobalLoading]);
 
+  const retryPending = useWorkspaceRefreshOnEvent({
+    orgId: normalizedOrgId, topics: ['holidays'],
+    onRefresh: () => blocked.current() ? false : refresh({forceRefresh:true,silent:true}),
+  });
+  const previouslyBlocked = useRef(false);
   useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
+    const next = blocked.current();
+    if (previouslyBlocked.current && !next) void retryPending();
+    previouslyBlocked.current = next;
+  });
 
-    const handleHolidayUpdated = (event) => {
-      const eventOrgId = normalizeOrgId(event?.detail?.orgId);
-      if (eventOrgId !== null && eventOrgId !== normalizedOrgId) return;
-
-      if (Array.isArray(event?.detail?.holidays)) {
-        setHolidayKeys(normalizeHolidayList(event.detail.holidays));
-        setError(null);
-        return;
-      }
-
-      refresh({ forceRefresh: true, silent: true }).catch(() => {});
-    };
-
-
-    window.addEventListener(HOLIDAY_UPDATED_EVENT, handleHolidayUpdated);
-    const unsubscribe=subscribeWorkspaceDataChanged(event=>{if(Number(event.orgId)===normalizedOrgId&&event.topics?.includes('holidays'))refresh({forceRefresh:true,silent:true}).catch(()=>{});});
-
-
-    return () => {
-      unsubscribe();window.removeEventListener(HOLIDAY_UPDATED_EVENT, handleHolidayUpdated);
-
-    };
-  }, [normalizedOrgId, refresh]);
-
-  const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
+  const visibleKeys = useMemo(() => holidayOrg === normalizedOrgId ? holidayKeys : [], [holidayKeys, holidayOrg, normalizedOrgId]);
+  const holidaySet = useMemo(() => new Set(visibleKeys), [visibleKeys]);
 
   return {
-    holidayKeys,
+    holidayKeys: visibleKeys,
     holidaySet,
     loading,
     error,

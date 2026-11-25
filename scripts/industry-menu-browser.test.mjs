@@ -24,58 +24,33 @@ try{
   await page.route('**/src/utils/apiClient.js*',r=>r.fulfill({contentType:'application/javascript',body:`import {getDefaultRoleAccessPolicy,getPolicyFeatures} from '/src/utils/roleAccessPolicyCore.mjs';import {SERVICE_FEATURES} from '/src/utils/serviceCompany.mjs';export const activateRequestScope=()=>{};export const deactivateRequestScope=()=>{};
 export const requestJSON=async(url,options={})=>{
  (window.called??=[]).push(url);window.menus??=JSON.parse(localStorage.getItem('menus')||'null')||{revision:0,industries:{9:['DASHBOARD','BUSINESS','STYLE']},subscribers:{MANUFACTURER:['DASHBOARD','BUSINESS','STYLE','BANK_LEDGER','OUTSOURCING_RECORD','APPROVAL_SETTINGS'],SERVICE:['DASHBOARD','BUSINESS','FREIGHT','BANK_LEDGER','OUTSOURCING_RECORD','APPROVAL_SETTINGS']},features:['DASHBOARD','BUSINESS','FREIGHT','STYLE','BANK_LEDGER','OUTSOURCING_RECORD','APPROVAL_SETTINGS','CUSTOMER'],required:['DASHBOARD','BUSINESS']};window.menus.features=getPolicyFeatures();if(window.menus.revision===0){window.menus.subscribers.MANUFACTURER=getPolicyFeatures().filter(key=>key!=='FREIGHT');window.menus.subscribers.SERVICE=SERVICE_FEATURES;}window.roles??=JSON.parse(localStorage.getItem('roles')||'null')||getDefaultRoleAccessPolicy();
+ if(url.includes('navigation-order'))return {revision:0,order:{}};
  if(url.includes('industry-menu-policy')){if(options.method==='PUT'){window.lastMenus=JSON.parse(options.body);if(window.failMenus){const e=Error('conflict');e.status=409;throw e;}window.menus={...window.menus,...window.lastMenus,revision:window.menus.revision+1};localStorage.setItem('menus',JSON.stringify(window.menus));}return structuredClone(window.menus);}
  if(options.method==='PUT'){window.roleSaves=(window.roleSaves||0)+1;window.lastRoles=JSON.parse(options.body);window.roles=window.lastRoles.policy;localStorage.setItem('roles',JSON.stringify(window.roles));}return {policy:structuredClone(window.roles)};
 };`}));
   await page.goto('http://127.0.0.1:43292/industry-menu-acceptance.html');
   const row=path=>page.locator(`[data-menu-path="${path}"]`);
-  const availability=path=>row(path).getByRole('button').first();
+  const provided=(path,type='MANUFACTURER')=>row(path).getByRole('checkbox').nth(type==='SERVICE'?5:0);
+  const role=(path,index,type='MANUFACTURER')=>row(path).getByRole('checkbox').nth((type==='SERVICE'?5:0)+1+index);
   await row('/style').waitFor();await page.waitForFunction(()=>window.called.includes('/system/access-policy'));
-  assert.equal(await page.getByRole('tab').count(),2);
+  assert.equal(await page.getByRole('tab').count(),0,'both industries share one permission matrix');
   const expected={ko:['관리자','운영자','회계','직원'],en:['Administrator','Operator','Accountant','Worker'],vi:['Quản trị','Điều hành','Kế toán','Nhân viên']}[language];
-  assert.deepEqual((await page.getByRole('columnheader').allTextContents()).slice(2),expected);
-  assert.equal(await row('/bank-ledger').getByRole('switch').count(),4);
-  assert.equal(await availability('/personal-settings').getAttribute('aria-pressed'),'true');assert.equal(await availability('/personal-settings').isDisabled(),true);
-  const buttonStyle=button=>button.evaluate(el=>{const s=getComputedStyle(el);return {height:s.height,color:s.color,background:s.backgroundColor,border:s.borderColor,shadow:s.boxShadow};});
-  await page.waitForTimeout(300);
-  const enabledStyle=await buttonStyle(availability('/style'));
-  assert.equal(enabledStyle.height,'28px');assert.equal(enabledStyle.shadow,'none');
-  assert.deepEqual(await buttonStyle(availability('/personal-settings')),enabledStyle,'personal settings uses the same active appearance');
-  for(const toggle of await row('/personal-settings').getByRole('switch').all()){assert.equal(await toggle.isChecked(),true);assert.equal(await toggle.isDisabled(),true);}
-  await row('/outsourcing-record').getByRole('switch').nth(2).check();
-  assert.equal(await row('/approval-settings').getByRole('switch').nth(2).isChecked(),false);
-  await row('/approval-settings').getByRole('switch').nth(2).check();
-  await row('/outsourcing-record').getByRole('switch').nth(2).uncheck();
-  assert.equal(await row('/approval-settings').getByRole('switch').nth(2).isChecked(),true);
-  await availability('/outsourcing-record').click();
-  assert.equal(await availability('/approval-settings').getAttribute('aria-pressed'),'true');
-  await availability('/outsourcing-record').click();
-  if(language==='ko'&&width===1440){
-   const snapshot=()=>page.locator('[data-menu-path]').evaluateAll(rows=>Object.fromEntries(rows.map(r=>[r.dataset.menuPath,{enabled:r.querySelector('button[aria-pressed]').getAttribute('aria-pressed'),roles:[...r.querySelectorAll('input[role="switch"]')].map(i=>i.checked)}])));
-   for(const tab of [t.factory,t.logistics]){
-    await page.getByRole('tab',{name:tab,exact:true}).click();
-    for(const path of await page.locator('[data-menu-path]').evaluateAll(rows=>rows.map(r=>r.dataset.menuPath))){
-     if(await availability(path).isDisabled())continue;
-     let before=await snapshot();await availability(path).dispatchEvent('click');let after=await snapshot();for(const other of Object.keys(before))if(other!==path)assert.deepEqual(after[other],before[other],path+' availability changed '+other);await availability(path).dispatchEvent('click');
-     for(let index=0;index<4;index++){const toggle=row(path).getByRole('switch').nth(index);if(await toggle.isDisabled())continue;before=await snapshot();await toggle.evaluate(el=>el.click());await page.waitForFunction(({path,index,value})=>[...document.querySelectorAll('[data-menu-path]')].find(r=>r.dataset.menuPath===path).querySelectorAll('input[role="switch"]')[index].checked===value,{path,index,value:!before[path].roles[index]});after=await snapshot();for(const other of Object.keys(before))if(other!==path)assert.deepEqual(after[other],before[other],path+' role changed '+other);await toggle.evaluate(el=>el.click());await page.waitForFunction(({path,index,value})=>[...document.querySelectorAll('[data-menu-path]')].find(r=>r.dataset.menuPath===path).querySelectorAll('input[role="switch"]')[index].checked===value,{path,index,value:before[path].roles[index]});}
-    }
-   }
-   await page.getByRole('tab',{name:t.factory,exact:true}).click();console.log('PASS every menu and role independently for both industries');
-  }
-  const activeColor=await row('/style').evaluate(el=>getComputedStyle(el).backgroundColor);
-  await availability('/style').click();assert.notEqual(await row('/style').evaluate(el=>getComputedStyle(el).backgroundColor),activeColor);assert.equal(await row('/style').getByRole('switch').nth(0).isDisabled(),true);
-  await page.getByRole('tab',{name:t.logistics,exact:true}).click();
-  assert.equal(await row('/style').count(),1);assert.equal(await availability('/style').isDisabled(),true);
-  await row('/bank-ledger').getByRole('switch').nth(0).uncheck();
-  await availability('/shipping').click();
-  const save=page.getByRole('button',{name:l.save,exact:true});await save.click();await page.waitForFunction(()=>window.lastRoles);
+  const headers=await page.getByRole('columnheader').allTextContents();assert.deepEqual(headers.slice(4,8),expected);assert.deepEqual(headers.slice(9,13),expected);
+  assert.equal(await row('/bank-ledger').getByRole('checkbox').count(),10);
+  for(const toggle of await row('/personal-settings').getByRole('checkbox').all()){assert.equal(await toggle.isChecked(),true);assert.equal(await toggle.isDisabled(),true);}
+  await role('/outsourcing-record',2).uncheck();await role('/approval-settings',2).uncheck();
+  await role('/outsourcing-record',2).check();assert.equal(await role('/approval-settings',2).isChecked(),false);
+  await role('/approval-settings',2).check();await role('/outsourcing-record',2).uncheck();assert.equal(await role('/approval-settings',2).isChecked(),true);
+  await provided('/style').uncheck();assert.equal(await role('/style',0).isDisabled(),true);
+  await provided('/shipping','SERVICE').uncheck();await role('/bank-ledger',0,'SERVICE').uncheck();
+  const save=page.getByRole('button',{name:new RegExp('^'+RegExp.escape(l.save)+'$','i')});await save.click();
+  await page.waitForFunction(()=>!!window.lastMenus&&!!window.lastRoles);
   assert.equal(await page.evaluate(()=>window.lastMenus.subscribers.MANUFACTURER.includes('STYLE')),false);
   assert.equal(await page.evaluate(()=>window.lastMenus.subscribers.SERVICE.includes('SHIPPING_REQUEST')),false);
   assert.equal(await page.evaluate(()=>window.lastRoles.policy.SERVICE.ADMIN.includes('BANK_LEDGER')),false);
   assert.equal(await page.evaluate(()=>window.lastRoles.policy.MANUFACTURER.ADMIN.includes('BANK_LEDGER')),true);
-  await page.reload();await row('/style').waitFor();assert.equal(await row('/approval-settings').getByRole('switch').nth(2).isChecked(),true);assert.equal(await row('/outsourcing-record').getByRole('switch').nth(2).isChecked(),false);assert.equal(await availability('/style').getAttribute('aria-pressed'),'false');
-  await availability('/style').click();await page.evaluate(()=>window.failMenus=true);await save.click();await page.waitForTimeout(150);
-  assert.equal(await availability('/style').getAttribute('aria-pressed'),'true');
+  await page.reload();await row('/style').waitFor();assert.equal(await role('/approval-settings',2).isChecked(),true);assert.equal(await role('/outsourcing-record',2).isChecked(),false);assert.equal(await provided('/style').isChecked(),false);
+  await provided('/style').check();await page.evaluate(()=>window.failMenus=true);await save.click();await page.waitForTimeout(150);assert.equal(await provided('/style').isChecked(),true);
   await page.evaluate(()=>window.failMenus=false);await save.click();await page.waitForFunction(()=>window.menus.subscribers.MANUFACTURER.includes('STYLE'));
   assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);await page.close();
  }

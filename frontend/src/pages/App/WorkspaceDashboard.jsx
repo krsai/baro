@@ -626,13 +626,14 @@ const WorkspaceDashboard = () => {
           }
         } catch (error) {
           if (!cancelledRef?.current) {
-            setSystemSummaryData(createEmptySystemSummary());
+            if (!forceRefresh) setSystemSummaryData(createEmptySystemSummary());
             setQueryError(true);
             showNotification(
               error?.message || resolveText(DASHBOARD_TEXT.summaryLoadError, languageCode),
               'error'
             );
           }
+          return false;
         } finally {
           if (!cancelledRef?.current) {
             setSummaryLoading(false);
@@ -682,7 +683,7 @@ const WorkspaceDashboard = () => {
         }
       } catch (error) {
         if (!cancelledRef?.current) {
-          setSummaryData(createEmptySummary());
+          if (!forceRefresh) setSummaryData(createEmptySummary());
           setQueryError(true);
           showNotification(
             error?.message ||
@@ -690,6 +691,7 @@ const WorkspaceDashboard = () => {
             'error'
           );
         }
+        return false;
       } finally {
         if (!cancelledRef?.current) {
           setSummaryLoading(false);

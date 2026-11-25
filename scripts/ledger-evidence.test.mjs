@@ -23,7 +23,7 @@ async function fixture(){
  await db.exec('ALTER TABLE "Invoice" ADD COLUMN "buyerOrgId" INT DEFAULT 3; ALTER TABLE "PartnerTransactionCost" ADD COLUMN "partnerOrgId" INT DEFAULT 3,ADD COLUMN "payeeEmployeeId" INT;');
  await db.exec(await readFile('backend/prisma/migrations/20261027160100_bank_ledger/migration.sql','utf8'));
  await db.exec('ALTER TABLE "BankLedgerEntry" ADD COLUMN "counterpartyOrgId" INT,ADD COLUMN "counterpartyEmployeeId" INT,ADD COLUMN "counterpartyAccountId" TEXT,ADD COLUMN "counterpartyName" TEXT;');
- await db.exec('ALTER TABLE "BankLedgerEntry" ADD COLUMN "internalTransferSourceId" TEXT,ADD COLUMN "internalTransferAmount" NUMERIC;');
+ await db.exec('ALTER TABLE "BankLedgerEntry" ADD COLUMN "expenseComparison" JSONB,ADD COLUMN "internalTransferSourceId" TEXT,ADD COLUMN "internalTransferAmount" NUMERIC;');
  // Old transactions are preserved without rewriting their evidence.
  await db.exec(`INSERT INTO "BankLedgerAccount"(id,"orgId","clientKey","bankName","accountNumber","accountHolder","currencyCode","openingDate","openingBalance","createdBy") VALUES('a',1,'a','B','001','C','USD','2026-01-01',0,'actor');
  INSERT INTO "BankLedgerEntry"(id,"orgId","accountId","clientKey","transactionDate",direction,amount,purpose,"evidenceNumber","createdBy") VALUES('old',1,'a','old','2026-01-01','IN',1,'Legacy','old-ref','actor');`);
@@ -312,7 +312,7 @@ test('coded ledger edits replace atomically, preserve history and reject stale, 
 });
 test('net receipts and separate fees/write-offs settle invoices exactly without changing cash twice',async()=>{
  const pg=await fixture(),db=ledgerDatabase(pg);try{
-  db.invoice={findFirst:async({where})=>(await pg.query(`SELECT * FROM "Invoice" WHERE "sellerOrgId"=$1 AND ${where.id?'id':'"invoiceNumber"'}=$2 AND status='ISSUED' AND "currencyCode"=$3`,[where.sellerOrgId,where.id||where.invoiceNumber,(where.currencyCode||'USD')])).rows[0]};
+  db.invoice={findMany:async({where})=>(await pg.query('SELECT id,"invoiceNumber" FROM "Invoice" WHERE "sellerOrgId"=$1 AND id=ANY($2::text[])',[where.sellerOrgId,where.id.in])).rows,findFirst:async({where})=>(await pg.query(`SELECT * FROM "Invoice" WHERE "sellerOrgId"=$1 AND ${where.id?'id':'"invoiceNumber"'}=$2 AND status='ISSUED' AND "currencyCode"=$3`,[where.sellerOrgId,where.id||where.invoiceNumber,(where.currencyCode||'USD')])).rows[0]};
   db.bankLedgerEvidenceAllocation={findMany:async({where})=>(await pg.query(`SELECT a.* FROM "BankLedgerEvidenceAllocation" a JOIN "BankLedgerEntry" e ON e.id=a."entryId" WHERE a."orgId"=$1 AND a."invoiceId"=$2 AND e."voidedAt" IS NULL`,[where.orgId,where.invoiceId])).rows};
   const main=batchRow({entryKind:'BANK',evidenceType:'INVOICE',evidenceNumber:'INV-1',amount:'990'}),fee={entryKind:'FEE',clientKey:randomUUID(),parentClientKey:main.clientKey,amount:'10',purpose:'Withheld bank fee'},body={clientKey:randomUUID(),rows:[main,fee]};
   const first=await postLedgerBatch(db,1,'actor',body);assert.deepEqual(await postLedgerBatch(db,1,'actor',body),first);

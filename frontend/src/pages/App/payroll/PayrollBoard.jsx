@@ -127,8 +127,15 @@ const PayrollBoard = () => {
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeProfile } = useAuth();
   const isService=activeProfile?.orgType==='SERVICE';
+  const authScope = String(activeOrgId) + ':' + String(activeProfile?.employeeId ?? '');
   const { languageCode } = useLanguage();
   const [queryFailed, setQueryFailed] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastSuccessAt, setLastSuccessAt] = useState(null);
+  const loadSequence = useRef(0);
+  const currentOrg = useRef(authScope); currentOrg.current = authScope;
+  const loadedOrg = useRef(null);
   const [snapshots, setSnapshots] = useState([]);
   const [calendar, setCalendar] = useState(null);
   const [calendarOrg,setCalendarOrg]=useState(null);
@@ -169,8 +176,15 @@ const PayrollBoard = () => {
   ), [employeeDirectory]);
 
   const load = useCallback(async ({ silent = false } = {}) => {
-    if (!activeOrgId) return;
+    if (!activeOrgId) return false;
+    const sequence = ++loadSequence.current;
+    const isCurrent = () => sequence === loadSequence.current && currentOrg.current === authScope;
+    if (loadedOrg.current !== authScope) {
+      setSnapshots([]); setCalendar(null); setCalendarOrg(null); setReadinessByKey({}); setEmployeeDirectory([]);
+      setLastSuccessAt(null); setRefreshFailed(false);
+    }
     if (!silent) setLoading(true);
+    else setRefreshing(true);
     setQueryFailed(false);
     try {
       const query = buildQueryString({ orgId: activeOrgId });
@@ -212,24 +226,35 @@ const PayrollBoard = () => {
         )
       );
 
+      if (loadedOrg.current === authScope && readinessEntries.some(([, value]) => value.error)) {
+        throw new Error(resolveText(languageCode, 'fetchError'));
+      }
+      if (!isCurrent()) return false;
+      loadedOrg.current = authScope;
+      setLastSuccessAt(new Date().toISOString());
+      setRefreshFailed(false);
       setSnapshots(nextSnapshots);
       setEmployeeDirectory(Array.isArray(employeeRows) ? employeeRows : []);
       setCalendar(calendarPayload || null);
-      setCalendarOrg(activeOrgId);
+      setCalendarOrg(authScope);
       setReadinessByKey(Object.fromEntries(readinessEntries));
+      return true;
     } catch (error) {
-      setQueryFailed(true);
-      if (!silent) setSnapshots([]);
+      if (!isCurrent()) return false;
+      const hasPrevious = loadedOrg.current === authScope;
+      setQueryFailed(!hasPrevious);
+      setRefreshFailed(hasPrevious);
       showNotification(payrollPayableMessage(languageCode,error?.message) || error?.message || resolveText(languageCode, 'fetchError'), 'error');
+      return false;
     } finally {
-      if (!silent) setLoading(false);
+      if (isCurrent()) { setLoading(false); setRefreshing(false); }
     }
-  }, [activeOrgId, languageCode, showNotification]);
+  }, [activeOrgId, authScope, languageCode, showNotification]);
 
-  useEffect(() => { load(); }, [load]);
-  useWorkspaceRefreshOnEvent({
+  useEffect(() => { void load(); return () => { loadSequence.current++; }; }, [load]);
+  const retryChanged = useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
-    isBlocked: calculating || Boolean(mutating),
+    isBlocked: loading || calculating || Boolean(mutating),
     topics: [
       WORKSPACE_DATA_TOPICS.PRODUCTION_ALLOWANCE_SETTINGS,
       WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS,
@@ -239,7 +264,7 @@ const PayrollBoard = () => {
   });
 
   const latestCompletedMonthKey = String(calendar?.latestCompletedMonthKey || '');
-  const factories = useMemo(() => Array.isArray(calendar?.factories) ? calendar.factories : [], [calendar?.factories]);
+  const factories = useMemo(() => calendarOrg === authScope && Array.isArray(calendar?.factories) ? calendar.factories : [], [calendar?.factories, calendarOrg, authScope]);
   const snapshotsByKey = useMemo(
     () => new Map(snapshots.map((snapshot) => [rowKey(String(snapshot?.month || ''), Number(snapshot?.factoryId)), snapshot])),
     [snapshots]
@@ -266,7 +291,7 @@ const PayrollBoard = () => {
       return Number(a.factory.id) - Number(b.factory.id);
     });
   }, [calendar?.availableMonthKeys, factories, latestCompletedMonthKey, readinessByKey, snapshots, snapshotsByKey]);
-  const defaultPeriodEnd=useMemo(()=>calendarOrg===activeOrgId&&latestCompletedMonthKey?dayjs(latestCompletedMonthKey+'-01').endOf('month'):null,[calendarOrg,activeOrgId,latestCompletedMonthKey]);
+  const defaultPeriodEnd=useMemo(()=>calendarOrg===authScope&&latestCompletedMonthKey?dayjs(latestCompletedMonthKey+'-01').endOf('month'):null,[calendarOrg,authScope,latestCompletedMonthKey]);
   const resetSearch=useCallback(()=>{
     setSearch('');
     if(defaultPeriodEnd?.isValid()){setDateFrom(defaultPeriodEnd.subtract(11,'month').startOf('month'));setDateTo(defaultPeriodEnd);}
@@ -454,6 +479,9 @@ const PayrollBoard = () => {
         dates={<DateRangeSelector independentDateBounds languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value)}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value)}} disabled={loading||calculating||!!mutating}/>}
         onReset={resetSearch} disabled={loading||calculating||!!mutating}
       />
+      {refreshFailed&&calendarOrg===authScope&&<Alert severity="warning" action={<Button disabled={loading||refreshing||calculating||!!mutating} onClick={async()=>{if(await retryChanged()===null)await load();}}>{languageCode==='ko'?'다시 조회':languageCode==='vi'?'Thử Lại':'Retry'}</Button>}>
+        {languageCode==='ko'?'갱신하지 못해 이전 자료를 표시합니다. 최근 성공: ':languageCode==='vi'?'Không Thể Cập Nhật. Đang Hiển Thị Dữ Liệu Trước. Lần Thành Công: ':'Refresh Failed. Showing Previous Data. Last Success: '}{lastSuccessAt?new Date(lastSuccessAt).toLocaleString(languageCode==='ko'?'ko-KR':languageCode==='vi'?'vi-VN':'en-US'):''}
+      </Alert>}
       {payableError&&<Alert severity="error" sx={{mb:2}}>{payableError}</Alert>}
       <Box sx={{ width: '100%' }}>
 

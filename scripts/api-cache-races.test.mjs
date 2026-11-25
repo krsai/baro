@@ -7,15 +7,15 @@ function harness() {
     .replace(/^import .*;\r?\n/gm, '')
     .replace(/export /g, '')
     .replace(/import\.meta\.env\.VITE_API_BASE_URL/g, "''");
-  const calls = [];
+  const calls = [], events = [];
   const api = new Function('fetch', 'referenceSettingsTopics', 'normalizeHumanPayload', 'loadTextAcronyms', 'supabase', 'recordLastUpdaterForCurrentPath', 'emitWorkspaceDataChanged', 'WORKSPACE_DATA_TOPICS',
     `${source}; return {requestJSON, setRequestContext, clearGetResponseCache};`)(
     (url, options) => new Promise(resolve => calls.push({url, options, resolve})),
-    () => [], value => value, async () => {}, null, () => {}, () => {}, {});
+    () => [], value => value, async () => {}, null, () => {}, event => events.push(event), {PAYROLL_SOURCES:'payroll-sources',ASSIGNMENT_BOARD:'assignment-board'});
   const context = {accessToken: 'test-session', userEmail: 'test@example.test', orgId: 1};
   api.setRequestContext(context);
   const reply = (index, value, ok = true) => calls[index].resolve({ok, status: ok ? 200 : 500, text: async () => JSON.stringify(value)});
-  return {...api, calls, reply, context};
+  return {...api, calls, reply, context, events};
 }
 
 test('successful mutation prevents a pending old read from refilling cache or being shared', async () => {
@@ -28,6 +28,13 @@ test('successful mutation prevents a pending old read from refilling cache or be
   h.reply(0, 'old'); await old;
   h.reply(2, 'new'); await fresh;
   assert.equal(await h.requestJSON('/orders'), 'new');
+});
+
+test('local factory changes invalidate dependent views and quantity review emits no saved event',async()=>{
+ const h=harness();const save=h.requestJSON('/factories/12?orgId=1',{method:'PUT'});h.reply(0,{ok:true});await save;
+ assert.equal(h.events.length,1);assert.equal(h.events[0].orgId,'1');assert.ok(h.events[0].topics.includes('attendance'));assert.ok(h.events[0].topics.includes('payroll-sources'));
+ const review=h.requestJSON('/work-logs?orgId=1',{method:'POST'});h.reply(1,{ok:true,requiresQuantityReview:true});await review;assert.equal(h.events.length,1);
+ const actual=h.requestJSON('/work-logs?orgId=1',{method:'POST'});h.reply(2,{ok:true});await actual;assert.equal(h.events.length,2);assert.ok(h.events[1].topics.includes('assignment-board'));
 });
 
 test('force refresh wins even when an earlier read finishes later', async () => {

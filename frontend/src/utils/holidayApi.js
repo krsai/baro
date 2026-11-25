@@ -21,7 +21,7 @@ export const normalizeHolidayList = (list = []) =>
 
 const emitHolidayUpdated = (orgId, holidays) => {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
-  emitWorkspaceDataChanged({orgId,topics:['salary-system-settings','payroll-sources'],source:'holidays'});
+  emitWorkspaceDataChanged({orgId,topics:['holidays','salary-system-settings','payroll-sources'],source:'holidays'});
   window.dispatchEvent(
     new CustomEvent(HOLIDAY_UPDATED_EVENT, {
       detail: {

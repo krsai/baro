@@ -111,7 +111,8 @@ test('attendance and payroll exceptions are excluded from both daily staff and f
 
 test('shared settings preserve hidden former-employee selections and attendance reads filter unmanaged records', () => {
   const dialog = readFileSync('frontend/src/pages/App/payroll/PayrollSettingsDialog.jsx', 'utf8');
-  assert.match(dialog, /showRetired \|\| !isFormerEmployee\(row\)/);
+  assert.match(dialog, /employees\.filter\(\(row\) => !isFormerEmployee\(row\)/);
+  assert.doesNotMatch(dialog, /showRetired/);
   assert.match(dialog, /Array.from\(attendanceSelected\)/);
   assert.match(dialog, /Array.from\(payrollExcluded\)/);
   const list = readFileSync('frontend/src/pages/App/attendance/AttendanceList.jsx', 'utf8');

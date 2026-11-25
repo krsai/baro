@@ -39,10 +39,10 @@ function ledgerFixture(){
   partnerTransactionCost:{findMany:async()=>[cost],findFirst:async()=>cost},
   expenseRequest:{findFirst:async()=>({id:1,orgId:1,version:1,createdByEmployeeId:10,createdByEmployee:{id:10,orgId:1,status:'ACTIVE',orgRole:'ADMIN'},approvalSteps:[]})},
   expenseApprovalDecision:{findMany:async()=>[]},expenseRequestAudit:{findFirst:async()=>null},
-  expensePaymentSchedule:{findMany:async({where})=>{assert.equal(where.orgId,1);return [schedule];}},
+  expensePaymentSchedule:{findFirst:async({where})=>where.orgId===schedule.orgId&&where.id===schedule.id&&where.expenseItemId===schedule.expenseItemId&&where.currency===schedule.currency?schedule:null,findMany:async({where})=>{assert.equal(where.orgId,1);return [schedule];}},
   bankLedgerEvidenceAllocation:{findMany:async({where})=>{assert.equal(where.orgId,1);assert.deepEqual(where.entry,{voidedAt:null});return paid==='0'?[]:[{amount:paid}];}}
  };
- const body={evidenceType:'EXPENSE',direction:'OUT',amount:'40000000',expenseRequestId:1,expenseVersion:1,paymentScheduleId:schedule.id,expenseItems:[{itemId:'cost1',amount:'40000000'}]};
+ const body={remark:'Installment payment',evidenceType:'EXPENSE',direction:'OUT',amount:'40000000',expenseRequestId:1,expenseVersion:1,paymentScheduleId:schedule.id,expenseItems:[{itemId:'cost1',amount:'40000000'}]};
  return {tx,body,schedule,setPaid:value=>{paid=value;}};
 }
 test('actual payment requires the selected item installment, current approval and no overpayment',async()=>{

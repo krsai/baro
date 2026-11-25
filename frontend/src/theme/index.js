@@ -523,7 +523,7 @@ const theme = createTheme(baseTheme, {
       '&.MuiToggleButtonGroup-vertical': { height: 'auto', '& .MuiToggleButtonGroup-grouped': { height: ui.control.height } },
       '@media (pointer:coarse)': { height: Math.max(36, ui.control.height), '&.MuiToggleButtonGroup-vertical': { height: 'auto' } },
     } } },
-    MuiToggleButton: { styleOverrides: { root: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight, minHeight: ui.control.height, paddingTop: 0, paddingBottom: 0, '&.Mui-selected': { backgroundColor: ui.color.primary, color: '#fff', '&:hover': { backgroundColor: ui.color.primary } } } } },
+    MuiToggleButton: { defaultProps: { disableFocusRipple: true }, styleOverrides: { root: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight, minHeight: ui.control.height, paddingTop: 0, paddingBottom: 0, '&:focus': { outline: `2px solid ${ui.color.primary}`, outlineOffset: '2px', position: 'relative', zIndex: 1 }, '&.Mui-selected': { backgroundColor: ui.color.primary, color: '#fff', '&:hover': { backgroundColor: ui.color.primary } } } } },
     MuiFormControlLabel: { styleOverrides: { root: { minHeight: ui.control.height, alignItems: 'center', marginTop: 0, marginBottom: 0 }, label: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight } } },
     MuiInputBase: { styleOverrides: { root: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight } } },
     MuiMenu: { styleOverrides: { paper: { border: `1px solid ${ui.color.border}`, boxShadow: '0 8px 24px rgba(16, 24, 40, 0.08)' } } },

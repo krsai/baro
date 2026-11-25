@@ -318,7 +318,7 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
     topics: [WORKSPACE_DATA_TOPICS.STYLES, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD, WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.PAYROLL_SOURCES],
     isActive: isStyleRouteActive,
     isBlocked: loading,
-    onRefresh: () => Promise.all([refreshStyles({ forceRefresh: true }), refreshAtSyncStatus({ fresh: true })]),
+    onRefresh: () => Promise.all([refreshStyles({ forceRefresh: true, throwOnError: true }), refreshAtSyncStatus({ fresh: true, throwOnError: true })]),
   });
 
   const handleRowDoubleClick = (style) => {

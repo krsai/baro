@@ -2,6 +2,8 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:workspace-refresh-recovery": "npm --prefix backend run build && node --test scripts/api-cache-races.test.mjs scripts/tab-editing-regression.test.mjs scripts/refresh-loaders.test.mjs scripts/workspace-live-events.test.mjs && node scripts/workspace-refresh-recovery-browser.test.mjs && node scripts/payroll-refresh-recovery-browser.test.mjs && node scripts/reference-settings-refresh-browser.test.mjs && node scripts/workspace-live-refresh-browser.test.mjs",
+    "test:assignment-progress-retry": "npm --prefix backend run build && node --test scripts/assignment-progress-retry.test.mjs scripts/production-progress.test.mjs scripts/production-progress-combinations.test.mjs scripts/railway-schema-preflight.test.mjs",
     "test:record-interaction": "node --test scripts/record-interaction-policy.test.mjs && node scripts/record-interaction-browser.test.mjs",
     "test:api-cache-races": "node --test scripts/api-cache-races.test.mjs",
     "test:logistics-status": "npm --prefix backend run build && node --test scripts/logistics-status.test.mjs scripts/bank-ledger.test.mjs scripts/access-policy-regression.test.mjs scripts/industry-menu-policy.test.mjs scripts/company-menu-layout.test.mjs scripts/customer-production-report-regression.test.mjs && node scripts/logistics-status-browser.test.mjs",
@@ -242,7 +244,7 @@
     "test:loading-language-browser": "node scripts/loading-language-browser.test.mjs",
     "test:management-period": "npm --prefix backend run build && node --test scripts/management-period.test.mjs",
     "test:management-period-browser": "node scripts/management-period-browser.test.mjs",
-    "test:production-progress": "npm --prefix backend run build && node --test scripts/production-progress.test.mjs scripts/production-progress-combinations.test.mjs",
+    "test:production-progress": "npm --prefix backend run build && node --test scripts/production-progress.test.mjs scripts/production-progress-combinations.test.mjs scripts/assignment-progress-retry.test.mjs",
     "test:legacy-retirement": "npm --prefix backend run build && node --test scripts/legacy-retirement.test.mjs",
     "test:expense-request-documents": "npm --prefix backend run build && node --test scripts/expense-request-documents.test.mjs",
     "test:railway-schema-preflight": "node --test scripts/railway-schema-preflight.test.mjs",

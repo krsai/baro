@@ -71,7 +71,7 @@ test('one approved line atomically posts both accounts, retries once, edits eith
   const editSource=await readLedgerEdit(db,org,mirror.id);assert.equal(editSource.counterparty.id,s.own.id);
   const correction=input([transfer(s,s.own,{accountId:mirror.accountId,direction:'IN',amount:'55.10',remark:'Corrected'})],{operation:'UPDATE',reason:'Correct recorded details',sourceKind:'ledger',sourceId:mirror.id,revision:editSource.revision});
   const edit=await requestChangeApproval(db,org,s.people.junior.id,correction);
-  await assert.rejects(requestChangeApproval(db,org,s.people.junior.id,input([],{operation:'DELETE',sourceKind:'ledger',sourceId:root.id,reason:'Opposite side pending'})),/CHANGE_ALREADY_PENDING/);
+  await assert.rejects(requestChangeApproval(db,org,s.people.junior.id,input([],{operation:'DELETE',sourceKind:'ledger',sourceId:root.id,reason:'Opposite side pending'})),/CHANGE_UPDATE_PENDING/);
   const activity=await listLedgerActivity(db,org,{start:'2026-11-10',end:'2026-11-10'});assert.ok(activity.rows.filter(r=>[root.id,mirror.id].includes(r.id)).every(r=>r.changePending));
   const edited=await decideChangeApproval(db,org,s.people.senior.id,edit.id,{decision:'APPROVED'});
   const changed=await db.bankLedgerEntry.findUnique({where:{id:edited.result.entryIds[0]}}),changedMirror=await db.bankLedgerEntry.findFirst({where:{internalTransferSourceId:changed.id}});

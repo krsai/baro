@@ -35,7 +35,17 @@ test('successful company writes publish metadata using resolved employee company
  assert.equal(writes.length,1);const event=JSON.parse(writes[0][2]);assert.equal(event.orgId,7);assert.deepEqual(event.topics,['orders','invoice-drafts']);assert.deepEqual(Object.keys(event).sort(),['id','orgId','origin','topics']);
  const failed=response();failed.statusCode=409;await runWithRequestActor('test@example.test',async()=>{setCurrentRequestActorEmployeeId(3);service.middleware(req,failed,()=>{});failed.json({error:'CONFLICT'});await settle();});assert.equal(writes.length,1);
  assert.deepEqual(workspaceTopics('/expense/preview'),[]);assert.deepEqual(workspaceTopics('/system/users'),[]);
+ const review=response();await runWithRequestActor('test@example.test',async()=>{setCurrentRequestActorEmployeeId(3);service.middleware({...req,path:'/work-logs'},review,()=>{});review.json({ok:true,requiresQuantityReview:true});await settle();});assert.equal(writes.length,1,'quantity review is not a committed mutation');
  await service.close();
+});
+
+test('factory and production allowance changes invalidate every affected authorized view',()=>{
+ for(const path of ['/factories','/factories/12','/factories/12/production-allowance-version-boundaries']){
+  const topics=workspaceTopics(path);for(const topic of ['employees','attendance','assignment-board','payroll-sources','production-allowance-settings'])assert.ok(topics.includes(topic),path+': '+topic);
+ }
+ assert.ok(workspaceTopics('/production-allowance/versions').includes('production-allowance-settings'));
+ assert.equal(workspaceTopics('/production-allowance/versions').includes('styles'),false,'settings do not match generic production route');
+ assert.deepEqual(workspaceTopics('/factories/12/warehouses'),[],'unrelated warehouse edits stay separate');
 });
 
 test('stream decoder tolerates chunk boundaries and rejects HTTP auth failures',async()=>{
