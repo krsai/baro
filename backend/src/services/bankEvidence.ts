@@ -1,3 +1,4 @@
+import {validEvidencePath} from '../utils/evidencePath';
 import {invoiceCurrencyAmount,mixedInvoiceRemaining} from './invoiceCurrencies';
 import {expensePaymentComparison} from './expensePaymentComparison';
 import {Prisma} from '@prisma/client';
@@ -127,6 +128,7 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
   return {evidenceType:type,evidenceNumber:item.id,bankFee:fee,writeOffAmount:writeOff,allocations:[],openingItemId:item.id};
  }else if(type==='FILE'){
   if(!reference||reference.length>500||/[\r\n]/.test(reference))return fail('LEDGER_FILE_REQUIRED');
+  if(body.counterparty?.kind!=='ACCOUNT'&&!validEvidencePath(reference))return fail('LEDGER_FILE_REQUIRED');
   if(bankFee)return fail('LEDGER_INVALID_EVIDENCE');
  }else if(type==='BANK_FEE'){
   if(body.direction!=='OUT'||bankFee||loss||reference||body.counterparty||body.expenseItems?.length)return fail('LEDGER_INVALID_EVIDENCE');reference='';

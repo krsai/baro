@@ -1,3 +1,4 @@
+import {validEvidencePath} from '../utils/evidencePath';
 import {expensePaymentComparison} from './expensePaymentComparison';
 import {invoiceEvidenceAccounting} from './invoiceAccounting';
 import {prepareLedgerMaterial} from './materialItems';
@@ -45,6 +46,7 @@ export async function ledgerRegistrationSource(db:any,orgId:number,input:any,pre
  for(const [parentIndex,suppliedRow] of parents.entries()){
  let row=suppliedRow.evidenceType==='BANK_FEE'?{...suppliedRow,accountingCodeId:(await bankFeeAccountingCode(db,orgId)).id}:suppliedRow;
  if(!input.allowIncomplete&&row.evidenceType!=='BANK_FEE'&&(typeof (row.remark??row.purpose)!=='string'||!(row.remark??row.purpose).trim()||(row.remark??row.purpose).length>1000))fail('LEDGER_REMARK_REQUIRED');
+ if(!input.allowIncomplete&&(row.evidenceType||'FILE')==='FILE'&&row.counterparty?.kind!=='ACCOUNT'&&!validEvidencePath(row.evidenceNumber))fail('LEDGER_FILE_REQUIRED');
  const accountId=row.accountId;
  const ledger=await db.bankLedgerAccount.findFirst({where:{id:accountId,orgId}});
  const masterId=ledger?.entityAccountId||String(accountId).replace(/^entity:/,'');

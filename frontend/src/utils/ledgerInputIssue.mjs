@@ -1,3 +1,4 @@
+import {validEvidencePath} from './evidenceReference.mjs';
 import {ledgerTransferCurrency} from './ledgerFlow.mjs';
 
 // BANK_FEE deliberately has no recipient or evidence document. The server
@@ -13,7 +14,7 @@ export function ledgerInputIssue(rows,accounts,parties){
    if(!account)field='account';
    else if(row.counterparty?.kind==='ACCOUNT'&&ledgerTransferCurrency(row,accounts,parties)!==account.currencyCode&&!row.transferAmount?.trim())field='transferAmount';
    else if(row.evidenceType==='FILE'&&!row.counterparty)field='counterparty';
-   else if(row.evidenceType==='FILE'&&row.counterparty?.kind!=='ACCOUNT'&&!row.evidenceNumber?.trim())field='evidence';
+   else if(row.evidenceType==='FILE'&&row.counterparty?.kind!=='ACCOUNT'&&!validEvidencePath(row.evidenceNumber))field='evidence';
    else if(['INVOICE','EXPENSE','OPENING','PAYROLL'].includes(row.evidenceType)&&!row.document?.id)field='document';
    else if(row.evidenceType==='EXPENSE'&&!row.expenseItems?.length)field='allocation';
    else if(row.evidenceType==='EXPENSE'&&row.document?.paymentSchedule?.some(schedule=>row.expenseItems.some(item=>item.itemId===schedule.expenseItemId))&&!row.paymentScheduleId)field='schedule';

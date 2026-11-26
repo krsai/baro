@@ -1,3 +1,4 @@
+import {ledgerEvidenceText} from '../frontend/src/constants/ledgerEvidence.js';
 import assert from 'node:assert/strict';import {spawn} from 'node:child_process';import {existsSync,writeFileSync,readFileSync,unlinkSync} from 'node:fs';import {chromium} from 'playwright-core';
 import {ledgerEntryText} from '../frontend/src/constants/ledgerEntry.js';import {ACCOUNTING_CODE_TEXT} from '../frontend/src/constants/accountingCode.js';import {ledgerWorkspaceText} from '../frontend/src/constants/ledgerWorkspace.js';import {bankLedgerMessages} from '../frontend/src/constants/bankLedgerMessages.js';
 const file='frontend/ledger-inline-fee-acceptance.html',port=43426;assert.ok(!existsSync(file));
@@ -15,6 +16,13 @@ try{
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({showNotification:()=>{}});'}));
   await page.goto('http://127.0.0.1:'+port+'/ledger-inline-fee-acceptance.html?lang='+lang+(fx?'&fx=1':''));
   const parent=page.locator('[data-ledger-entry-row="0"]'),fee=page.locator('[data-ledger-inline-fee="fee"]');await fee.waitFor({timeout:10000}).catch(error=>{throw Error(error.message+' PAGE '+errors.join(';'))});
+  if(!fx){
+   await parent.locator('button[title="receipt.pdf"]').click();
+   const dialog=page.getByRole('dialog'),path=dialog.getByRole('textbox',{name:ledgerEvidenceText[lang].reference,exact:true}),confirm=dialog.getByRole('button',{name:ledgerEntryText[lang].confirm,exact:true});
+   for(const invalid of ['X','receipt.pdf','folder/receipt.pdf']){await path.fill(invalid);assert.equal(await confirm.isDisabled(),true);assert.equal(await path.getAttribute('aria-invalid'),'true');}
+   for(const valid of ['/receipts/receipt.pdf','C:/Evidence/receipt.pdf','https://example.com/receipt.pdf']){await path.fill(valid);assert.equal(await confirm.isEnabled(),true);}
+   await confirm.click();await dialog.waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>window.rows[0].evidenceNumber),'https://example.com/receipt.pdf');
+  }
   assert.equal(await page.locator('[data-ledger-entry-row]').count(),2);assert.deepEqual(await page.locator('[data-ledger-entry-row] > td:first-child').allTextContents(),['1','2']);
   const code=parent.getByRole('textbox',{name:ACCOUNTING_CODE_TEXT[lang].code+' · '+ledgerEntryText[lang].bankFeeLabel,exact:true});assert.equal(await code.inputValue(),'BNFE');assert.equal(await code.getAttribute('readonly'),'');
   const description=parent.getByRole('textbox',{name:ledgerEntryText[lang].codeDescription+' · '+ledgerEntryText[lang].bankFeeLabel,exact:true});assert.equal(await description.inputValue(),{ko:'은행 수수료',en:'Bank fee',vi:'Phí ngân hàng'}[lang]);
