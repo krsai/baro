@@ -11,7 +11,7 @@ import {invoiceDocumentText} from '../../../constants/invoiceDocument';
 import {documentNumberText,documentNumberError} from '../../../constants/documentNumber';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {Box,Button,Checkbox,CircularProgress,FormControlLabel,Stack,MenuItem,Table,TableBody,TableCell,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import {Box,Button,CircularProgress,Stack,MenuItem,Table,TableBody,TableCell,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import AppPageContainer from '../../../components/AppPageContainer';
 import InvoiceSheet from '../../../components/InvoiceSheet';
@@ -129,7 +129,6 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
   const [basis, setBasis] = useState(INVOICE_BASES[0].value);
   const [currency, setCurrency] = useState('');
   const [fields, setFields] = useState(null);
-  const [reviewed, setReviewed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
@@ -146,12 +145,12 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
       return;
     }
     if (!revisionInvoice && !draftId && !orderId && !orderIds?.length) {
-      setSource(null); setFields(null); setLines([]); setLoading(false); setError(''); setReviewed(false);
+      setSource(null); setFields(null); setLines([]); setLoading(false); setError(''); 
       setDirty(false); setSavedDraft(null); draftRef.current=null; clientKey.current=globalThis.crypto.randomUUID();
       return;
     }
     let cancelled = false;
-    setLoading(true); setSource(null); setFields(null); setError(''); setReviewed(false);
+    setLoading(true); setSource(null); setFields(null); setError(''); 
     setDirty(false);
     setPercentages({}); setSettlements({}); setAllPercentage(''); setUncertain(false);
     const load = async () => {
@@ -197,8 +196,8 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     calculateInvoiceDraft(source, lines, basis, currency), percentages, settlements, currency, fields||{}), [source, lines, basis, currency, percentages, settlements, fields]);
   const styleRows = useMemo(() => invoiceStyleRows(calculation?.lines || []), [calculation]);
   const draftLinesByKey = useMemo(() => new Map(lines.map(line => [line.key, line])), [lines]);
-  const changeBilling = (setter, value) => { if (saving) return; setter(value); setReviewed(false); setDirty(true); };
-  const changeField = (key, value) => { if (saving) return; setFields((f) => ({ ...f, [key]: value })); setReviewed(false); setDirty(true); };
+  const changeBilling = (setter, value) => { if (saving) return; setter(value);  setDirty(true); };
+  const changeField = (key, value) => { if (saving) return; setFields((f) => ({ ...f, [key]: value }));  setDirty(true); };
   const changeRemark = value => {
     if(saving||uncertain)return;
     changeField('notes',value);
@@ -209,14 +208,14 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     if (saving || uncertain) return;
     if ((dirty || savedDraft) && !await pageDialogs.confirm(ui.discard,{purpose:'discard'})) return;
     draftRef.current = null; setSavedDraft(null); clientKey.current = globalThis.crypto.randomUUID();
-    setDirty(false); setReviewed(false); setSource(null); setFields(null); setError('');
+    setDirty(false);  setSource(null); setFields(null); setError('');
     change();
   };
   const revisionRequest = useRef(null);
   const revisionNeedsSave = useRef(false);
 
     const issue = async (options={}) => {
-    if (!source || saving || !reviewed || calculation?.issues.length || !fields?.date) return;
+    if (!source || saving || calculation?.issues.length || !fields?.date) return;
     const issueFields={...fields};
     if (!uncertain && !await pageDialogs.confirm(storageText.confirmIssue)) return;
     if (revisionInvoice && !draftRef.current && !revisionRequest.current) {
@@ -252,7 +251,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     } finally { setSaving(false); }
   };
   return <AppPageContainer keyboardEntry title={revisionInvoice ? (languageCode==='ko'?'청구서 상세':languageCode==='vi'?'Chi tiết hóa đơn':'Invoice detail') : draftId ? ui.edit : ui.create} titleActions={<Stack direction="row" spacing={1}>
-    <Button variant="contained" onClick={issue} disabled={loading || saving || !source || !reviewed || !!calculation?.issues.length || !fields?.date}>{saving ? <CircularProgress size={18}/> : ui.issue}</Button>
+    <Button variant="contained" onClick={issue} disabled={loading || saving || !source || !!calculation?.issues.length || !fields?.date}>{saving ? <CircularProgress size={18}/> : ui.issue}</Button>
   </Stack>}>
     <InvoiceSheet>
       <Stack spacing={0} sx={{minWidth:0}}>
@@ -271,8 +270,8 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
               {production&&<Typography variant="caption" display="block" color="warning.main">{productionText.scope}: {invoiceNumber(production.style.producedQuantity)} / {invoiceNumber(production.style.orderedQuantity)}</Typography>}
               {production?.problems.map(assignment=><Box key={assignment.externalId||assignment.id}><Typography variant="caption">{assignment.factoryName} {invoiceNumber(assignment.producedQuantity)} / {invoiceNumber(assignment.plannedQuantity)}</Typography>{assignment.externalId&&<Button size="small" onClick={()=>setReviewAssignment({externalId:assignment.externalId,orderNumber:first.orderNumber,styleLabel:first.description||first.styleName||'—',quantity:assignment.plannedQuantity})}>{productionText.open}</Button>}</Box>)}
             </TableCell>
-            <TableCell align="right">{invoiceNumber(group.orderedQuantity)}</TableCell><TableCell align="right"><DecimalAmountField currencyCode={currency} size="small" value={draftLinesByKey.get(first.key)?.unitPriceOverride??first.unitPrice??''} onValueChange={value=>{if(saving||uncertain)return;const keys=new Set(group.lines.map(line=>line.key));setLines(previous=>previous.map(line=>keys.has(line.key)?{...line,unitPriceOverride:value}:line));setReviewed(false);setDirty(true);}} inputProps={{'aria-label':t.price+' '+first.key,style:{textAlign:'right'}}} sx={{width:120}}/></TableCell>
-            <TableCell align="right"><DecimalAmountField size="small" value={String(group.quantity??'')} onValueChange={value=>{const distributed=distributeInvoiceQuantity(group,value);if(!distributed||saving||uncertain)return;const values=new Map(distributed.map(row=>[row.key,row.quantity]));setLines(previous=>previous.map(row=>values.has(row.key)?{...row,quantity:values.get(row.key),adjustmentReason:fields.notes||row.adjustmentReason||row.remark||''}:row));setReviewed(false);setDirty(true);}} inputProps={{'aria-label':t.quantity+' '+first.key,style:{textAlign:'right'}}} sx={{width:110}}/></TableCell>
+            <TableCell align="right">{invoiceNumber(group.orderedQuantity)}</TableCell><TableCell align="right"><DecimalAmountField currencyCode={currency} size="small" value={draftLinesByKey.get(first.key)?.unitPriceOverride??first.unitPrice??''} onValueChange={value=>{if(saving||uncertain)return;const keys=new Set(group.lines.map(line=>line.key));setLines(previous=>previous.map(line=>keys.has(line.key)?{...line,unitPriceOverride:value}:line));setDirty(true);}} inputProps={{'aria-label':t.price+' '+first.key,style:{textAlign:'right'}}} sx={{width:120}}/></TableCell>
+            <TableCell align="right"><DecimalAmountField size="small" value={String(group.quantity??'')} onValueChange={value=>{const distributed=distributeInvoiceQuantity(group,value);if(!distributed||saving||uncertain)return;const values=new Map(distributed.map(row=>[row.key,row.quantity]));setLines(previous=>previous.map(row=>values.has(row.key)?{...row,quantity:values.get(row.key),adjustmentReason:fields.notes||row.adjustmentReason||row.remark||''}:row));setDirty(true);}} inputProps={{'aria-label':t.quantity+' '+first.key,style:{textAlign:'right'}}} sx={{width:110}}/></TableCell>
             <TableCell align="right" sx={{whiteSpace:'nowrap'}}>{formatInvoiceMoney(group.amount,currency)}</TableCell>
 
           </TableRow></React.Fragment>;})}</TableBody></Table></Box>
@@ -280,7 +279,6 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
           <InvoiceFormSummary orgId={orgId} fields={fields} total={calculation.total} orders={calculation.orders} currencyCode={currency} languageCode={languageCode} onRemark={changeRemark} bankAccounts={source.sellerBankAccounts} disabled={saving||uncertain} onBankChange={patch=>{if(!saving&&!uncertain)changeBilling(setFields,{...fields,...patch});}}/>
           {calculation.issues.map((issue) => <Alert severity="warning" key={issue}>{billingText.errors[issue] || t.issues[issue] || adjustmentErrors[issue] || (issue==='VAT'?(invoiceAccountingText[languageCode]||invoiceAccountingText.en).invalid:'')}</Alert>)}
           {calculation.warnings.map((issue) => <Alert severity="warning" key={issue}>{t.issues[issue]}</Alert>)}
-          <FormControlLabel control={<Checkbox checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} />} label={t.review} />
         </Box>}
       </Stack>
     </InvoiceSheet>
