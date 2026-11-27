@@ -12,6 +12,34 @@ const {saveJobBill,jobOptions,jobDetail}=require('../backend/dist/services/freig
 const {saveJobOperationDetails,saveJobProgress,createJobDocument}=require('../backend/dist/services/freightJobWorkflow');
 const {transportSnapshot}=require('../backend/dist/services/transportExchange');
 
+test('operational customer changes use a scoped FK while preserving SR, parties, bills and saved documents',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
+  const customerMigration=readFileSync('backend/prisma/migrations/20261127070000_shipping_customer_correction/migration.sql','utf8');await f.pg.exec(customerMigration);await f.pg.exec(customerMigration);
+  const customer=await db.organization.create({data:{name:'NEW CUSTOMER',type:'LOGISTICS_PROVIDER',ownerOrgId:org}});
+  const inactive=await db.organization.create({data:{name:'INACTIVE',type:'LOGISTICS_PROVIDER',ownerOrgId:org,isActive:false}});
+  const job=await saveFreight(db,org,actor,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,mode:'SEA',data:{shipper:'SENDER',consignee:'BUYER',cargo:'Cargo',origin:'Hanoi',destination:'Busan'}});
+  const bill=await saveJobBill(db,org,actor,job.id,{id:randomUUID(),kind:'MASTER',number:'M-CUSTOMER',data:{shipper:'SAVED SENDER'}});
+  const document=await createJobDocument(db,org,actor,job.id,{clientKey:randomUUID(),version:job.version,kind:'MASTER_DRAFT',billId:bill.id});
+  const request={version:job.version,requestId:randomUUID(),fields:{customerId:customer.id}};
+  for(const customerId of [null,0,'1'])await assert.rejects(saveJobOperationDetails(db,org,actor,job.id,{...request,fields:{customerId}}),/FREIGHT_INVALID_INPUT/);
+  for(const customerId of [s.other.id,inactive.id])await assert.rejects(saveJobOperationDetails(db,org,actor,job.id,{...request,fields:{customerId}}),/FREIGHT_PARTY_SCOPE/);
+  await assert.rejects(saveJobOperationDetails(db,org,999999,job.id,request),/ACTIVE_EMPLOYEE_REQUIRED/);
+  const saved=await saveJobOperationDetails(db,org,actor,job.id,request);
+  assert.equal(saved.customerId,customer.id);assert.equal(saved.data.customer.id,customer.id);assert.equal(saved.version,job.version+1);
+  for(const key of ['requestSnapshot','sharedSnapshot','orgId','requesterOrgId','requestCreatedByOrgId'])assert.deepEqual(saved[key],job[key]);
+  for(const key of ['shipper','consignee','notify','shipperId','consigneeId','origin','destination'])assert.deepEqual(saved.data[key],job.data[key]);
+  assert.equal(saved.data.customerId,undefined);assert.equal(saved.data.workDetails?.customerId,undefined);
+  assert.equal((await saveJobOperationDetails(db,org,actor,job.id,request)).version,saved.version);
+  await assert.rejects(saveJobOperationDetails(db,org,actor,job.id,{...request,requestId:randomUUID()}),/FREIGHT_CHANGED/);
+  assert.deepEqual((await db.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE id=$1',bill.id))[0],bill);
+  assert.deepEqual((await db.$queryRawUnsafe('SELECT snapshot FROM "FreightDocument" WHERE id=$1',document.id))[0].snapshot,document.snapshot);
+  const audit=(await db.$queryRawUnsafe('SELECT "before","after" FROM "FreightAudit" WHERE entity=\'operation-details\' AND "sourceId"=$1',job.id))[0];assert.equal(audit.before.customerId,s.vendor.id);assert.equal(audit.after.customerId,customer.id);
+  await assert.rejects(db.$executeRawUnsafe('UPDATE "FreightJob" SET "customerId"=$1,"requestSnapshot"=$3::jsonb,version=version+1 WHERE id=$2',s.vendor.id,job.id,'{}'),/SHIPPING_CUSTOMER_IMMUTABLE/);
+  const next=await saveJobOperationDetails(db,org,actor,job.id,{version:saved.version,requestId:randomUUID(),fields:{vessel:'Next Vessel'}});assert.equal(next.customerId,customer.id);assert.deepEqual(next.requestSnapshot,job.requestSnapshot);
+ }finally{await f.close();}
+});
+
 test('new bills start from editable working values and saved bill values remain independent',()=>{
  const job={data:{cargo:'Original',shipperParty:{name:'ORIGINAL'},workDetails:{shipper:'WORK SENDER\nNew Address',cargo:'Working Cargo'}}};
  assert.equal(shippingWorkValues(job).shipper,'WORK SENDER\nNew Address');
@@ -73,7 +101,7 @@ test('operational patch validates exact fields, dates, company employees and wri
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
   const job=await saveFreight(db,org,actor,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,mode:'ROAD'});
   const input=fields=>({version:job.version,requestId:randomUUID(),fields});
-  for(const fields of [{customerId:s.other.id},{origin:{}},{operations:{}},{etd:'2026-02-30'},{eta:''},{assigneeId:'1'},{weightKg:'-1'},{plannedDate:'2026-02-30'},{containers:[{size:'20',type:'DC',count:0}]},{}])await assert.rejects(saveJobOperationDetails(db,org,actor,job.id,input(fields)),/FREIGHT_INVALID_INPUT/);
+  for(const fields of [{origin:{}},{operations:{}},{etd:'2026-02-30'},{eta:''},{assigneeId:'1'},{weightKg:'-1'},{plannedDate:'2026-02-30'},{containers:[{size:'20',type:'DC',count:0}]},{}])await assert.rejects(saveJobOperationDetails(db,org,actor,job.id,input(fields)),/FREIGHT_INVALID_INPUT/);
   await assert.rejects(saveJobOperationDetails(db,org,actor,job.id,input({assigneeId:999999})),/FREIGHT_ASSIGNEE_SCOPE/);
   for(const person of [s.people.admin,s.people.junior])await assert.rejects(saveJobOperationDetails(db,org,actor,job.id,input({assigneeId:person.id})),/FREIGHT_ASSIGNEE_SCOPE/);
   const operator=await db.employee.create({data:{orgId:org,name:'Operator',email:'operator@example.test',orgRole:'OPERATOR',status:'ACTIVE',gradeId:s.people.admin.gradeId}});

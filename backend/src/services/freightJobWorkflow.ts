@@ -4,7 +4,7 @@ import {workFieldLimits,shippingWorkData} from './shippingWorkData';
 import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
-import {freightForwarder} from './freightOperations';
+import {freightForwarder,scopedParty} from './freightOperations';
 import {parseVolumeInput} from '../utils/volumeFormula';
 
 const fail=(message:string,status=400):never=>{throw createHttpError(status,message);};
@@ -17,12 +17,13 @@ const writable=(row:any)=>{if(row.receiptStatus!=='ACCEPTED'||row.status==='CANC
 // Operational edits never resubmit or revalidate the customer's request form.
 export async function saveJobOperationDetails(db:any,orgId:number,actorId:number,id:string,input:any){
  await freightForwarder(db,orgId,actorId);
- const keys=['assigneeId','vessel','voyage','etd','eta',...Object.keys(workFieldLimits),'containers','packages'];
+ const keys=['customerId','assigneeId','vessel','voyage','etd','eta',...Object.keys(workFieldLimits),'containers','packages'];
  if(!input||Object.keys(input).some(key=>!['version','requestId','fields'].includes(key))||!Number.isSafeInteger(input.version)||typeof input.requestId!=='string'||!/^[a-zA-Z0-9_-]{8,80}$/.test(input.requestId)||!input.fields||typeof input.fields!=='object'||Array.isArray(input.fields)||!Object.keys(input.fields).length||Object.keys(input.fields).some(key=>!keys.includes(key)))fail('FREIGHT_INVALID_INPUT');
  const fields:any={};
  for(const key of keys)if(Object.hasOwn(input.fields,key)){
   const value=input.fields[key];
-  if(key==='assigneeId'){if(value!==null&&(!Number.isSafeInteger(value)||value<=0))fail('FREIGHT_INVALID_INPUT');fields[key]=value;}
+  if(key==='customerId'){if(!Number.isSafeInteger(value)||value<=0)fail('FREIGHT_INVALID_INPUT');fields[key]=value;}
+  else if(key==='assigneeId'){if(value!==null&&(!Number.isSafeInteger(value)||value<=0))fail('FREIGHT_INVALID_INPUT');fields[key]=value;}
   else if(key==='packages'){
    if(!Array.isArray(value)||value.length>50||value.some((r:any)=>!r||Array.isArray(r)||typeof r!=='object'||Object.keys(r).some(k=>!['quantity','lengthM','widthM','heightM'].includes(k))||typeof r.quantity!=='string'||!/^\d{1,8}$/.test(r.quantity)||Number(r.quantity)<1||['lengthM','widthM','heightM'].some(k=>typeof r[k]!=='string'||r[k]!==''&&(!/^\d{1,10}(?:\.\d{1,6})?$/.test(r[k])||Number(r[k])<=0))))fail('FREIGHT_INVALID_INPUT');
    fields[key]=value.map((r:any)=>({quantity:r.quantity,lengthM:r.lengthM,widthM:r.widthM,heightM:r.heightM}));
@@ -45,11 +46,13 @@ export async function saveJobOperationDetails(db:any,orgId:number,actorId:number
   if(prior.length){if(prior[0].after.data.operationEdit.hash!==requestHash)fail('FREIGHT_CHANGED',409);return row;}
   if(row.version!==input.version)fail('FREIGHT_CHANGED',409);
   if(fields.assigneeId&&!await tx.employee.findFirst({where:{id:fields.assigneeId,orgId,status:'ACTIVE',orgRole:'OPERATOR'},select:{id:true}}))fail('FREIGHT_ASSIGNEE_SCOPE',403);
+  const customer=fields.customerId!==undefined&&fields.customerId!==row.customerId?await scopedParty(tx,orgId,fields.customerId):null;
+  if(customer?.isShippingGeneralCustomer)fail('FREIGHT_INVALID_INPUT');
   const working=Object.fromEntries(Object.entries(fields).filter(([key])=>Object.hasOwn(workFieldLimits,key)||key==='containers'||key==='packages'));
   if(Object.hasOwn(fields,'cbm')&&!Object.hasOwn(fields,'cbmFormula')&&shippingWorkData(row.data).cbmFormula)working.cbmFormula='';
-  const base=Object.fromEntries(Object.entries(fields).filter(([key])=>!Object.hasOwn(working,key)));
-  const data={...row.data,...base,...(Object.keys(working).length?{workDetails:{...row.data.workDetails,...working}}:{}),operationEdit:{id:input.requestId,hash:requestHash}};
-  const updated=(await tx.$queryRawUnsafe('UPDATE "FreightJob" SET data=$1::jsonb,version=version+1,"updatedByEmployeeId"=$2,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$3 AND "orgId"=$4 RETURNING *',JSON.stringify(data),actorId,id,orgId))[0];
+  const base=Object.fromEntries(Object.entries(fields).filter(([key])=>!Object.hasOwn(working,key)&&key!=='customerId'));
+  const data={...row.data,...base,...(customer?{customer,generalCustomer:false}:{}),...(Object.keys(working).length?{workDetails:{...row.data.workDetails,...working}}:{}),operationEdit:{id:input.requestId,hash:requestHash}};
+  const updated=(await tx.$queryRawUnsafe('UPDATE "FreightJob" SET data=$1::jsonb,"customerId"=$5,version=version+1,"updatedByEmployeeId"=$2,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$3 AND "orgId"=$4 RETURNING *',JSON.stringify(data),actorId,id,orgId,fields.customerId??row.customerId))[0];
   await tx.$executeRawUnsafe('INSERT INTO "FreightAudit"(id,"orgId",entity,"sourceId",version,"actorId","before","after") VALUES($1,$2,\'operation-details\',$3,$4,$5,$6::jsonb,$7::jsonb)',randomUUID(),orgId,id,updated.version,actorId,JSON.stringify(row),JSON.stringify(updated));
   return updated;
  });

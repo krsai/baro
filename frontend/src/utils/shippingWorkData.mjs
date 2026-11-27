@@ -22,5 +22,5 @@ export function shippingWorkValues(job){
   const actual=role==='notify'&&d.notifySameAsConsignee?'consignee':role,p=d[actual+'Party'];
   result[role]=p?[p.name,p.address,[p.contactName,p.phone,p.email].filter(Boolean).join(' / ')].filter(Boolean).join('\n'):d[actual]||'';
  }
- result.containers=d.containers||[];result.packages=d.packages||[];return result;
+ result.customerId=job.customerId??job.data.customer?.id??null;result.containers=d.containers||[];result.packages=d.packages||[];return result;
 }
