@@ -11,6 +11,17 @@ const fixture = () => ({ status: 'ISSUED', buyer: { name: 'CURRENT MASTER' }, sn
   lines: [{ orderId: 'internal-order-id', quantity: 1, styleCode:'STYLE123',description: 'Jacket', color: 'Blue', gender: 'U', size: 'XL', hsCode:'HS123',origin:'Vietnam',unitPrice: '100', amount: '100', remark:'Customer remark',adjustmentReason: 'INTERNAL REASON' }],
 } });
 
+test('order billing percentage is last while general items have quantity and VAT without order columns',()=>{
+ const order=fixture(),before=structuredClone(order),html=buildIssuedInvoicePrintHtml(order);
+ assert.match(html,/<table class="invoice-billing">[\s\S]*?<th class="num">Billing %<\/th><\/tr>/);
+ assert.deepEqual(order,before);
+ const general=fixture();general.snapshot.documentKind='GENERAL';
+ general.snapshot.lines=[{description:'Office items',unit:'Pcs',quantity:'2',unitPrice:'10',vatRate:'10',vatAmount:'2',amount:'22'}];
+ const output=buildIssuedInvoicePrintHtml(general),table=output.match(/<table class="invoice-lines">[\s\S]*?<\/table>/)[0];
+ assert.match(table,/>Item<\/th>/);assert.ok(table.indexOf('>Quantity</th>')<table.indexOf('>Unit</th>'));
+ assert.match(table,/>VAT \(%\)<\/th>/);assert.doesNotMatch(table,/Order number|Order qty|Style|Billing %/);
+});
+
 test('all invoice kinds share three company rows, hide internal codes, and preserve stored address case',()=>{
  for(const documentKind of ['ORDER','GENERAL'])for(const language of ['ko','en','vi']){
   const invoice=fixture();invoice.snapshot.documentKind=documentKind;

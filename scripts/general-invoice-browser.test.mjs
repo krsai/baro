@@ -69,6 +69,7 @@ try{
   }
   await customer.fill('Customer');await customer.press('Enter');
   const row=page.getByTestId('general-invoice-line').first();await row.waitFor();
+  const columnLabels=await page.locator('[data-invoice-entry-grid] thead th').allTextContents();assert.deepEqual(columnLabels.slice(0,9),['#',t.description,t.quantity,t.unit,t.currency,t.price,t.vat,t.tax,t.total]);
   if(process.argv.includes('--layout-only')||process.argv.includes('--codes-only')){
    const header=page.locator('[data-invoice-form-header="editing"]'),metadata=header.locator('.invoice-document-identifiers'),currency=row.getByRole('combobox',{name:roleName(t.currency)});
    await currency.waitFor();assert.equal(await header.locator('.invoice-document-identifiers').count(),1);const settingsBox=await page.locator('[data-invoice-entry-settings]').boundingBox(),documentBox=await header.boundingBox();assert.ok(settingsBox.y+settingsBox.height<=documentBox.y+1,'Settings precede the document');assert.equal(await metadata.getByRole('combobox').count(),0,'Header contains number and date only');
@@ -126,7 +127,7 @@ try{
     await price.press('Shift+Tab');await focused(currency);await currency.press('Enter');await page.getByRole('option',{name:'VND',exact:true}).click();await focused(price);
     await price.press('Enter');await focused(vat);await vat.press('Enter');await focused(add);await add.press('Enter');
     const second=page.getByTestId('general-invoice-line').nth(1);await focused(second.getByRole('textbox',{name:roleName(ACCOUNTING_CODE_TEXT[lang].code)}));assert.match(await second.getByRole('combobox',{name:roleName(t.currency)}).textContent(),/VND/);
-    await second.getByRole('textbox',{name:roleName(t.quantity)}).focus();await page.keyboard.press('Enter');const unit=second.getByRole('combobox',{name:roleName(t.unit)});await focused(unit);await unit.press('Enter');await page.getByRole('option',{name:({ko:'\uAC1C',en:'Pcs',vi:'C\u00e1i'})[lang],exact:true}).click();await focused(second.getByRole('combobox',{name:roleName(t.currency)}));
+    await second.getByRole('textbox',{name:roleName(t.quantity)}).focus();await page.keyboard.press('Enter');const unit=second.getByRole('combobox',{name:roleName(t.unit)});await focused(unit);await unit.press('Enter');await page.locator('[role="option"][data-value="9"]').click();await focused(second.getByRole('combobox',{name:roleName(t.currency)}));
     const secondPrice=second.getByRole('textbox',{name:roleName(t.price)});await secondPrice.focus();await secondPrice.press('Enter');const secondAdd=second.getByRole('button',{name:roleName(t.add)});await focused(secondAdd);await secondAdd.press('Shift+Tab');await focused(secondPrice);
     await second.getByRole('button',{name:roleName(t.remove)}).click();await focused(code);await code.press('Enter');await focused(description);assert.equal(await page.getByRole('dialog').count(),0);
     await description.fill('Manual material note');await description.press('F2');await materialDialog.waitFor();await page.keyboard.press('Escape');await materialDialog.waitFor({state:'hidden'});await focused(description);assert.equal(await description.inputValue(),'Manual Material Note');assert.equal(saves.length,0);
@@ -135,7 +136,7 @@ try{
   const quantity=row.getByRole('textbox',{name:roleName(t.quantity)});await quantity.click();await page.waitForFunction(()=>{const input=document.activeElement;return input?.value==='1'&&input.selectionStart===0&&input.selectionEnd===1;});await page.keyboard.type('2');assert.equal(await quantity.inputValue(),'2');
   await row.getByRole('textbox',{name:roleName(t.description)}).fill('Polybag agency purchase');
   if(process.argv.includes('--currencies-only')){await row.getByRole('combobox',{name:roleName(t.currency)}).click();await page.getByRole('option',{name:'USD',exact:true}).click();}
-  if(!process.argv.includes('--material-only')){await row.getByRole('combobox',{name:roleName(t.unit)}).click();await page.getByRole('option',{name:({ko:'\uAC1C',en:'Pcs',vi:'C\u00e1i'})[lang],exact:true}).click();}await row.getByRole('textbox',{name:roleName(t.quantity)}).fill('1000');await row.getByRole('textbox',{name:roleName(t.price)}).fill('1250');await row.getByRole('textbox',{name:roleName(t.vat)}).fill('10');
+  if(!process.argv.includes('--material-only')){await row.getByRole('combobox',{name:roleName(t.unit)}).focus();await row.getByRole('combobox',{name:roleName(t.unit)}).press('ArrowDown');await page.locator('[role="option"][data-value="9"]').click();}await row.getByRole('textbox',{name:roleName(t.quantity)}).fill('1000');await row.getByRole('textbox',{name:roleName(t.price)}).fill('1250');await row.getByRole('textbox',{name:roleName(t.vat)}).fill('10');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'Only the item table may scroll horizontally');
   if(process.argv.includes('--tabs-only')){
    for(const path of ['/inventory/materials','/invoices']){
@@ -151,7 +152,7 @@ try{
    await row.getByRole('button',{name:roleName(t.add)}).click();const second=page.getByTestId('general-invoice-line').nth(1);assert.match(await second.getByRole('combobox',{name:roleName(t.currency)}).textContent(),/USD/);
    await second.getByRole('combobox',{name:roleName(t.currency)}).click();await page.getByRole('option',{name:'VND',exact:true}).click();
    await second.getByRole('button',{name:roleName(t.add)}).click();const third=page.getByTestId('general-invoice-line').nth(2);assert.match(await third.getByRole('combobox',{name:roleName(t.currency)}).textContent(),/VND/);await third.getByRole('button',{name:roleName(t.remove)}).click();
-   const secondCode=second.getByRole('textbox',{name:roleName(ACCOUNTING_CODE_TEXT[lang].code)});await secondCode.fill('GENV');await secondCode.press('Enter');await second.getByRole('textbox',{name:roleName(t.price)}).fill('2000');await second.getByRole('combobox',{name:roleName(t.unit)}).click();await page.getByRole('option',{name:({ko:'\uAC1C',en:'Pcs',vi:'C\u00e1i'})[lang],exact:true}).click();
+   const secondCode=second.getByRole('textbox',{name:roleName(ACCOUNTING_CODE_TEXT[lang].code)});await secondCode.fill('GENV');await secondCode.press('Enter');await second.getByRole('textbox',{name:roleName(t.price)}).fill('2000');await second.getByRole('combobox',{name:roleName(t.unit)}).click();await page.locator('[role="option"][data-value="9"]').click();
    assert.equal(await page.locator('[data-invoice-form-header] .invoice-document-identifiers .invoice-cell').count(),2);assert.equal(await page.locator('[data-invoice-entry-metadata]').count(),0);
    if(lang==='ko'&&width===1440)await page.screenshot({path:'logs/invoice-currencies-preview.png',fullPage:true});
   }
