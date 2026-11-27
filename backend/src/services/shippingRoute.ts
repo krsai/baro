@@ -19,6 +19,7 @@ export function shippingRouteFields(data:any,mode:string){
     const value=source[key]??'';if(typeof value!=='string'||value.length>max)fail();contact[key]=value.trim();
    }
    if(source.country){if(!['KR','VN'].includes(source.country))fail();contact.country=source.country;}
+   if(node.endsWith('_DOOR')&&data.transportService!=='EXPRESS')contact.label=contact.label.toUpperCase();
    details[node]=contact;
   }
  }

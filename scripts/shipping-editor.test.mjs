@@ -80,9 +80,9 @@ test('real company/customer-scoped presets, FK guards, soft deletion, audit and 
   assert.equal(countryPreset.data.country,'VN');
   await assert.rejects(saveShippingPreset(db,scope,{id:randomUUID(),customerId:s.vendor.id,kind:'LOCATION',label:'Invalid',data:{address:'Hanoi',country:'INVALID'}}),/SHIPPING_INVALID/);
   await saveShippingPreset(db,scope,{id:countryPreset.id,customerId:s.vendor.id,version:1},true);
-  const contact={label:'Main warehouse',contactName:'Kim',phone:'+84 123'};
+  const contact={label:'MAIN WAREHOUSE',contactName:'Kim',phone:'+84 123'};
   assert.deepEqual(routeJob.data.routeLocationDetails.ORIGIN_DOOR,contact);assert.deepEqual(routeJob.requestSnapshot.data.routeLocationDetails.ORIGIN_DOOR,contact);assert.deepEqual(transportSnapshot(routeJob).data.routeLocationDetails.ORIGIN_DOOR,contact);
-  const contactProjection=(await db.$queryRawUnsafe("SELECT baro_shipping_projection('ROAD','DRAFT',$1::jsonb) AS value",JSON.stringify(routeData)))[0].value;assert.deepEqual(contactProjection.data.routeLocationDetails.ORIGIN_DOOR,contact);
+  const contactProjection=(await db.$queryRawUnsafe("SELECT baro_shipping_projection('ROAD','DRAFT',$1::jsonb) AS value",JSON.stringify(routeData)))[0].value;assert.deepEqual(contactProjection.data.routeLocationDetails.ORIGIN_DOOR,{...contact,label:'Main warehouse'});
   const contactMigration=require('../backend/scripts/migrate-entity-profiles').migrations().find(row=>row.version==='20261114060000_shipping_address_contacts');await f.pg.exec(contactMigration.sql);await f.pg.exec(contactMigration.sql);
   await saveShippingPreset(db,scope,{id:location.id,customerId:s.vendor.id,version:2},true);assert.deepEqual(await listShippingPresets(db,scope,s.vendor.id,'LOCATION'),[]);
   assert.deepEqual((await db.freightJob.findUnique({where:{id:routeJob.id}})).data.routeLocationDetails.ORIGIN_DOOR,contact);assert.equal(await db.freightAudit.count({where:{orgId,entity:'shipping-presets',sourceId:location.id}}),3);

@@ -37,7 +37,7 @@ export async function saveShippingPreset(db:any,scope:any,input:any,remove=false
   if(remove&&old.deletedAt)return {id:old.id,version:old.version};
   const partyId=remove?old.partyId:input.partyId??null;
   if(partyId!=null){if(!Number.isSafeInteger(partyId))fail();if(partyId!==scope.orgId)await scopedParty(tx,scope.orgId,partyId);}
-  const kind=remove?old.kind:input.kind,data=remove?old.data:presetFields(kind,input.data,partyId),label=remove?old.label:clean(input.label,200);
+  const kind=remove?old.kind:input.kind,data=remove?old.data:presetFields(kind,input.data,partyId),label=remove?old.label:kind==='LOCATION'&&input.labelTextCase==='upper'?clean(input.label,200).toUpperCase():clean(input.label,200);
   if(kind==='REQUESTER'&&(scope.org.type!=='SERVICE'||await shippingGeneralCustomerId(tx,scope.orgId)!==input.customerId))fail('SHIPPING_ACCESS_DENIED',403);
   if(!label)fail();
   if(!remove){assertShippingEnglish(data,old?.data);assertShippingEnglish({label},{label:old?.label},['label']);}

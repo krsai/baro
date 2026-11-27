@@ -13,5 +13,6 @@ export const shippingRequestDate=job=>job.createdAt&&dayjs(job.createdAt).isVali
 
 export function shippingEndpointLabel(job,key){
  const data=job.data||{},node=data.workScope?.[key==='origin'?'start':'end'];
- return data.routeLocationDetails?.[node]?.label?.trim()||data[key]||'\u2014';
+ const label=data.routeLocationDetails?.[node]?.label?.trim();
+ return label?(node?.endsWith('_DOOR')&&data.transportService!=='EXPRESS'?label.toUpperCase():label):data[key]||'\u2014';
 }

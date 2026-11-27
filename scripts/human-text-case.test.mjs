@@ -9,6 +9,24 @@ const require=createRequire(import.meta.url);
 const backend=require('../backend/dist/utils/humanTextCase');
 const {humanTextCaseInput}=require('../backend/dist/middleware/humanTextCase');
 
+test('bank fields use uppercase while route company labels keep addresses and express people separate',async()=>{
+ const {shippingEndpointLabel}=await import('data:text/javascript,'+encodeURIComponent(readFileSync('frontend/src/utils/shippingPresentation.js','utf8').slice(readFileSync('frontend/src/utils/shippingPresentation.js','utf8').indexOf('export function shippingEndpointLabel'))));
+ const {shippingRouteFields}=require('../backend/dist/services/shippingRoute');
+ const route={transportService:'GENERAL',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'},routeLocations:{ORIGIN_DOOR:'12 Main Street',DESTINATION_DOOR:'34 Main Street'},routeLocationDetails:{ORIGIN_DOOR:{label:'baro garment'},DESTINATION_DOOR:{label:'the san'}}};
+ const saved=shippingRouteFields(route,'ROAD');assert.equal(saved.routeLocationDetails.ORIGIN_DOOR.label,'BARO GARMENT');assert.equal(saved.routeLocationDetails.DESTINATION_DOOR.label,'THE SAN');
+ assert.equal(shippingEndpointLabel({data:route},'origin'),'BARO GARMENT');assert.equal(shippingEndpointLabel({data:route},'destination'),'THE SAN');
+ for(const format of [normalizeHumanPayload,backend.normalizeHumanPayload]){
+  const result=format({displayName:'vcb main',bankName:'vcb',accountHolder:'dex logis',swiftCode:'bftvvnvx',accountNumber:'Ab001',snapshot:{bankName:'Original Bank'}},{path:'/entities/1/bank-accounts'});
+  assert.deepEqual(result,{displayName:'VCB MAIN',bankName:'VCB',accountHolder:'DEX LOGIS',swiftCode:'BFTVVNVX',accountNumber:'Ab001',snapshot:{bankName:'Original Bank'}});
+  const data={transportService:'GENERAL',routeLocationDetails:{ORIGIN_DOOR:{label:'baro garment',contactName:'KIM HYUK'},ORIGIN_TERMINAL:{label:'main terminal'}},origin:'12 MAIN STREET'};
+  assert.equal(format(data).routeLocationDetails.ORIGIN_DOOR.label,'BARO GARMENT');
+  assert.equal(format(data).routeLocationDetails.ORIGIN_DOOR.contactName,'Kim Hyuk');
+  assert.equal(format(data).origin,'12 Main Street');
+  assert.equal(format({...data,transportService:'EXPRESS'}).routeLocationDetails.ORIGIN_DOOR.label,'Baro Garment');
+ }
+ for(const meta of [{name:'bankName'},{name:'accountName'},{name:'swiftCode'},{label:'은행'},{label:'계좌명'},{label:'Ngân hàng'},{label:'Account Holder'}])assert.equal(textFieldCase(meta),'upper');
+});
+
 test('words preserve separators, scripts, acronyms, technical references and contractions',()=>{
  for(const [input,expected]of [
   ['nguyen VAN an','Nguyen Van An'],['12 MAIN STREET, HANOI','12 Main Street, Hanoi'],
@@ -19,7 +37,7 @@ test('words preserve separators, scripts, acronyms, technical references and con
   ['đẶNG thị hỒng / 한국 이름','Đặng Thị Hồng / 한국 이름'],
   ['contact Test.Name@EXAMPLE.com https://EXAMPLE.com/ExactPath {companyName}','Contact Test.Name@EXAMPLE.com https://EXAMPLE.com/ExactPath {companyName}'],
   ['use HTTPS://EXAMPLE.com/ExactCase','Use HTTPS://EXAMPLE.com/ExactCase'],
-  ['  ship\n  at 10AM via SaaS  ','  Ship\n  At 10AM Via SaaS  '],
+  ['  ship\n  at 10AM via SaaS  ','  Ship\n  AT 10AM Via SaaS  '],
  ]){
   assert.equal(titleCaseWords(input),expected);assert.equal(backend.titleCaseWords(input),expected);
   assert.equal(titleCaseWords(expected),expected);
@@ -27,28 +45,28 @@ test('words preserve separators, scripts, acronyms, technical references and con
  assert.equal(readFileSync('frontend/src/utils/humanTextCase.mjs','utf8'),readFileSync('backend/src/utils/humanTextCase.js','utf8'));
 });
 
-test('registered spelling needs two uppercase letters, including mixed-case acronyms; ordinary uppercase words still use title case',()=>{
+test('registered spelling applies in title fields regardless of input casing',()=>{
  for(const [input,expected]of [
-  ['BOM bom Bom','BOM Bom Bom'],['SaaS SAAS saas Saas','SaaS SaaS Saas Saas'],
-  ['iOS IOS ios Ios','iOS iOS Ios Ios'],['QC OOG ICAO PT/ST ST/AT L/W/H','QC OOG ICAO PT/ST ST/AT L/W/H'],
-  ['COTTON FABRIC XYZ','Cotton Fabric Xyz'],['BOM/QC','BOM/QC'],['at AT At','At AT At'],
+  ['BOM bom Bom','BOM BOM BOM'],['SaaS SAAS saas Saas','SaaS SaaS SaaS SaaS'],
+  ['iOS IOS ios Ios','iOS iOS iOS iOS'],['QC OOG ICAO PT/ST ST/AT L/W/H','QC OOG ICAO PT/ST ST/AT L/W/H'],
+  ['COTTON FABRIC XYZ','Cotton Fabric Xyz'],['BOM/QC','BOM/QC'],['at AT At','AT AT AT'],
  ]){assert.equal(titleCaseWords(input),expected);assert.equal(backend.titleCaseWords(input),expected);}
  for(const entry of defaultTextAcronyms)assert.equal(titleCaseWords(entry.acronym),entry.acronym,entry.acronym);
  assert.equal(readFileSync('frontend/src/utils/textAcronyms.js','utf8'),readFileSync('backend/src/utils/textAcronyms.js','utf8'));
  const entries=[{acronym:'eSIM',expansion:'',meaning:''},{acronym:'eSIM2',expansion:'',meaning:''}];
  try{
   setTextAcronyms(entries);backend.setTextAcronyms(entries);
-  for(const format of [titleCaseWords,backend.titleCaseWords])assert.equal(format('eSIM ESIM esim Esim BOM'),'eSIM eSIM Esim Esim Bom');
+  for(const format of [titleCaseWords,backend.titleCaseWords])assert.equal(format('eSIM ESIM esim Esim BOM'),'eSIM eSIM eSIM eSIM Bom');
   for(const format of [titleCaseWords,backend.titleCaseWords])assert.equal(format('ESIM2 ref123 eSIM2'),'eSIM2 ref123 eSIM2');
   const raw={entries:[{acronym:'eSIM',expansion:'embedded SIM',meaning:'Custom Meaning'}]};
   assert.deepEqual(normalizeHumanPayload(raw,{path:'/system/text-acronyms'}),raw);
  }finally{setTextAcronyms(defaultTextAcronyms);backend.setTextAcronyms(defaultTextAcronyms);}
 });
 test('field policy protects company, codes, search, IME lookup, email and read-only controls',()=>{
- for(const meta of [{label:'Company name'},{label:'업체명'},{label:'Mã khách hàng'},{name:'accountHolder'},{label:'Code'},{type:'email'},{type:'password'},{label:'Name',readOnly:true},{label:'Name',select:true},{label:'Name',inputProps:{role:'combobox'}},{label:'Name','data-text-case':'preserve'}])assert.equal(textFieldCase(meta),'preserve',JSON.stringify(meta));
+ for(const meta of [{label:'Company name'},{label:'업체명'},{label:'Mã khách hàng'},{label:'Code'},{type:'email'},{type:'password'},{label:'Name',readOnly:true},{label:'Name',select:true},{label:'Name',inputProps:{role:'combobox'}},{label:'Name','data-text-case':'preserve'}])assert.equal(textFieldCase(meta),'preserve',JSON.stringify(meta));
  for(const meta of [{name:'contactName'},{label:'담당자'},{label:'Địa chỉ'},{label:'Employee name'},{label:'Description'}])assert.equal(textFieldCase(meta),'title');
  assert.equal(textFieldCase({label:'SHPR'}),'party');
- for(const label of ['Currency','Country','Size','SWIFT','Master B/L','HBL No.'])assert.equal(textFieldCase({label}),'preserve',label);
+ for(const label of ['Currency','Country','Size','Master B/L','HBL No.'])assert.equal(textFieldCase({label}),'preserve',label);
  assert.equal(titleCasePartyBlock('dex logis\n12 MAIN STREET'),'DEX LOGIS\n12 Main Street');
 });
 test('payload normalizes human values only; company names and codes retain their separate contracts',()=>{

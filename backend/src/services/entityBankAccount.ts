@@ -66,11 +66,11 @@ export async function saveEntityBankAccount(tx:any,orgId:number,actorId:number,e
   if(body.isDefault===true&&!previous?.isDefault&&entityId!==orgId)throw createHttpError(400,'INVALID_BANK_ACCOUNT');
   if(isDefault)await tx.organizationBankAccount.updateMany({where:{orgId,entityId,currencyId,isDefault:true,...(id?{id:{not:id}}:{})},data:{isDefault:false,updatedByEmployeeId:actorId}});
   if(!['BANK','CASH'].includes(kind))throw createHttpError(400,'INVALID_BANK_ACCOUNT');
-  const displayName=typeof body.displayName==='string'?body.displayName.trim():previous?.displayName||'';
+  const displayName=typeof body.displayName==='string'?body.displayName.trim().toUpperCase():previous?.displayName||'';
   if(displayName.length>160||(kind==='CASH'&&!displayName))throw createHttpError(400,'INVALID_BANK_ACCOUNT');
   const swiftCode=kind==='CASH'?'':body.swiftCode===undefined?previous?.swiftCode||'':typeof body.swiftCode==='string'?body.swiftCode.trim().toUpperCase():null;
   if(swiftCode===null||swiftCode&&!/^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(swiftCode))throw createHttpError(400,'INVALID_BANK_ACCOUNT');
-  const data={currencyId,isDefault,accountKind:kind,displayName,swiftCode,bankName:kind==='CASH'?'':text('bankName',120),accountNumber:kind==='CASH'?'':text('accountNumber',100),accountHolder:kind==='CASH'?'':text('accountHolder',160),updatedByEmployeeId:actorId};
+  const data={currencyId,isDefault,accountKind:kind,displayName,swiftCode,bankName:kind==='CASH'?'':text('bankName',120).toUpperCase(),accountNumber:kind==='CASH'?'':text('accountNumber',100),accountHolder:kind==='CASH'?'':text('accountHolder',160).toUpperCase(),updatedByEmployeeId:actorId};
   const result=id?await tx.organizationBankAccount.update({where:{id},data,include:BANK_INCLUDE}):await tx.organizationBankAccount.create({data:{...data,orgId,entityId,sortOrder:(await tx.organizationBankAccount.count({where:{orgId,entityId}})),createdByEmployeeId:actorId},include:BANK_INCLUDE});
   const currentLedger=entityId===orgId?await tx.bankLedgerAccount.findFirst({where:{orgId,entityAccountId:result.id,currencyCode:result.currency.code}}):null;
   if(entityId===orgId&&!currentLedger){

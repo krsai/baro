@@ -43,7 +43,7 @@ export default function ShippingAddressBook({orgId,customerId,current,registered
   lock.current=true;setBusy(true);setSaveError(false);
   try{
    const resolvedId=scopeCustomerId||await resolveCustomer?.();if(!resolvedId)throw new Error('SHIPPING_CUSTOMER_REQUIRED');if(!scopeCustomerId)setScopeCustomerId(resolvedId);
-   pending.current=pending.current||{remove,path:remove?'/'+edit.id:'',method:remove?'DELETE':'POST',body:JSON.stringify(remove?{customerId:resolvedId,version:edit.version}:{id:edit.id,version:edit.version,customerId:resolvedId,kind:'LOCATION',label:edit.label,data:{address:edit.address,contactName:edit.contactName,phone:edit.phone,...(edit.country?{country:edit.country}:{})}})};
+   pending.current=pending.current||{remove,path:remove?'/'+edit.id:'',method:remove?'DELETE':'POST',body:JSON.stringify(remove?{customerId:resolvedId,version:edit.version}:{id:edit.id,version:edit.version,customerId:resolvedId,kind:'LOCATION',labelTextCase:personLabel?'title':'upper',label:personLabel?edit.label:edit.label.toUpperCase(),data:{address:edit.address,contactName:edit.contactName,phone:edit.phone,...(edit.country?{country:edit.country}:{})}})};
    const work=pending.current;
    const saved=await requestJSON('/shipping-requests/presets'+work.path+buildQueryString({orgId}),{method:work.method,body:work.body});
    pending.current=null;
