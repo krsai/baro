@@ -16,6 +16,7 @@ try{
  for(const lang of ['ko','en','vi'])for(const operation of ['DELETE','UPDATE'])for(const width of [1440,430]){
   const page=await browser.newPage({viewport:{width,height:900}}),errors=[],posts=[];let failPreview=false,autoPreview=false,pendingPreview;page.setDefaultTimeout(8000);page.on('pageerror',e=>errors.push(e.message));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
+  await page.route('**/text-acronyms',r=>r.fulfill({headers,json:{revision:1,entries:[]}}));
   await page.route('**/approval-action-settings?*',r=>r.fulfill({headers,json:{grades:[{id:2,name:'Senior'}]}}));
   await page.route('**/change-approval-preview?*',r=>{if(autoPreview){const grade={id:4,name:'Chief',nameKo:'Chief',nameEn:'Chief',nameVi:'Chief'},drafter={id:20,name:'Self admin',orgRole:'ADMIN',gradeId:4,grade};return r.fulfill({headers,json:{complete:true,drafter,policy:{autoApproved:true},stages:[{key:'final-self',role:'ADMIN',gradeId:4,employeeId:20,candidates:[drafter]}]}});}if(failPreview&&r.request().method()==='POST'){pendingPreview=r;return;}return r.fulfill({headers,json:{complete:true,policy:{totals:[{currency:'USD',amount:'100'}]},stages:[{key:'senior',role:'ACCOUNTANT',gradeId:2,employeeId:10,candidates:[{id:10,name:'Senior accountant',gradeId:2}]}]}});});
   await page.route('**/change-approval-requests**',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});if(r.request().method()==='POST'){posts.push({url:r.request().url(),body:r.request().postDataJSON()});return r.fulfill({headers,json:{id:'saved'}});}return r.fulfill({headers,status:405,json:{error:'Unexpected method'}});});
@@ -26,26 +27,26 @@ try{
   await dialog.locator('[data-approval-flow-card="senior"]').waitFor();assert.equal(await dialog.getByRole('button',{name:t.request,exact:true}).isDisabled(),true);assert.equal(posts.length,0);
   await reason.fill(' \t ');assert.equal(await dialog.getByRole('button',{name:t.request,exact:true}).isDisabled(),true);assert.equal(posts.length,0);
   await reason.fill('  Duplicate receipt  ');await dialog.getByRole('button',{name:t.request,exact:true}).click();await dialog.waitFor({state:'hidden'});
-  assert.equal(posts[0].body.selection.seniorEmployeeId,10);assert.equal(posts[0].body.reason,'Duplicate receipt');assert.equal(posts[0].body.operation,operation);
+  assert.equal(posts[0].body.selection.seniorEmployeeId,10);assert.equal(posts[0].body.reason,'Duplicate Receipt');assert.equal(posts[0].body.operation,operation);
   failPreview=true;await page.getByRole('button',{name:'Open request'}).click();
-  await dialog.getByRole('textbox',{name:t.reason,exact:false}).fill('Keep this reason');
+  await dialog.getByRole('textbox',{name:t.reason,exact:false}).fill('Keep This Reason');
   for(let attempt=0;attempt<100&&!pendingPreview;attempt++)await page.waitForTimeout(20);assert.ok(pendingPreview);
   await page.evaluate(()=>window.setTestLanguage('en'));
   await pendingPreview.fulfill({headers,status:400,json:{error:'TEST_PREVIEW_FAILED'}});
   await page.getByRole('alert').getByText(changeApprovalText.en.lineFailed,{exact:true}).waitFor();
-  for(const next of ['vi','ko','en']){await page.evaluate(language=>window.setTestLanguage(language),next);await page.getByRole('alert').getByText(changeApprovalText[next].lineFailed,{exact:true}).waitFor();assert.equal(await dialog.getByRole('textbox',{name:changeApprovalText[next].reason,exact:false}).inputValue(),'Keep this reason');assert.equal(await dialog.getByRole('button',{name:changeApprovalText[next].request,exact:true}).isDisabled(),true);}
+  for(const next of ['vi','ko','en']){await page.evaluate(language=>window.setTestLanguage(language),next);await page.getByRole('alert').getByText(changeApprovalText[next].lineFailed,{exact:true}).waitFor();assert.equal(await dialog.getByRole('textbox',{name:changeApprovalText[next].reason,exact:false}).inputValue(),'Keep This Reason');assert.equal(await dialog.getByRole('button',{name:changeApprovalText[next].request,exact:true}).isDisabled(),true);}
   assert.equal(await dialog.getByTestId('approval-dialog-flow').count(),0,'failed preview must not show an empty drafter or invented approvers');
 
   failPreview=false;await page.getByRole('alert').getByRole('button',{name:changeApprovalText.en.reloadLine,exact:true}).click();
   await dialog.locator('[data-approval-flow-card="senior"]').waitFor();assert.equal(await dialog.locator('[data-approval-flow-card]').count(),2);assert.equal(await page.getByRole('alert').count(),0);
-  assert.equal(await dialog.getByRole('textbox',{name:changeApprovalText.en.reason,exact:false}).inputValue(),'Keep this reason');assert.equal(await dialog.getByRole('button',{name:changeApprovalText.en.request,exact:true}).isEnabled(),true);
+  assert.equal(await dialog.getByRole('textbox',{name:changeApprovalText.en.reason,exact:false}).inputValue(),'Keep This Reason');assert.equal(await dialog.getByRole('button',{name:changeApprovalText.en.request,exact:true}).isEnabled(),true);
   assert.equal(posts.length,1,'loading the approval line never submits the request');
   await page.goto(`http://127.0.0.1:${port}/change-approvals-acceptance.html?lang=${lang}&operation=${operation}&selectionOnly=true`);
   await page.getByRole('button',{name:'Open request'}).click();await dialog.locator('[data-approval-flow-card="senior"]').waitFor();assert.equal(await dialog.getByRole('textbox',{name:t.reason,exact:false}).count(),0);await dialog.getByRole('button',{name:t.request,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(posts.length,1,'choosing an approval line is not a submission');
   failPreview=true;pendingPreview=null;await page.getByRole('button',{name:'Open request'}).click();
   for(let attempt=0;attempt<100&&!pendingPreview;attempt++)await page.waitForTimeout(20);assert.ok(pendingPreview);
-  await pendingPreview.fulfill({headers,status:409,json:{error:'INVOICE_DELETE_LINKED_DATA'}});
-  await page.getByRole('alert').getByText(t.INVOICE_DELETE_LINKED_DATA,{exact:true}).waitFor();
+  await pendingPreview.fulfill({headers,status:409,json:{error:'INVOICE_DELETE_PAYMENT_LINKED'}});
+  await page.getByRole('alert').getByText(t.INVOICE_DELETE_PAYMENT_LINKED,{exact:true}).waitFor();
   assert.equal(await page.getByRole('alert').getByText(t.lineFailed,{exact:true}).count(),0);
   assert.equal(await page.getByRole('alert').getByRole('button',{name:t.reloadLine,exact:true}).count(),0);
   assert.equal(await dialog.getByRole('button',{name:t.request,exact:true}).isDisabled(),true);

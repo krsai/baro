@@ -5479,6 +5479,8 @@ runtime 조회값:
 
 ## 청구서 발행 취소 결재 (2026-11-11)
 
+- Invoice deletion: actual InvoicePayment or BankLedgerEvidenceAllocation FK links (including voided history) return INVOICE_DELETE_PAYMENT_LINKED during preview, request and approval. Show a dedicated message asking the user to contact an administrator to handle linked receipts/payments together; do not cascade-delete financial evidence or remove its FK. Existing database deletion guards remain in force.
+
 - 최신 사용자 정정: 삭제·취소된 AR 정리(SETTLED/EXCLUDED)만 연결된 청구서는 삭제 결재 최종 승인 시 해당 정리 이력과 청구서를 함께 물리 삭제한다. 실제 입금·원장 증빙·감액·유효 기초잔액·개정·마감 연결은 계속 차단한다. 정리 이력에 입출금 배분(취소 원장 포함), 다른 기초잔액 교체 연결 또는 다른 회사 범위가 있으면 차단하며 FK를 끊거나 관련 금융 자료를 연쇄 삭제하지 않는다. 삭제 결재·결정 snapshot 보존은 기존 정책을 유지한다. 아래 기초잔액 이력 일괄 차단 기준은 이 범위에서 대체한다.
 - `20261119210000_invoice_voided_ar_purge`는 공통 실행기·Railway preflight·읽기 전용 시작 검사에 등록한다. 신규 허용은 승인된 청구서 삭제 트랜잭션 내부에만 적용하며, 일반 AR 이력 직접 삭제는 차단한다. 기존 자료의 일괄 정리는 하지 않는다. 실패 시 승인·AR 이력·청구서 삭제를 모두 롤백한다. 재실행은 멱등이며 롤백 시 삭제 쓰기를 중지하고 호환 앱을 사용한다. 삭제된 원본을 구 버전으로 복원하지 않는다.
 - 2026-11-19 사용자 정정: 연결 자료가 없는 청구서만 삭제 결재 승인 후 Invoice와 자체 주문/품목 행을 물리 삭제한다. 기존 ISSUED/CANCELLED에 적용하며 DELETED로만 남기던 이전 지시를 대체한다. 유효·취소 입금/원장 증빙, 감액, 기초잔액, 개정 계열·개정 초안, 마감 이력이 있으면 신청·승인·DB 삭제 단계에서 차단하고 연결 자료 정리 후 삭제·재등록을 안내한다. 과거 금융·감사 자료를 연쇄 삭제하거나 FK를 끊지 않는다. 삭제 결재와 기존 반려 결재는 sourceId·회사·beforeSnapshot·결정 이력을 보존하고, 승인된 삭제 트랜잭션에서만 해당 결재의 invoiceId를 비운다. 다른 회사 자료나 운영 원자료의 일괄 정리는 포함하지 않는다.

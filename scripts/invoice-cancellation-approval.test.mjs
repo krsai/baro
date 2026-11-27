@@ -72,8 +72,8 @@ test('invoice deletion requires staged approval, real invoice FK, current financ
   const last=request.policy.resolvedStages.at(-1).employeeId;assert.equal((await decideChangeApproval(db,org,last,request.id,{decision:'APPROVED'})).status,'APPROVED');
   const paid=await make(),paidInput={...input,sourceId:paid.id,clientKey:randomUUID(),selection};const pending=await requestChangeApproval(db,org,actor,paidInput);
   await recordInvoicePayment(db,org,'actor',paid.id,{clientKey:randomUUID(),amount:'10',receivedAt:'2026-11-11'});
-  await assert.rejects(decideChangeApproval(db,org,pending.policy.resolvedStages[0].employeeId,pending.id,{decision:'APPROVED'}),/INVOICE_DELETE_LINKED_DATA|CHANGE_SOURCE_CHANGED/);
-  await assert.rejects(previewChangeApproval(db,org,actor,paidInput),/INVOICE_DELETE_LINKED_DATA/);assert.equal((await db.invoice.findUnique({where:{id:paid.id}})).status,'ISSUED');
+  await assert.rejects(decideChangeApproval(db,org,pending.policy.resolvedStages[0].employeeId,pending.id,{decision:'APPROVED'}),/INVOICE_DELETE_PAYMENT_LINKED|CHANGE_SOURCE_CHANGED/);
+  await assert.rejects(previewChangeApproval(db,org,actor,paidInput),/INVOICE_DELETE_PAYMENT_LINKED/);assert.equal((await db.invoice.findUnique({where:{id:paid.id}})).status,'ISSUED');
   const rejected=await make(),rejection=await requestChangeApproval(db,org,actor,{...input,sourceId:rejected.id,selection,clientKey:randomUUID()});await decideChangeApproval(db,org,rejection.policy.resolvedStages[0].employeeId,rejection.id,{decision:'REJECTED',reason:'Keep original'});assert.equal((await db.invoice.findUnique({where:{id:rejected.id}})).status,'ISSUED');
   const gets=new Map();require('../backend/dist/routes/invoiceDraft.routes').registerInvoiceDraftRoutes({get:(path,fn)=>gets.set(path,fn),post:()=>{},put:()=>{},delete:()=>{}},{db,requireAccess:async()=>({organization:s.company}),actor:()=> 'actor'});
   let result,status;const res={setHeader:()=>{},json:value=>{result=value;return res;},status:value=>{status=value;return res;}};

@@ -44,3 +44,7 @@ Object.assign(changeApprovalText.vi,{PAID_EXPENSE_CORRECTION_ONLY:'Chi phí đã
 Object.assign(changeApprovalText.ko,{ACCOUNTING_INDUSTRY_CHANGED:'자재 설정 또는 품목이 변경되었습니다. 창을 닫고 자재 품목을 다시 선택해 주세요.',INVALID_MATERIAL_ITEM:'선택한 코드와 같은 회사의 등록된 자재 품목을 선택해 주세요.'});
 Object.assign(changeApprovalText.en,{ACCOUNTING_INDUSTRY_CHANGED:'Material settings or the item changed. Close this dialog and select the material item again.',INVALID_MATERIAL_ITEM:'Select a registered material item for this company and code.'});
 Object.assign(changeApprovalText.vi,{ACCOUNTING_INDUSTRY_CHANGED:'Thiết lập hoặc mặt hàng vật tư đã thay đổi. Đóng cửa sổ và chọn lại mặt hàng.',INVALID_MATERIAL_ITEM:'Chọn mặt hàng vật tư đã đăng ký cho công ty và mã này.'});
+
+Object.assign(changeApprovalText.ko,{INVOICE_DELETE_PAYMENT_LINKED:'입출금 증빙으로 사용된 청구서는 삭제할 수 없습니다. 연결된 입출금과 함께 처리가 필요하므로 관리자에게 문의하세요.'});
+Object.assign(changeApprovalText.en,{INVOICE_DELETE_PAYMENT_LINKED:'This invoice is used as receipt/payment evidence and cannot be deleted. Contact an administrator to handle the linked receipts/payments together.'});
+Object.assign(changeApprovalText.vi,{INVOICE_DELETE_PAYMENT_LINKED:'Kh\u00f4ng th\u1ec3 x\u00f3a h\u00f3a \u0111\u01a1n \u0111\u00e3 d\u00f9ng l\u00e0m ch\u1ee9ng t\u1eeb thu chi. Vui l\u00f2ng li\u00ean h\u1ec7 qu\u1ea3n tr\u1ecb vi\u00ean \u0111\u1ec3 x\u1eed l\u00fd c\u00f9ng c\u00e1c kho\u1ea3n thu chi li\u00ean k\u1ebft.'});

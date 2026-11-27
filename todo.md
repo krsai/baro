@@ -2400,3 +2400,5 @@ BOM에는 단순한 “한 벌당 숫자”만 저장하지 않는다. 기준 �
 - 주문 청구 부가세 입력 위치: 별도 상단의 부가세 구분·세율을 품목 행의 단가와 금액 사이로 이동. 기존 청구서 공통 세금 값·CMT 코드·반올림 및 일반 청구 기능 유지. 한영베 PC/모바일 행 입력·세액 계산·면세 0% 초기화·발행 저장값·프런트 빌드·UI/번역/인코딩 통과 / 운영 배포·인수 미확인.
 
 - Order invoice editor: removed automatic production toast; retained row review. CMTE default with code-only options; adjustment/percentage below total (blank = 0/100%); Remark stretches beside totals/account; empty account card retained; uppercase bank display. ko/en/vi adjustment browser checks, frontend/backend builds and encoding/i18n passed. SSE compression excluded; production deployment and HTTP/2 recovery unverified.
+
+- Invoice deletion: receipt/payment evidence links return a dedicated administrator-contact message; existing deletion/approval/DB guards retain financial history, including voided links. Database integration tests cover active/voided evidence, request and approval blocking; frontend/backend builds and encoding/i18n passed. ko/en/vi desktop/mobile browser message and submission blocking passed; production deployment/acceptance unverified.
