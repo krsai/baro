@@ -1,4 +1,5 @@
 import {canAccessPath} from '../../../utils/accessControl';
+import {getRowActionsLabel,orderInvoiceNavigationText} from '../../../constants/rowActions';
 import ManagementTargetSettingsButton from '../../../components/ManagementTargetSettingsButton';
 import OrderWorkflowInformationButton from '../../../components/OrderWorkflowInformationButton';
 import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
@@ -112,7 +113,7 @@ const ORDER_LIST_COLUMN_WIDTHS = {
   orderValue: '12%',
   dueDate: '10%',
   lock: '5%',
-  actions: '3%',
+  actions: '160px',
 };
 const ORDER_LIST_TEXT_ELLIPSIS_SX = {
   whiteSpace: 'nowrap',
@@ -858,12 +859,7 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'Due Date'
             : '납기일',
-      actions:
-        languageCode === 'vi'
-          ? 'Quản lý'
-          : languageCode === 'en'
-            ? 'Actions'
-            : '관리',
+      actions: getRowActionsLabel(languageCode),
       loadingOrders:
         languageCode === 'vi'
           ? 'Đang tải danh sach don hang...'
@@ -3238,7 +3234,10 @@ const OrderList = () => {
                               : `${Number(order.producedQuantity).toLocaleString()} / ${Number(order.totalQuantity || 0).toLocaleString()}`}
                           </Typography>
                         </TableCell>
-                        <TableCell sx={{ textAlign: 'center' }}>
+                        <TableCell data-table-actions sx={{ textAlign: 'center',whiteSpace:'nowrap' }}>
+                          <Button size="small" disabled={!order.issuedInvoiceCount||!canAccessPath('/invoices',authState)} onClick={event=>{event.stopPropagation();navigateToPath('/invoices?orderId='+encodeURIComponent(order.id));}}>
+                            {(orderInvoiceNavigationText[languageCode]||orderInvoiceNavigationText.en).view}
+                          </Button>
                           <DeleteActionButton
                             disabled={!deletable}
                             title={deletable ? orderPageText.deleteOrder : deleteDisabledReason}

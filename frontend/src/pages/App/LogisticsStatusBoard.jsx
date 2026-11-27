@@ -1,3 +1,4 @@
+import {rowActionsText} from '../../constants/rowActions.js';
 import React,{useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {Box,Button,LinearProgress,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -22,8 +23,8 @@ import {jobText} from '../../constants/freightJobs';
 import {shippingText,shippingStatusTone} from '../../constants/shippingRequests';
 
 export const logisticsBoardText={
- ko:{title:'현황판',customer:'고객',all:'전체 고객',search:'운송번호·고객·화물·비고 검색',shipment:'운송',information:'화물 정보',remark:'비고',status:'상태',delivery:'배송일',empty:'조건에 맞는 운송 업무가 없습니다.',failed:'운송 현황판을 불러오지 못했습니다.',retry:'다시 시도',refresh:'새로고침',open:'운송 업무',IMPORT:'수입',EXPORT:'수출',DOMESTIC:'국내',OTHER:'기타',SEA:'해상',AIR:'항공',ROAD:'육상',EXPRESS:'특송',count:'건',actions:'작업'},
- en:{title:'Status Board',customer:'Customer',all:'All Customers',search:'Search Transport, Customer, Cargo Or Remark',shipment:'Shipment',information:'Information',remark:'Remark',status:'Status',delivery:'Delivery',empty:'No Transport Jobs Match The Filters.',failed:'Unable To Load The Transport Status Board.',retry:'Retry',refresh:'Refresh',open:'Transport Operations',IMPORT:'Import',EXPORT:'Export',DOMESTIC:'Domestic',OTHER:'Other',SEA:'Sea',AIR:'Air',ROAD:'Road',EXPRESS:'Express',count:'Jobs',actions:'Actions'},
+ ko:{title:'현황판',customer:'고객',all:'전체 고객',search:'운송번호·고객·화물·비고 검색',shipment:'운송',information:'화물 정보',remark:'비고',status:'상태',delivery:'배송일',empty:'조건에 맞는 운송 업무가 없습니다.',failed:'운송 현황판을 불러오지 못했습니다.',retry:'다시 시도',refresh:'새로고침',open:'운송 업무',IMPORT:'수입',EXPORT:'수출',DOMESTIC:'국내',OTHER:'기타',SEA:'해상',AIR:'항공',ROAD:'육상',EXPRESS:'특송',count:'건',actions:rowActionsText.ko},
+ en:{title:'Status Board',customer:'Customer',all:'All Customers',search:'Search Transport, Customer, Cargo Or Remark',shipment:'Shipment',information:'Information',remark:'Remark',status:'Status',delivery:'Delivery',empty:'No Transport Jobs Match The Filters.',failed:'Unable To Load The Transport Status Board.',retry:'Retry',refresh:'Refresh',open:'Transport Operations',IMPORT:'Import',EXPORT:'Export',DOMESTIC:'Domestic',OTHER:'Other',SEA:'Sea',AIR:'Air',ROAD:'Road',EXPRESS:'Express',count:'Jobs',actions:rowActionsText.en},
  vi:{title:'Bảng Tình Hình',customer:'Khách Hàng',all:'Tất Cả Khách Hàng',search:'Tìm Vận Chuyển, Khách Hàng, Hàng Hóa Hoặc Ghi Chú',shipment:'Lô Hàng',information:'Thông Tin Hàng',remark:'Ghi Chú',status:'Trạng Thái',delivery:'Ngày Giao',empty:'Không Có Công Việc Vận Chuyển Phù Hợp.',failed:'Không Thể Tải Bảng Tình Hình Vận Chuyển.',retry:'Thử Lại',refresh:'Làm Mới',open:'Nghiệp Vụ Vận Chuyển',IMPORT:'Nhập Khẩu',EXPORT:'Xuất Khẩu',DOMESTIC:'Nội Địa',OTHER:'Khác',SEA:'Đường Biển',AIR:'Đường Hàng Không',ROAD:'Đường Bộ',EXPRESS:'Chuyển Phát Nhanh',count:'Lô Hàng',actions:'Thao Tác'},
 };
 const label=(customer,language)=>customer?.[language==='ko'?'nameKo':language==='vi'?'nameVi':'name']||customer?.name||'—';

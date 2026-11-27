@@ -1,4 +1,5 @@
 import {invoiceEditText} from '../../../constants/invoiceEdit';
+import {orderInvoiceNavigationText,getRowActionsLabel} from '../../../constants/rowActions';
 import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
 import ListPagination from '../../../components/ListPagination';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -18,7 +19,7 @@ import PageContentStack from '../../../components/PageContentStack';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchPanel from '../../../components/SearchPanel';
 import React, { useEffect, useState, useRef } from 'react';
-import {Button, CircularProgress, Box, Paper, MenuItem, TextField, Stack, Table, TableCell, TableHead, TableRow, Typography} from '@mui/material';
+import {Button, Chip,CircularProgress, Box, Paper, MenuItem, TextField, Stack, Table, TableCell, TableHead, TableRow, Typography} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
 import { invoiceMessages } from '../../../constants/invoiceMessages';
@@ -39,11 +40,11 @@ import InvoicePdfIcon from '../../../components/InvoicePdfIcon';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 
-export default function InvoiceList({ orgId, languageCode, invoiceId }) {
+export default function InvoiceList({ orgId, languageCode, invoiceId,sourceOrderId }) {
   const {navigateToPath,showNotification}=useAppActions();const approval=useRef(null),[requesting,setRequesting]=useState(false);const change=changeApprovalText[languageCode]||changeApprovalText.en;
   const deleteInvoice=async row=>{setRequesting(true);try{const result=await approval.current.prepare({menu:'INVOICE',operation:'DELETE',sourceKind:'invoice',sourceId:row.id});if(result){setReload(n=>n+1);showNotification(change.submitted);}}finally{setRequesting(false);}};
   const ui=invoiceUi[languageCode]||invoiceUi.en,d=invoiceDetailText[languageCode]||invoiceDetailText.en;
-  const [start,setStart]=useState(()=>dayjs().startOf('month')),[end,setEnd]=useState(()=>dayjs());
+  const [start,setStart]=useState(()=>sourceOrderId?null:dayjs().startOf('month')),[end,setEnd]=useState(()=>sourceOrderId?null:dayjs());
   const flow=ledgerFlowText[languageCode]||ledgerFlowText.en,entry=ledgerEntryText[languageCode]||ledgerEntryText.en,bank=bankLedgerMessages[languageCode]||bankLedgerMessages.en,workspace=ledgerWorkspaceText[languageCode]||ledgerWorkspaceText.en;
   const [search,setSearch]=useState(''),[status,setStatus]=useState(''),[detail,setDetail]=useState(null),[pdfBusy,setPdfBusy]=useState(false);
   const labels=invoiceListUi[languageCode]||invoiceListUi.en;
@@ -59,12 +60,12 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
     if (!orgId) return;
     let cancelled = false;
     setLoading(true); setError(''); setIssued({rows:[],hasMore:false}); setDetail(null);
-    const timer=setTimeout(()=>requestJSON(`/invoices/issued${invoiceId?'/'+encodeURIComponent(invoiceId):''}${buildQueryString({ orgId, ...(!invoiceId?{page, search, status,start:start.format('YYYY-MM-DD'),end:end.format('YYYY-MM-DD')}:{}) })}`, { skipCache:true })
+    const timer=setTimeout(()=>requestJSON(`/invoices/issued${invoiceId?'/'+encodeURIComponent(invoiceId):''}${buildQueryString({ orgId, ...(!invoiceId?{page, search, status,orderId:sourceOrderId||undefined,start:start?.format('YYYY-MM-DD'),end:end?.format('YYYY-MM-DD')}:{}) })}`, { skipCache:true })
       .then(invoices=>{if(!cancelled){if(invoiceId)setDetail({...invoices,isFinalLocked:invoices.orders?.some(order=>order.workOrder?.invoiceFinalLockedAt&&order.workOrder.invoiceFinalLockInvoiceId===invoices.id)});else setIssued(invoices);}})
       .catch(()=>{if(!cancelled)setError(ui.failed);})
       .finally(()=>{if(!cancelled)setLoading(false);}),200);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [orgId, invoiceId, page, reload, search, status, start, end, ui.failed]);
+  }, [orgId, invoiceId,sourceOrderId, page, reload, search, status, start, end, ui.failed]);
   const printIssued = async row => {
     // Open synchronously from the click so browsers do not block the print tab.
     const popup = window.open('', '_blank');
@@ -82,11 +83,11 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
   const amount=(value,currencyCode)=>formatCurrency(value,{currencyCode,languageCode});
   return <PageContentStack>
     {!invoiceId&&<>
-    <SearchPanel search={<SearchInput value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} placeholder={ui.search}/>} dates={<DateRangeSelector independentDateBounds languageCode={languageCode} startValue={start} endValue={end} onStartChange={date=>{if(date?.isValid()){setStart(date);setPage(0);}}} onEndChange={date=>{if(date?.isValid()){setEnd(date);setPage(0);}}}/>} onReset={()=>{setSearch('');setStatus('');setStart(dayjs().startOf('month'));setEnd(dayjs());setPage(0);}} />
+    <SearchPanel search={<SearchInput value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} placeholder={ui.search}/>} controls={sourceOrderId?<Chip label={(orderInvoiceNavigationText[languageCode]||orderInvoiceNavigationText.en).order+(issued.orderScope?.orderNumber?': '+issued.orderScope.orderNumber:'')} onDelete={()=>navigateToPath('/invoices')}/>:undefined} dates={<DateRangeSelector independentDateBounds languageCode={languageCode} startValue={start} endValue={end} onStartChange={date=>{if(date?.isValid()){setStart(date);setPage(0);}}} onEndChange={date=>{if(date?.isValid()){setEnd(date);setPage(0);}}}/>} onReset={()=>{setSearch('');setStatus('');setStart(sourceOrderId?null:dayjs().startOf('month'));setEnd(sourceOrderId?null:dayjs());setPage(0);}} />
     <Paper data-search-results variant="outlined" sx={{borderRadius:2,overflow:'hidden'}}>
     {error&&<Alert severity="error" action={<Button onClick={()=>setReload(v=>v+1)}>{common.retry}</Button>}>{error}</Alert>}
     <Box sx={{overflowX:'auto'}}><Table size="small" sx={{minWidth:1100}}><TableHead><TableRow>
-      {[common.issuedDate,flow.to,(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,entry.codeDescription,workspace.currency,labels.statement,labels.received,labels.balance,bank.createdBy,common.invoiceStatus,'PDF',change.DELETE].map((label,index)=><TableCell key={index} align={index>=5&&index<=7?'right':'left'}>{label}</TableCell>)}
+      {[common.issuedDate,flow.to,(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,entry.codeDescription,workspace.currency,labels.statement,labels.received,labels.balance,bank.createdBy,common.invoiceStatus,'PDF',getRowActionsLabel(languageCode)].map((label,index)=><TableCell key={index} align={index>=5&&index<=7?'right':'left'}>{label}</TableCell>)}
     </TableRow></TableHead><RecordInteractionScope>
       {loading?<TableStatusRow colSpan={12} languageCode={languageCode} state="loading"/>:!issued.rows.length?<TableStatusRow colSpan={12} languageCode={languageCode} error={Boolean(error)} onRetry={()=>setReload(v=>v+1)}/>:issued.rows.map(row=><RecordRow key={row.id} data-cancelled={row.status==='CANCELLED'} hover  recordKey={row.id} onOpen={()=>navigateToPath('/invoices/'+encodeURIComponent(row.id))}  sx={{cursor:'pointer'}}>
         <TableCell sx={{whiteSpace:'nowrap'}}>{new Date(row.issuedAt).toLocaleDateString({ko:'ko-KR',vi:'vi-VN',en:'en-GB'}[languageCode]||'en-GB')}</TableCell>

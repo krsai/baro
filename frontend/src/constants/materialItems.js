@@ -1,3 +1,4 @@
+import {rowActionsText} from './rowActions.js';
 export const materialItemText={
  ko:{invalid:'필수 자재 항목과 양수 치수(L·W·H)를 확인해 주세요.',title:'자재 품목',add:'자재 등록',select:'자재 품목 선택',name:'품명',code:'기본 코드',customer:'고객',owner:'소유자',spec:'규격',color:'색상',unit:'단위',search:'품명·코드·규격 검색',empty:'등록된 자재가 없습니다.',save:'저장',cancel:'취소',retry:'재시도',failed:'자재를 불러오거나 저장하지 못했습니다.',saved:'자재를 등록했습니다.',required:'등록된 자재 품목을 선택해 주세요.',duplicate:'같은 이름과 규격의 자재가 이미 등록되어 있습니다.',changed:'자재 설정이 변경되었습니다. 목록을 다시 열어 확인해 주세요.'},
  en:{invalid:'Check required material fields and positive L/W/H dimensions.',title:'Material item',add:'Register material',select:'Select material item',name:'Item name',code:'Base code',customer:'Customer',owner:'Owner',spec:'Specification',color:'Color',unit:'Unit',search:'Search name, code or specification',empty:'No registered materials.',save:'Save',cancel:'Cancel',retry:'Retry',failed:'Could not load or save materials.',saved:'Material registered.',required:'Select a registered material item.',duplicate:'A material with this name and specification already exists.',changed:'Material settings changed. Reopen the list and review.'},
@@ -10,7 +11,7 @@ export const materialItemName=(item,lang)=>{const data=item?.data||item||{};retu
 Object.assign(materialItemText.ko,{registerMaster:'자재 품목 등록',add:'자재 품목 등록',code:'자재 코드'});
 Object.assign(materialItemText.en,{registerMaster:'Register material item',add:'Register material item',code:'Material code'});
 Object.assign(materialItemText.vi,{registerMaster:'Đăng ký mặt hàng vật tư',add:'Đăng ký mặt hàng vật tư',code:'Mã vật tư'});
-Object.assign(materialItemText.ko,{type:'타입',items:'자재 품목',viewItems:'상세 보기',actions:'작업',close:'닫기',noItems:'등록된 자재 품목이 없습니다.'});
-Object.assign(materialItemText.en,{type:'Type',items:'Material items',viewItems:'View details',actions:'Actions',close:'Close',noItems:'No registered material items.'});
+Object.assign(materialItemText.ko,{type:'타입',items:'자재 품목',viewItems:'상세 보기',actions:rowActionsText.ko,close:'닫기',noItems:'등록된 자재 품목이 없습니다.'});
+Object.assign(materialItemText.en,{type:'Type',items:'Material items',viewItems:'View details',actions:rowActionsText.en,close:'Close',noItems:'No registered material items.'});
 Object.assign(materialItemText.vi,{type:'Loại',items:'Mặt hàng vật tư',viewItems:'Xem chi tiết',actions:'Thao tác',close:'Đóng',noItems:'Chưa có mặt hàng vật tư được đăng ký.'});
 export const materialItemSpec=item=>{const data=item?.data||item||{},d=data.details||{};return [data.itemAttributeSnapshot?.type?.nameEn,data.color?.code,[d.length,d.width,d.height].filter(Boolean).length?[d.length,d.width,d.height].filter(Boolean).join(' × ')+' mm':''].filter(Boolean).join(' / ');};

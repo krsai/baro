@@ -38,7 +38,7 @@ function InvoiceMenuWorkspace({ activeOrgId, view = 'list' }) {
     </Stack>
   );
   return <AppPageContainer title={t.title} titleActions={actions}>
-    <InvoiceList orgId={activeOrgId} languageCode={languageCode}/>
+    <InvoiceList key={sourceOrderId||'all'} orgId={activeOrgId} languageCode={languageCode} sourceOrderId={sourceOrderId}/>
   </AppPageContainer>;
 }
 

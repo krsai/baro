@@ -1,3 +1,4 @@
+import {rowActionsText} from '../../../constants/rowActions';
 import LocalizedDateField from '../../../components/LocalizedDateField';
 import EntityCountryPhoneFields from '../../../components/EntityCountryPhoneFields';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -59,7 +60,7 @@ const PAGE_MESSAGES = {
   representative: { ko: '대표자', en: 'Representative', vi: 'Người đại diện' },
   phone: { ko: '전화번호', en: 'Phone', vi: 'So dien thoai' },
   address: { ko: '주소', en: 'Address', vi: 'Địa chỉ' },
-  actions: { ko: '작업', en: 'Actions', vi: 'Tac vu' },
+  actions: rowActionsText,
   optionalAccessSection: { ko: '초기 관리자 할당', en: 'Initial Admin Assignment', vi: 'Gan quan tri ban dau' },
   optionalAccessHelper: { ko: '이 섹션은 접근 권한 설정용입니다. 회사 과금과는 무관합니다.', en: 'This section is only for access control. It does not affect company billing.', vi: 'Phan nay chi dung de cap quyen truy cap. Khong anh huong den phi cua cong ty.' },
   initialAdminEmail: { ko: '초기 관리자 이메일', en: 'Initial Admin Email', vi: 'Email quan tri ban dau' },

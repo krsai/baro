@@ -1,3 +1,4 @@
+import {rowActionsText} from './rowActions';
 import { getCurrentLanguageCode, normalizeLanguageCode } from '../utils/appLanguage';
 import {titleCaseWords} from '../utils/humanTextCase.mjs';
 
@@ -887,7 +888,7 @@ export const UI_MESSAGES = {
     styleCode: { ko: '스타일 코드', en: 'Style Code', vi: 'Ma style' },
     unitCost: { ko: '단위 공임', en: 'Unit Cost', vi: 'Cong don vi' },
     registrationDate: { ko: '등록일', en: 'Registered', vi: 'Ngay dang ky' },
-    action: { ko: '작업', en: 'Action', vi: 'Tac vu' },
+    action: rowActionsText,
     loadingMessage: {
       ko: '스타일 목록을 불러오는 중입니다.',
       en: 'Loading styles...',
@@ -1025,7 +1026,7 @@ Object.assign(UI_MESSAGES, {
     columnContact: { ko: '\uC5F0\uB77D\uCC98', en: 'Contact', vi: 'Liên hệ' },
     columnManager: { ko: '\uAD00\uB9AC\uC790', en: 'Manager', vi: 'Quản lý' },
     columnWagePerSecond: { ko: '생산수당 초당 단가', en: 'Production Allowance / sec', vi: 'Phụ cấp san luong/giay' },
-    columnAction: { ko: '\uAD00\uB9AC', en: 'Action', vi: 'Tac vu' },
+    columnAction: rowActionsText,
     loading: { ko: '\uBD88\uB7EC\uC624\uB294 \uC911...', en: 'Loading...', vi: 'Đang tải...' },
     empty: { ko: '\uB4F1\uB85D\uB41C \uACF5\uC7A5\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.', en: 'No factories found.', vi: 'Chưa có nha may nao.' },
     fetchError: { ko: '\uACF5\uC7A5 \uBAA9\uB85D\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.', en: 'Failed to load factory list.', vi: 'Không thể tai danh sach nha may.' },

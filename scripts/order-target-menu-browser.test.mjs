@@ -6,6 +6,7 @@ import { managementTargetText } from '../frontend/src/constants/managementTarget
 import { invoiceMessages } from '../frontend/src/constants/invoiceMessages.js';
 import { getOrderWorkflowLabel,ORDER_WORKFLOW_KEYS } from '../frontend/src/constants/orderWorkflow.mjs';
 import {orderWorkflowInformation} from '../frontend/src/constants/orderWorkflowInformation.mjs';
+import {rowActionsText,orderInvoiceNavigationText} from '../frontend/src/constants/rowActions.js';
 
 const filename = 'order-target-menu-test.html';
 const fixture = 'frontend/' + filename;
@@ -46,10 +47,10 @@ const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host
 });
 
 async function configurePage(page, language, orgType, orgRole) {
-  const reads = [], writes = [], shipmentReads = [], orderReads = [];
+  const reads = [], writes = [], shipmentReads = [], orderReads = [],invoiceReads=[];
   const saved = { INVOICE: { excluded: false, revision: 0 }, SHIPPING: { excluded: false, revision: 0 } };
   const stub = (name, body) => page.route('**/src/context/' + name + '.jsx*', route => route.fulfill({ contentType: 'application/javascript', body }));
-  await stub('AuthContext', 'const auth=' + JSON.stringify({ activeOrgId: 1, activeOrgType: orgType, activeProfile: { entryType: 'ORG', orgType, orgRole } }) + ';export const useAuth=()=>auth;');
+  await stub('AuthContext', 'const auth=' + JSON.stringify({ isAuthenticated:true,activeOrgId: 1, activeOrgType: orgType, activeProfile: { entryType: 'ORG', orgType, orgRole },accessProfile:{entryType:'ORG',orgType,orgRole} }) + ';export const useAuth=()=>auth;');
   await stub('LanguageContext', "import React from '/node_modules/.vite/deps/react.js';export const LanguageContext=React.createContext({languageCode:"+JSON.stringify(language)+"});export const useLanguage=()=>({languageCode:" + JSON.stringify(language) + '});');
   await stub('AppContext', 'const noop=()=>{};const actions={navigateToPath:path=>window.testNavigate(path),showNotification:noop,markTabChanged:noop,clearTabChanged:noop,setUnsavedChangesGuard:noop,clearUnsavedChangesGuard:noop};export const useAppActions=()=>actions;export const useAppState=()=>({});');
   await page.route(url => url.origin === apiOrigin, async route => {
@@ -81,9 +82,9 @@ async function configurePage(page, language, orgType, orgRole) {
     if (url.pathname === '/orders') {
       const workflowStatus = (saved.INVOICE.excluded || saved.receiptClosed) ? 'COMPLETED' : 'RECEIVED';
       orderReads.push(workflowStatus);
-      return route.fulfill({ headers, json: [{ id: 'order-001', dbId: 17, orderNumber: 'ORDER-001', items: [], workflowStatus }] });
+      return route.fulfill({ headers, json: [{ id: 'order-001', dbId: 17, orderNumber: 'ORDER-001', sellerOrgId:1,issuedInvoiceCount:1,items: [], workflowStatus },{id:'empty-order',dbId:18,orderNumber:'EMPTY-ORDER',sellerOrgId:1,issuedInvoiceCount:0,items:[],workflowStatus:'RECEIVED'}] });
     }
-    if (url.pathname === '/invoices/issued') return route.fulfill({ headers, json: { rows: [], hasMore: false } });
+    if (url.pathname === '/invoices/issued') {invoiceReads.push(Object.fromEntries(url.searchParams));return route.fulfill({ headers, json: { rows: [{id:'scope-invoice',invoiceNumber:'INV-SCOPED',status:'ISSUED',buyerName:'Buyer',currencyCode:'USD',total:'30',receivedAmount:'0',familyBalanceAmount:'30',familyBalanceKind:'DUE',issuedAt:'2020-01-02',orders:[],accountingCodes:['CMTE'],descriptions:['Style']}], hasMore: false,orderScope:url.searchParams.has('orderId')?{orderId:url.searchParams.get('orderId'),orderNumber:'ORDER-001'}:null } });}
     if (url.pathname === '/orders/shipments') {
       const mode = url.searchParams.get('mode');
       const { excluded } = saved.SHIPPING;
@@ -95,7 +96,7 @@ async function configurePage(page, language, orgType, orgRole) {
     }
     return route.fulfill({ headers, json: [] });
   });
-  return { reads, writes, saved, shipmentReads, orderReads };
+  return { reads, writes, saved, shipmentReads, orderReads,invoiceReads };
 }
 
 let browser;
@@ -112,7 +113,7 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const errors = [];
     page.on('pageerror', error => {errors.push(error.message);console.error(error.message);});
-    const { reads, writes, saved, shipmentReads, orderReads } = await configurePage(page, language, 'MANUFACTURER', 'ADMIN');
+    const { reads, writes, saved, shipmentReads, orderReads,invoiceReads } = await configurePage(page, language, 'MANUFACTURER', 'ADMIN');
     const labels = managementTargetText[language];
     const button = kind => page.getByRole('button', { name: labels[kind], exact: true });
     const orderStatus = status => page.getByRole('row', { name: /ORDER-001/ })
@@ -122,6 +123,8 @@ try {
     assert.equal(await button('SHIPPING').count(), 0);
     assert.equal(await button('INVOICE').count(), 1);
     await orderStatus('RECEIVED').waitFor();
+    assert.equal(await page.getByRole('columnheader',{name:rowActionsText[language],exact:true}).count(),1);
+    assert.equal(await page.getByRole('row',{name:/EMPTY-ORDER/}).getByRole('button',{name:orderInvoiceNavigationText[language].view,exact:true}).isDisabled(),true);
     const tableTone=await orderStatus('RECEIVED').evaluate(el=>getComputedStyle(el.closest('.MuiChip-root')).backgroundColor);
     const information=page.getByRole('button',{name:new RegExp('^'+orderWorkflowInformation[language].title+' ·')});
     await information.focus();await page.keyboard.press('Enter');
@@ -208,6 +211,10 @@ try {
       { kind: 'INVOICE', id: 17, excluded: true, revision: 0, reason: false },
       { kind: 'INVOICE', id: 17, excluded: false, revision: 1, reason: false },
     ]);
+    await page.getByRole('row',{name:/ORDER-001/}).getByRole('button',{name:orderInvoiceNavigationText[language].view,exact:true}).click();
+    await page.getByText(orderInvoiceNavigationText[language].order+': ORDER-001',{exact:true}).waitFor();
+    await page.getByRole('button',{name:/INV-SCOPED/}).waitFor();
+    assert.equal(invoiceReads.at(-1).orderId,'order-001');assert.equal(invoiceReads.at(-1).start,undefined);assert.equal(invoiceReads.at(-1).end,undefined);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
     assert.deepEqual(errors, []);
     await page.close();

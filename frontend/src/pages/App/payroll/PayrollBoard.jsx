@@ -1,3 +1,4 @@
+import {rowActionsText} from '../../../constants/rowActions.js';
 import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
 import Dialog from '../../../components/AppDialog';
 import GlobalNotice from "../../../components/AppNotice";
@@ -42,7 +43,7 @@ const TEXT = {
     deleteSuccess: '{month} 생산수당 계산 내역을 삭제했습니다.', deleteError: '생산수당 계산 내역 삭제에 실패했습니다.',
     current: '진행 중', confirmed: '확정', empty: '계산된 생산수당 내역이 없습니다.', loading: '불러오는 중...',
     notCalculated: '미계산',
-    monthReady: '선택 월 계산 가능', monthIncomplete: '선택 월 자료 미완료', actions: '관리', lock: '잠금', unlockBeforeDelete: '잠금을 해제한 뒤 삭제할 수 있습니다.',
+    monthReady: '선택 월 계산 가능', monthIncomplete: '선택 월 자료 미완료', actions:rowActionsText.ko, lock: '잠금', unlockBeforeDelete: '잠금을 해제한 뒤 삭제할 수 있습니다.',
     factory: '공장', workCoverage: '작업 기록', attendanceCoverage: '출퇴근 기록',
     averageProductionAllowance: '평균 생산수당',
     appliedRate: '적용 초당 단가',
@@ -62,7 +63,7 @@ const TEXT = {
     deleteSuccess: 'Deleted the {month} production allowance result.', deleteError: 'Failed to delete the production allowance result.',
     current: 'In Progress', confirmed: 'Confirmed', empty: 'No production allowance results have been calculated.', loading: 'Loading...',
     notCalculated: 'Not Calculated',
-    monthReady: 'Selected month is ready', monthIncomplete: 'Selected month data is incomplete', actions: 'Actions', lock: 'Lock', unlockBeforeDelete: 'Unlock this month before deleting it.',
+    monthReady: 'Selected month is ready', monthIncomplete: 'Selected month data is incomplete', actions:rowActionsText.en, lock: 'Lock', unlockBeforeDelete: 'Unlock this month before deleting it.',
     factory: 'Factory', workCoverage: 'Work Records', attendanceCoverage: 'Attendance Records',
     averageProductionAllowance: 'Average Production Allowance',
     appliedRate: 'Applied Rate / sec',

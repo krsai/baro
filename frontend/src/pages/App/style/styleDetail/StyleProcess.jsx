@@ -1,3 +1,4 @@
+import {rowActionsText} from '../../../../constants/rowActions.js';
 import TableStatusRow from '../../../../components/TableStatusRow';
 import GlobalNotice from "../../../../components/AppNotice";
 import {keyboardAction} from '../../../../utils/keyboardPolicy.mjs';
@@ -189,7 +190,7 @@ const STYLE_PROCESS_MESSAGES = {
     codeColumn: '코드',
     processColumn: '공정명',
     selectionSummaryLabel: '선택 조합',
-    actionColumn: '작업',
+    actionColumn:rowActionsText.ko,
     empty: '등록된 공정이 없습니다. 상단의 공정 추가로 바로 입력해보세요.',
     total: '개당 시간 합계',
     newRow: '신규',
@@ -279,7 +280,7 @@ const STYLE_PROCESS_MESSAGES = {
     codeColumn: 'Code',
     processColumn: 'Process',
     selectionSummaryLabel: 'Selection',
-    actionColumn: 'Action',
+    actionColumn:rowActionsText.en,
     empty: 'No processes yet. Add one from the panel above.',
     total: 'Per-piece Total',
     newRow: 'New',
@@ -369,7 +370,7 @@ const STYLE_PROCESS_MESSAGES = {
     codeColumn: 'Ma',
     processColumn: 'Ten cong doan',
     selectionSummaryLabel: 'Lua chon',
-    actionColumn: 'Tac vu',
+    actionColumn:rowActionsText.vi,
     empty: 'Chưa có cong doan nao. Hay them o khung ben tren.',
     total: 'Tong thoi gian moi san pham',
     newRow: 'Moi',

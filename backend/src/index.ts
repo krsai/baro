@@ -1,3 +1,4 @@
+import {loadOrderInvoiceCounts} from './services/orderInvoiceList';
 import {loadOrderReceiptSettlement} from './services/orderReceiptSettlement';
 import {retryAssignmentProgress,startAssignmentProgressRetry} from './services/assignmentProgressRetry';
 import {registerLogisticsStatusRoutes} from './services/logisticsStatus';
@@ -28996,6 +28997,7 @@ app.get("/orders", async (req, res) => {
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     include: WORK_ORDER_RESPONSE_INCLUDE,
   });
+  const invoiceCounts=await loadOrderInvoiceCounts(prisma,organization.id,orders);
   const invoiceCoverage = await loadInvoiceBillingCoverage(prisma, orders);
   const receiptSettlement=await loadOrderReceiptSettlement(prisma,orders,invoiceCoverage,organization.id);
   const assignmentLockMap = await loadOrderAssignmentModificationLockMap(orders);
@@ -29046,7 +29048,7 @@ app.get("/orders", async (req, res) => {
         return { ...toOrderResponse(order, {
           isAssignmentModificationLocked: Boolean(assignmentLockMap.get(orderKey)),
           currentOrderValue: currentOrderValueByOrderDbId.get(order.id),
-        }), workflowStatus, productionProgressPercent: production.progressPercent,
+        }),issuedInvoiceCount:invoiceCounts.get(order.id)||0, workflowStatus, productionProgressPercent: production.progressPercent,
           hasProductionRecords: productionOrderIds.has(order.id),
           hasAssignments: assignedOrderIds.has(order.id),
           producedQuantity: production.producedQuantity,

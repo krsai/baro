@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import {rowActionsText} from '../frontend/src/constants/rowActions.js';
 
 const root = process.cwd();
 const messagesPath = path.join(root, 'frontend/src/constants/uiMessages.js');
@@ -8,7 +9,7 @@ let source = fs.readFileSync(messagesPath, 'utf8');
 source = source
   .slice(source.indexOf('export const UI_MESSAGES'), source.indexOf('const resolveMessageNode'))
   .replace('export const UI_MESSAGES', 'UI_MESSAGES');
-const context = {};
+const context = {rowActionsText};
 vm.createContext(context);
 vm.runInContext(source, context);
 

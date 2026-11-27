@@ -1,3 +1,4 @@
+import {orderInvoiceListScope} from '../services/orderInvoiceList';
 import {invoiceReceivedTotals,invoiceEditRevision,invoiceEditLock,updateIssuedInvoice} from '../services/invoiceEdit';
 import { saveInvoiceDraft, deleteInvoiceDraft } from "../services/invoiceDraftStore";
 import { createInvoiceRevisionDraft, issueInvoiceDraft, recordInvoicePayment, replaceInvoicePaymentAllocations, voidInvoicePayment } from "../services/invoiceIssueStore";
@@ -89,6 +90,8 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
   });
   app.get("/invoices/issued", async (req: any, res: any) => {
     const access = await requireAccess(req, res); if (!access) return;
+    const orderId=String(req.query.orderId||'');
+    const orderScope=await orderInvoiceListScope(db,access.organization.id,orderId);
     const page = Number(req.query.page ?? 0);
     if (!Number.isSafeInteger(page) || page < 0 || page > 10000) return res.status(400).json({ error: "invalid page" });
     const search = String(req.query.search ?? '').trim();
@@ -98,6 +101,7 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
     const endExclusive=end?new Date(Date.parse(end+'T00:00:00+07:00')+86400000):undefined;
     if (search.length > 200 || (status && !['ISSUED', 'CANCELLED', 'SUPERSEDED'].includes(status))) return res.status(400).json({ error: 'invalid invoice filter' });
     const rows = await db.invoice.findMany({ where: { sellerOrgId: access.organization.id, status: { not: "DELETED" },
+      ...(orderScope?{orders:{some:{workOrderId:orderScope.id,sourceOrderId:orderScope.orderId}}}:{}),
       ...(start||end?{issuedAt:{...(start?{gte:new Date(start+'T00:00:00+07:00')} :{}),...(endExclusive?{lt:endExclusive}:{})}}:{}),
       ...(status ? { status } : {}),
       ...(search ? { OR: [
@@ -137,7 +141,7 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
       for(const invoice of familyInvoices as any[])invoice.ledgerReceivedAmount=String(cash.find((row:any)=>row.invoiceId===invoice.id)?._sum.amount||'0');
     }
     res.setHeader("Cache-Control", "no-store");
-      return res.json({ rows: visible.map((row: any) => { const familyBalance = invoiceFamilyBalance(familyInvoices, invoiceFamily(row)); return ({ id: row.id,documentKind:row.documentKind||'ORDER', invoiceNumber: row.invoiceNumber,
+      return res.json({orderScope:orderScope?{orderId:orderScope.orderId,orderNumber:orderScope.orderNumber}:null, rows: visible.map((row: any) => { const familyBalance = invoiceFamilyBalance(familyInvoices, invoiceFamily(row)); return ({ id: row.id,documentKind:row.documentKind||'ORDER', invoiceNumber: row.invoiceNumber,
       expectedCollectionDate:(row.snapshot as any)?.fields?.expectedCollectionDate||null, status: row.status, buyerName: (row.snapshot as any)?.fields?.buyer?.name ?? row.buyer.name, currencyCode: row.currencyCode, total: row.currencyCode==='MIX'?null:String(row.total),
       receivableAdded: row.currencyCode==='MIX'?null:String(row.receivableAdded),currencyTotals:(row.snapshot as any)?.currencyTotals,currencyBalances:familyBalance.currencyBalances,
       issuedAt: row.issuedAt, issuedBy: row.issuedBy, issuedByName:actors.find((actor:any)=>actor.id===row.id)?.createdByName||null, orders: row.orders,
