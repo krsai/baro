@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
 const require=createRequire(import.meta.url);
@@ -55,6 +56,36 @@ async function fixture(){
  const request=(overrides={})=>({policyRevision:1,employeeId:worker.id,kind:'OVERTIME',startDate:'2026-10-05',endDate:'2026-10-05',startTime:'17:00',endTime:'19:00',reason:'Actual approved work',clientKey:randomUUID(),...overrides});
  return {...f,db,s,p,org,worker,alien,otherOrg,request};
 }
+
+test('business trips use dates and approval, count attendance once and never consume annual leave',async()=>{
+ const f=await fixture();try{
+  const {db,p,org,worker,request}=f;
+  const before=await workTimeAnnualBalance(db,org,worker.id,'2026');assert.equal(before,12);
+  const input=request({kind:'BUSINESS_TRIP',startDate:'2026-10-05',endDate:'2026-10-06',startTime:null,endTime:null});
+  let trip=await submit(db,org,worker.id,input);
+  assert.equal(trip.requestedMinutes,null);assert.equal(trip.days.length,2);
+  assert.equal((await approvedWorkTime(db,org,'2026-10')).length,0);
+  await decide(db,org,p.senior.id,trip.id,{revision:0,decision:'APPROVED'});
+  trip=await decide(db,org,p.lead.id,trip.id,{revision:1,decision:'APPROVED'});
+  assert.equal(trip.status,'APPROVED');assert.equal(await workTimeAnnualBalance(db,org,worker.id,'2026'),before);
+  const migration=readFileSync('backend/prisma/migrations/20261127010000_leave_request_business_trip/migration.sql','utf8');
+  await f.pg.exec(migration);await f.pg.exec(migration);
+  assert.equal((await read(db,org,worker.id,trip.id)).status,'APPROVED');
+  const approved=await approvedWorkTime(db,org,'2026-10');assert.equal((await loadPayrollLeaves(db,org,'2026-10')).length,0);
+  for(const attendanceEntries of [[],[{workDate:'2026-10-05',workedSeconds:28800}]]){
+   const result=attendance({month:'2026-10',payType:'GENERAL',holidayDateKeys:[],attendanceEntries,approvedWork:approved});
+   assert.equal(result.ACTUAL_WORKDAYS,2);assert.equal(result.PAYABLE_WORKDAYS,2);assert.equal(result.ANNUAL_LEAVE_WORKDAYS,0);
+  }
+  const cancellation=await submit(db,org,worker.id,request({cancelsRequestId:trip.id,reason:'Trip cancelled'}));
+  await decide(db,org,p.senior.id,cancellation.id,{revision:0,decision:'APPROVED'});
+  await decide(db,org,p.lead.id,cancellation.id,{revision:1,decision:'APPROVED'});
+  assert.equal((await approvedWorkTime(db,org,'2026-10')).length,0);
+  const annual=await submit(db,org,worker.id,request({kind:'ANNUAL',startDate:'2026-12-31',endDate:'2027-01-02',startTime:null,endTime:null}));
+  await decide(db,org,p.senior.id,annual.id,{revision:0,decision:'APPROVED'});
+  await decide(db,org,p.lead.id,annual.id,{revision:1,decision:'APPROVED'});
+  for(const year of ['2026','2027'])assert.equal(await workTimeAnnualBalance(db,org,worker.id,year),12-annual.days.filter(d=>d.workDate.startsWith(year)).length);
+ }finally{await f.close();}
+});
 test('ordered approval gates payroll time, supports retrospective requests, immutable decisions and approved cancellation',async()=>{
  const f=await fixture();try{
   const {db,p,org,worker,request}=f;

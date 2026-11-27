@@ -1,4 +1,4 @@
-import {employeeLeaveBalance} from '../employees/employeeLeave';
+import {employeeLeaveBalance,grantEmployeeLeave} from '../employees/employeeLeave';
 import {createHash} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -7,7 +7,7 @@ import {resolveEmployeeEffectivePayType} from '../employees/employeeCompensation
 import {employmentDateKey} from '../employees/salaryTenure';
 import {effectiveApprovalDefault,localApprovalMode} from './approvalDefaults';
 
-export const WORK_TIME_KINDS=['OVERTIME','SPECIAL','ANNUAL','ANNUAL_AM','ANNUAL_PM','PAID','UNPAID'];
+export const WORK_TIME_KINDS=['OVERTIME','SPECIAL','ANNUAL','ANNUAL_AM','ANNUAL_PM','PAID','UNPAID','BUSINESS_TRIP'];
 const roles=['ADMIN','OPERATOR','ACCOUNTANT','WORKER'];
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const key=(orgId:number)=>`WORK_TIME_POLICY:${orgId}`;
@@ -48,8 +48,16 @@ export async function saveWorkTimePolicyInTransaction(tx:any,orgId:number,actorI
 export async function workTimeAnnualBalance(db:any,orgId:number,employeeId:number,year:string){
  return (await employeeLeaveBalance(db,orgId,employeeId,Number(year))).remaining;
 }
+async function checkAnnualBalance(tx:any,orgId:number,employeeId:number,days:any[]){
+ for(const year of new Set<string>(days.map(d=>d.workDate.slice(0,4)))){
+  const balance=await employeeLeaveBalance(tx,orgId,employeeId,Number(year));
+  const legacy=new Set(balance.leaves.filter((d:any)=>d.kind==='ANNUAL'&&d.counted).map((d:any)=>d.leaveDate));
+  const incremental=days.filter(d=>d.workDate.startsWith(year+'-')&&!legacy.has(d.workDate)).reduce((sum,d)=>sum+Number(d.portion),0);
+  if(balance.remaining<incremental)fail('WORK_TIME_LEAVE_BALANCE',409);
+ }
+}
 async function sourceDays(tx:any,orgId:number,employee:any,input:any){
- if(!WORK_TIME_KINDS.includes(input.kind)||!validDate(input.startDate)||!validDate(input.endDate)||input.startDate>input.endDate||input.startDate.slice(0,4)!==input.endDate.slice(0,4)||!reason(input.reason))fail('WORK_TIME_INVALID_INPUT');
+ if(!WORK_TIME_KINDS.includes(input.kind)||!validDate(input.startDate)||!validDate(input.endDate)||input.startDate>input.endDate||Date.parse(input.endDate)-Date.parse(input.startDate)>366*86400000||!reason(input.reason))fail('WORK_TIME_INVALID_INPUT');
  const extra=['OVERTIME','SPECIAL'].includes(input.kind),half=['ANNUAL_AM','ANNUAL_PM'].includes(input.kind);
  let requestedMinutes:number|null=null;
  if(extra){const start=clock(input.startTime),end=clock(input.endTime);if(end!==0&&end<start)fail('WORK_TIME_SPLIT_DAY');requestedMinutes=(end-start+1440)%1440;if(input.startDate!==input.endDate||!Number.isFinite(requestedMinutes)||requestedMinutes<=0||requestedMinutes>1440)fail('WORK_TIME_INVALID_INPUT');}
@@ -71,7 +79,7 @@ async function sourceDays(tx:any,orgId:number,employee:any,input:any){
     if(begin<shiftBegin+shiftLength&&finish>shiftBegin)fail('WORK_TIME_OVERLAPS_SHIFT');
    }
   }
-  else if(!regular)continue;
+  else if(!regular&&input.kind!=='BUSINESS_TRIP')continue;
   days.push({workDate,portion:extra?0:half?0.5:1});
  }
  if(!days.length)fail('WORK_TIME_NO_WORKDAYS');return {days,requestedMinutes,calendarSnapshot:policy};
@@ -101,10 +109,7 @@ export async function submitWorkTimeRequest(db:any,orgId:number,actorId:number,i
   if(config.approverIds.includes(actorId)||config.approverIds.includes(employee.id))fail('WORK_TIME_SELF_APPROVAL');
   const noApprovalRequired=config.approverIds.length===0;
   if(noApprovalRequired&&!input.cancelsRequestId&&source.kind.startsWith('ANNUAL')){
-   const balance=await employeeLeaveBalance(tx,orgId,employee.id,Number(source.startDate.slice(0,4)));
-   const legacy=new Set(balance.leaves.filter((d:any)=>d.kind==='ANNUAL'&&d.counted).map((d:any)=>d.leaveDate));
-   const incremental=source.days.filter((d:any)=>!legacy.has(d.workDate)).reduce((sum:number,d:any)=>sum+Number(d.portion),0);
-   if(balance.remaining<incremental)fail('WORK_TIME_LEAVE_BALANCE',409);
+   await checkAnnualBalance(tx,orgId,employee.id,source.days);
   }
   const row=await tx.workTimeRequest.create({data:{orgId,employeeId:employee.id,drafterId:actorId,kind:source.kind,startDate:source.startDate,endDate:source.endDate,startTime:['OVERTIME','SPECIAL'].includes(source.kind)?source.startTime:null,endTime:['OVERTIME','SPECIAL'].includes(source.kind)?source.endTime:null,requestedMinutes:source.requestedMinutes,reason:source.reason.trim(),...(noApprovalRequired?{status:'APPROVED',approvedMinutes:source.requestedMinutes??null,decidedAt:new Date()}:{}),policy:{...config,...(noApprovalRequired?{noApprovalRequired:true}:{}),drafterRole:actor.orgRole,calendarSnapshot:source.calendarSnapshot||null,requestedDays:source.days},clientKey:input.clientKey,requestHash:hash,cancelsRequestId:input.cancelsRequestId||null}});
   if(source.days.length)await tx.workTimeDay.createMany({data:source.days.map((d:any)=>({...d,orgId,requestId:row.id}))});
@@ -139,10 +144,7 @@ export async function decideWorkTimeRequest(db:any,orgId:number,actorId:number,i
    if(row.requestedMinutes!=null){approvedMinutes=Number(input.approvedMinutes);if(!Number.isInteger(approvedMinutes)||approvedMinutes<=0||approvedMinutes>row.requestedMinutes)fail('WORK_TIME_INVALID_MINUTES');}
    await noOverlap(tx,orgId,row.employeeId,row.kind,row.days,id);
    if(row.kind.startsWith('ANNUAL')){
-    const balance=await employeeLeaveBalance(tx,orgId,row.employeeId,Number(row.startDate.slice(0,4)));
-    const legacy=new Set(balance.leaves.filter((d:any)=>d.kind==='ANNUAL'&&d.counted).map((d:any)=>d.leaveDate));
-    const incremental=row.days.filter((d:any)=>!legacy.has(d.workDate)).reduce((sum:number,d:any)=>sum+Number(d.portion),0);
-    if(balance.remaining<incremental)fail('WORK_TIME_LEAVE_BALANCE',409);
+    await checkAnnualBalance(tx,orgId,row.employeeId,row.days);
    }
   }
   if(final&&input.decision==='APPROVED'&&row.cancelsRequestId){const original=await tx.workTimeRequest.findFirst({where:{id:row.cancelsRequestId,orgId,status:'APPROVED'}});if(!original)fail('WORK_TIME_SOURCE_CHANGED',409);}
@@ -175,6 +177,8 @@ export function registerWorkTimeRoutes(app:any,db:any,gates:any){
  });
  route('get','/balance',async(o:number,a:number,r:any)=>{const actor=await workTimeActor(db,o,a),config=await workTimePolicy(db,o),id=Number(r.query.employeeId),year=String(r.query.year);if(!Number.isSafeInteger(id)||!/^20\d{2}$/.test(year))fail('WORK_TIME_INVALID_INPUT');if(id!==a&&actor.orgRole!=='ADMIN'&&!config.proxyRoles.includes(actor.orgRole))fail('WORK_TIME_ACCESS_DENIED',403);if(!await db.employee.findFirst({where:{id,orgId:o}}))fail('WORK_TIME_NOT_FOUND',404);return {remaining:await workTimeAnnualBalance(db,o,id,year)};});
  route('put','/policy',(o:number,a:number,r:any)=>saveWorkTimePolicy(db,o,a,r.body));
+ route('get','/leave-balance',async(o:number,a:number,r:any)=>{const actor=await workTimeActor(db,o,a);if(actor.orgRole!=='ADMIN')fail('WORK_TIME_ACCESS_DENIED',403);const id=Number(r.query.employeeId),year=Number(r.query.year);if(!Number.isSafeInteger(id)||!Number.isInteger(year)||year<1900||year>2200)fail('WORK_TIME_INVALID_INPUT');return employeeLeaveBalance(db,o,id,year);});
+ route('post','/leave-grants',async(o:number,a:number,r:any)=>{const actor=await workTimeActor(db,o,a);if(actor.orgRole!=='ADMIN')fail('WORK_TIME_ACCESS_DENIED',403);if(!Number.isInteger(r.body?.expectedGranted))fail('WORK_TIME_INVALID_INPUT');return grantEmployeeLeave(db,o,Number(r.body.employeeId),a,r.body);});
  route('post','/requests',(o:number,a:number,r:any)=>submitWorkTimeRequest(db,o,a,r.body));
  route('get','/requests/:id',(o:number,a:number,r:any)=>readWorkTimeRequest(db,o,a,r.params.id));
  route('post','/requests/:id/decision',(o:number,a:number,r:any)=>decideWorkTimeRequest(db,o,a,r.params.id,r.body));

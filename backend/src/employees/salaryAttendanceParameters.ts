@@ -16,7 +16,7 @@ export const resolveSalaryAttendanceParameters=({month,payType:payTypeInput,holi
  for(const day of calendar.days){
   if(employmentStart&&day.dateKey<employmentStart||employmentEnd&&day.dateKey>employmentEnd)continue;
   // A valid attendance day is one normal day. Punch duration never creates extra pay.
-  const present=(worked.get(day.dateKey)||0)>0;
+  const present=(worked.get(day.dateKey)||0)>0||approvedWork.some(row=>row.workDate===day.dateKey&&row.kind==='BUSINESS_TRIP');
   if(day.regular){
    required++;
    const entries=leaves.get(day.dateKey)||[];

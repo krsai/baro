@@ -662,7 +662,7 @@ const buildIntegratedPayrollEmployees = async (
     loadEmployeePayTypePolicies(orgId),
   ]);
   const approvals=await approvedWorkTime(prisma,orgId,month);
-  const leaveEntries=approvals.filter((row:any)=>!['OVERTIME','SPECIAL'].includes(row.kind)).map((row:any)=>({...row,leaveDate:row.workDate}));
+  const leaveEntries=approvals.filter((row:any)=>!['OVERTIME','SPECIAL','BUSINESS_TRIP'].includes(row.kind)).map((row:any)=>({...row,leaveDate:row.workDate}));
   const payTypePolicyByType = employeePayTypePolicyMap(payTypePolicies);
   const holidayDateKeys = new Set(holidays.map((row) => String(row.holidayDate)));
   const attendanceByWorker = new Map<number, any[]>();

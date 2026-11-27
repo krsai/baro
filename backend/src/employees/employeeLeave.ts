@@ -28,7 +28,7 @@ export async function employeeLeaveBalance(db:any,orgId:number,id:number,year:nu
  const leaves=await db.$queryRawUnsafe('SELECT * FROM "EmployeeLeaveDay" WHERE "orgId"=$1 AND "employeeId"=$2 AND "leaveDate">=$3 AND "leaveDate"<=$4 ORDER BY "leaveDate" DESC,"createdAt" DESC',orgId,id,year+'-01-01',year+'-12-31');
  const counted=(entry:any)=>!entry.cancelledAt&&!schedule.holidays.has(entry.leaveDate)&&isPolicyWorkday(entry.leaveDate,schedule.policy);
  const approved=await db.workTimeDay.findMany({where:{orgId,workDate:{startsWith:year+'-'},request:{employeeId:id,status:'APPROVED',cancelsRequestId:null,kind:{in:['ANNUAL','ANNUAL_AM','ANNUAL_PM']}}},select:{portion:true,workDate:true}});
- const granted=grants.reduce((sum:number,entry:any)=>sum+entry.days,0);
+ const granted=grants.length?grants.reduce((sum:number,entry:any)=>sum+entry.days,0):12;
  const usage=new Map<string,number>();for(const day of approved)usage.set(day.workDate,(usage.get(day.workDate)||0)+Number(day.portion));
  for(const entry of leaves)if(entry.kind==='ANNUAL'&&counted(entry))usage.set(entry.leaveDate,Math.max(1,usage.get(entry.leaveDate)||0));
  const used=Array.from(usage.values()).reduce((sum,n)=>sum+Math.min(1,n),0);
@@ -41,7 +41,11 @@ export async function grantEmployeeLeave(db:any,orgId:number,id:number,actorId:n
   const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:'ADMIN'},select:{id:true}});if(!actor)fail('LEAVE_ACCESS_DENIED',403);
   const previous=(await tx.$queryRawUnsafe('SELECT * FROM "EmployeeLeaveGrant" WHERE "orgId"=$1 AND "clientKey"=$2',orgId,input.clientKey))[0];
   if(previous){if(previous.employeeId!==id||previous.year!==input.year||previous.days!==input.days||previous.reason!==input.reason.trim()||previous.createdByEmployeeId!==actorId)fail('LEAVE_RETRY_CONFLICT',409);return employeeLeaveBalance(tx,orgId,id,input.year);}
-  const balance=await employeeLeaveBalance(tx,orgId,id,input.year);if(balance.remaining+input.days<0)fail('LEAVE_INSUFFICIENT_BALANCE',409);
+  const balance=await employeeLeaveBalance(tx,orgId,id,input.year);
+  if(input.expectedGranted!==undefined&&input.expectedGranted!==balance.granted)fail('LEAVE_RETRY_CONFLICT',409);
+  const remainingAfter=!balance.grants.length&&input.expectedGranted===undefined?input.days-balance.used:balance.remaining+input.days;
+  if(remainingAfter<0)fail('LEAVE_INSUFFICIENT_BALANCE',409);
+  if(input.expectedGranted!==undefined&&!balance.grants.length)await tx.$executeRawUnsafe('INSERT INTO "EmployeeLeaveGrant" (id,"orgId","employeeId","year",days,reason,"clientKey","createdByEmployeeId") VALUES($1,$2,$3,$4,$5,$6,$7,$8)',randomUUID(),orgId,id,input.year,12,'Annual Leave Default',`annual-default-${id}-${input.year}`,actorId);
   await tx.$executeRawUnsafe('INSERT INTO "EmployeeLeaveGrant" (id,"orgId","employeeId","year",days,reason,"clientKey","createdByEmployeeId") VALUES($1,$2,$3,$4,$5,$6,$7,$8)',randomUUID(),orgId,id,input.year,input.days,input.reason.trim(),input.clientKey,actorId);
   return employeeLeaveBalance(tx,orgId,id,input.year);
  });
@@ -78,7 +82,7 @@ export async function cancelEmployeeLeave(db:any,orgId:number,id:number,actorId:
  });
 }
 export async function loadPayrollLeaves(db:any,orgId:number,month:string){
- const days=await db.workTimeDay.findMany({where:{orgId,workDate:{gte:month+'-01',lte:month+'-31'},request:{status:'APPROVED',cancelsRequestId:null,kind:{notIn:['OVERTIME','SPECIAL']}}},include:{request:{select:{employeeId:true,kind:true}}}});
+ const days=await db.workTimeDay.findMany({where:{orgId,workDate:{gte:month+'-01',lte:month+'-31'},request:{status:'APPROVED',cancelsRequestId:null,kind:{notIn:['OVERTIME','SPECIAL','BUSINESS_TRIP']}}},include:{request:{select:{employeeId:true,kind:true}}}});
  return days.map((d:any)=>({employeeId:d.request.employeeId,leaveDate:d.workDate,kind:d.request.kind,portion:Number(d.portion)}));
 }
 export async function assertCompanyLeaveBalances(db:any,orgId:number){

@@ -31,6 +31,20 @@ test('annual balance, leave types, duplicate requests, cancellation and immutabl
   db.attendanceEntry.findFirst=async()=>({id:1});await assert.rejects(record(db,1,1,11,{...leave,startDate:'2026-11-10',endDate:'2026-11-10',kind:'PAID',clientKey:'leave-key-0005'}),/LEAVE_ATTENDANCE_CONFLICT/);
  }finally{await pg.close();}
 });
+
+test('employees default to twelve annual days and explicit adjustments are atomic and retry safe',async()=>{
+ const {pg,db}=await fixture();try{
+  assert.equal((await balance(db,1,1,2026)).granted,12);
+  assert.equal((await balance(db,1,10,2027)).remaining,12);
+  const input={year:2026,days:2,expectedGranted:12,reason:'Individual allowance',clientKey:'annual-adjust-0001'};
+  const adjusted=await grant(db,1,1,10,input);
+  assert.equal(adjusted.granted,14);assert.equal(adjusted.grants.length,2);
+  assert.equal((await grant(db,1,1,10,input)).granted,14);
+  await assert.rejects(grant(db,1,1,10,{...input,clientKey:'annual-adjust-0002'}),/LEAVE_RETRY_CONFLICT/);
+  assert.equal((await balance(db,2,20,2026)).granted,12);
+  assert.equal((await balance(db,1,1,2027)).granted,12);
+ }finally{await pg.close();}
+});
 test('company holiday overlap refunds annual days and a failed multi-day registration rolls back',async()=>{
  const {pg,db,query}=await fixture();try{
   await grant(db,1,1,10,{year:2026,days:2,reason:'Grant',clientKey:'grant-key-1001'});
