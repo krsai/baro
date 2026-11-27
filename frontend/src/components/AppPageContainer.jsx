@@ -19,6 +19,7 @@ const AppPageContainer = ({
   keyboardEntry = false,
   // Document workspace/editor exceptions; toolbars always scroll with content.
   stickyHeader = true,
+  stickyFooter = false,
 }) => {
   useKeyboardNavigation();
   const pageNaming = usePageNaming();
@@ -52,7 +53,7 @@ const AppPageContainer = ({
           flexGrow: 1,
           minHeight: '100%',
           px: ui.layout.pagePadding,
-          pb: ui.layout.pagePadding,
+          pb: stickyFooter && footer ? 0 : ui.layout.pagePadding,
           pt: hasHeader ? 0 : ui.layout.pagePadding,
           minWidth: 0,
           ...sx,
@@ -88,7 +89,7 @@ const AppPageContainer = ({
 
         {/* Page Footer (Optional) */}
         {footer && (
-            <Box className="app-page-footer" sx={{ display: 'flex', justifyContent: 'flex-end', gap: ui.layout.actionGap }}>
+            <Box className="app-page-footer" sx={{ display: 'flex', justifyContent: 'flex-end', gap: ui.layout.actionGap, ...(stickyFooter ? {position:'sticky',bottom:0,zIndex:ui.layout.pageHeaderZIndex,bgcolor:'background.default',pt:ui.layout.sectionGap,pb:ui.layout.pagePadding} : {}) }}>
               {footer}
             </Box>
         )}

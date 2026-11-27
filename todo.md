@@ -1,3 +1,5 @@
+- 운송장 거부 하단 고정: 구현·한영베 PC/모바일 6조합·프런트 빌드·UI/번역/인코딩 통과 / 운영 배포·인수 미확인. 본문 직후의 거부 버튼을 AppPageContainer의 footer/stickyFooter로 옮겨 현재 스크롤 영역 하단에 전체 너비로 고정했다. 본문 마지막 입력칸 가림·좌우 넘침이 없고 기존 확인창/미저장 잠금/실제 서버 거부 정책를 유지한다. 화면 검사: node scripts/shipping-work-layout-browser.test.mjs --reject-footer-only.
+
 - 운송장 정보 배치·구간 날짜 경과 표시: 구현·프런트 빌드·UI/번역/인코딩·구간 4검사·한영베 PC/모바일 6조합 통과 / 운영 배포·실계정 인수 미확인. 고객 오른쪽에 SR 일자, 그 아래 담당자 선택을 배치했다. 구간 숫자칸은 현재 입력값(표시된 ETD/ETA 대체값 포함)이 현지 오늘보다 이전이면 primary 색으로 채우며 오늘/미래/빈 날짜는 기본색이다. 저장 전 수정·되돌림·자정 경과에도 갱신하고 실제 운송 상태/승인/원문/자동 저장은 변경하지 않는다. 화면 검사: node scripts/shipping-work-layout-browser.test.mjs --route-colors-only.
 
 - 운송장 명칭·B/L 생성 흐름: 구현·관련 서버/DB/명칭 22검사·한영베 PC/모바일 6조합·양쪽 빌드·UI/번역/인코딩 통과 / 운영 배포·실계정 인수 미확인. 접수 후 기본 화면/제목/탭/이동은 운송장으로 통일했다. 상단 mBL에서 One Master(실제 당사자) / Master + House(Master는 포워더 회사 정보, House는 실제 당사자)를 선택하며 Master 저장 성공 후 House 입력을 연다. hBL부터 시작하면 기존 Master 검색/연결 또는 새 Master 등록을 선택한다. B/L 입력은 문서형 배치이며 기존 B/L/SR/회사/실제 FK/발행 snapshot/AR/AP를 보존한다. 저장된 B/L은 서류 목록에서 열며 새 생성 선택으로 기존 구성을 강제하지 않는다. 새 migration/운영 자료 보정 없음. 전용 검사: test:shipping-bl-creation.

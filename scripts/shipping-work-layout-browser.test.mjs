@@ -22,7 +22,7 @@ try{
   if(process.argv.includes('--preview-only')&&(lang!=='ko'||width!==1440||mode!=='FCL'))continue;
   if(process.argv.includes('--date-sync-only')&&(lang!=='ko'||width!==1440||mode!=='FCL'))continue;
   if(process.argv.includes('--scope-only')&&(lang!=='ko'||width!==1440||mode!=='LCL'))continue;
-  if(process.argv.includes('--route-colors-only')&&mode!=='FCL')continue;
+  if((process.argv.includes('--route-colors-only')||process.argv.includes('--reject-footer-only'))&&mode!=='FCL')continue;
   const page=await browser.newPage({viewport:{width,height:1050},timezoneId:'Asia/Ho_Chi_Minh'}),errors=[],writes=[],billWrites=[],chargeWrites=[],t=shippingOperationText[lang],b=shippingBillText[lang],w=shippingWorkbenchText[lang];
   if(process.argv.includes('--route-colors-only'))await page.clock.install({time:new Date('2026-11-27T05:00:00Z')});
   page.setDefaultTimeout(15000);page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});page.on('dialog',d=>d.dismiss());
@@ -47,6 +47,7 @@ try{
    else if(key==='job1/charges')json={rows:charges,currencies:[{code:'USD'}],parties:[customer]};else json=[];return route.fulfill({headers,json});});
   await page.goto(`http://127.0.0.1:${port}/shipping-work-layout-test.html?theme=${width===390?'standard':'compact'}`);
   const form=page.getByTestId('shipping-operations-form');await form.waitFor();
+  if(process.argv.includes('--reject-footer-only'))await page.addStyleTag({content:'#root{height:100vh;overflow:auto;}'});
   if(process.argv.includes('--route-colors-only')){
    const sourceBefore=structuredClone(job.data),summary=form.locator('[data-shipping-work-summary] > div'),assignee=await form.locator('[data-shipping-work-assignee]').boundingBox();
    const customer=await summary.nth(0).boundingBox(),sr=await summary.nth(1).boundingBox();assert.ok(Math.abs(customer.y-sr.y)<1);assert.ok(sr.x>=customer.x+customer.width);assert.ok(assignee.y>=Math.max(customer.y+customer.height,sr.y+sr.height));
@@ -60,7 +61,14 @@ try{
    assert.equal(writes.length,0);assert.deepEqual(job.data,sourceBefore);assert.deepEqual(errors,[]);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
    if(lang==='ko'&&width===1440)await page.screenshot({path:'logs/shipping-summary-route-colors-preview.png',fullPage:true});console.log('PASS customer/SR row, assignee below, live date colors, ETD fallback and midnight rollover',lang,width);await page.close();continue;
   }
-  const reject=page.locator('[data-shipping-reject]'),rejectBox=await reject.boundingBox(),formBox=await form.boundingBox();assert.ok(rejectBox.y>=formBox.y+formBox.height-1);assert.ok(rejectBox.width>=formBox.width-1);let rejectedRequests=0;page.on('request',req=>{if(req.method()==='POST'&&new URL(req.url()).pathname.endsWith('/shipping-requests/job1'))rejectedRequests++;});const confirmation=page.waitForEvent('dialog');await reject.click();assert.ok((await confirmation).message().includes(job.number));assert.equal(rejectedRequests,0);
+  const reject=page.locator('[data-shipping-reject]'),rejectBox=await reject.boundingBox(),formBox=await form.boundingBox();assert.equal(await page.locator('.app-page-footer [data-shipping-reject]').count(),1);assert.equal(await page.locator('.app-page-footer').evaluate(node=>getComputedStyle(node).position),'sticky');assert.ok(rejectBox.width>=formBox.width-1);let rejectedRequests=0;page.on('request',req=>{if(req.method()==='POST'&&new URL(req.url()).pathname.endsWith('/shipping-requests/job1'))rejectedRequests++;});const confirmation=page.waitForEvent('dialog');await reject.click();assert.ok((await confirmation).message().includes(job.number));assert.equal(rejectedRequests,0);
+  if(process.argv.includes('--reject-footer-only')){
+   const footer=page.locator('.app-page-footer'),top=await footer.boundingBox();assert.ok(Math.abs(top.y+top.height-1050)<2,JSON.stringify(top));
+   await page.locator('#root').evaluate(node=>{node.scrollTop=node.scrollHeight;});const bottom=await footer.boundingBox();assert.ok(Math.abs(bottom.y+bottom.height-1050)<2,JSON.stringify(bottom));
+   const content=await form.boundingBox();assert.ok(content.y+content.height<=bottom.y+1,JSON.stringify({content,bottom}));
+   await form.locator('[name=cargo]').fill('Unsaved Cargo');assert.equal(await reject.isDisabled(),true);assert.equal(writes.length,0);assert.equal(rejectedRequests,0);assert.deepEqual(errors,[]);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+   if(lang==='ko'&&width===1440)await page.screenshot({path:'logs/shipping-reject-footer-preview.png',fullPage:true});console.log('PASS pinned rejection footer, visible final inputs, confirmation and dirty guard',lang,width);await page.close();continue;
+  }
   if(mode==='FCL')for(const hint of ['CARGO READY','ETD/ATD','ETA/ATA','DELIVERY'])assert.ok(await form.locator('[data-shipping-work-route]').innerText().then(text=>text.includes(hint)));
   if(process.argv.includes('--date-sync-only')){
    for(const [node,key,day] of [['ORIGIN_TERMINAL','etd','15'],['DESTINATION_TERMINAL','eta','16']]){
