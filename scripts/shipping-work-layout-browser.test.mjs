@@ -19,7 +19,7 @@ try{
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const lang of ['ko','en','vi'])for(const width of [1440,390])for(const mode of ['FCL','LCL','AIR','EXPRESS']){
   if(process.argv.includes('--inline-smoke')&&(lang!=='ko'||width!==1440))continue;
-  if((process.argv.includes('--info-layout-only')||process.argv.includes('--numeric-only')||process.argv.includes('--close-ui-only')||process.argv.includes('--empty-bl-only')||process.argv.includes('--inline-bl-only'))&&mode!=='FCL')continue;
+  if((process.argv.includes('--info-layout-only')||process.argv.includes('--numeric-only')||process.argv.includes('--close-ui-only')||process.argv.includes('--empty-bl-only')||process.argv.includes('--inline-bl-only')||process.argv.includes('--multi-bl-only'))&&mode!=='FCL')continue;
   if(process.argv.includes('--shared-sr-only')&&mode!=='FCL')continue;
   if(process.argv.includes('--customer-only')&&mode!=='FCL')continue;
   if(process.argv.includes('--volume-formula-only')&&mode!=='EXPRESS')continue;
@@ -37,6 +37,7 @@ try{
   await page.route('**/text-acronyms',r=>r.fulfill({json:{revision:0,entries:[{acronym:'MBL'},{acronym:'HBL'},{acronym:'AR'},{acronym:'AP'}]}}));
   const customer={id:11,name:'CUSTOMER'},job={id:'job1',number:'JOB-000001',createdAt:'2026-11-25T04:00:00Z',orgId:7,mode:['FCL','LCL'].includes(mode)?'SEA':'AIR',service:mode==='EXPRESS'?'EXPRESS':'GENERAL',receiptStatus:'ACCEPTED',status:'DRAFT',version:1,bills:[],documents:[],data:{customer,shipmentType:mode,shipper:'SENDER\nSender Address',consignee:'BUYER\nBuyer Address',notify:'NOTIFY',origin:'Origin Address',destination:'Destination Address',originPortCode:'VNHPH',destinationPortCode:'KRINC',cargo:'Garment',marks:'PRESERVE MARKS',placeOfReceipt:'PRESERVE RECEIPT',placeOfDelivery:'PRESERVE DELIVERY',incoterms:'CIF',freightTerms:'Prepaid',quantity:'99',cbm:'88',weightKg:'120',unit:'PKG',containers:mode==='FCL'?[{size:'20',type:'DC',count:'1'}]:[],packages:mode==='FCL'?[]:[{quantity:'3',lengthM:'0.1',widthM:'0.2',heightM:'0.3'}]}},original=structuredClone(job.data);
   if(process.argv.includes('--shared-sr-only')){job.customerId=11;job.requestCreatedByOrgId=7;job.requestSnapshot={mode:job.mode,status:'DRAFT',data:structuredClone(job.data)};}
+  if(process.argv.includes('--multi-bl-only'))job.bills=[['m-a','MASTER','M-A',null],['m-b','MASTER','M-B',null],['h-a','HOUSE','H-A','m-a'],['h-b','HOUSE','H-B','m-b']].map(([id,kind,number,masterId])=>({id,orgId:7,jobId:job.id,kind,number,masterId,version:1,data:{shipper:number+' Shipper',consignee:'Consignee',cargo:number+' Cargo',weightKg:'100',quantity:'1',cbm:'1',releaseType:'ORIGINAL',surrenderStatus:'NONE'}}));
   if(mode==='FCL')job.data.workScope={start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'};
   if(mode==='LCL')job.data.workScope={start:'ORIGIN_TERMINAL',end:'DESTINATION_TERMINAL'};
   if(mode==='AIR')job.data.workScope={start:'ORIGIN_DOOR',end:'DESTINATION_TERMINAL'};
@@ -70,6 +71,15 @@ try{
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert.deepEqual(errors,[]);await dialog.getByRole('button',{name:t.close,exact:true}).click();console.log('PASS current SR shared cargo/containers edit and save',lang,width);await page.close();continue;
   }
   const form=page.getByTestId('shipping-operations-form');await form.waitFor({timeout:60000});
+  if(process.argv.includes('--multi-bl-only')){
+   const flow=billWorkflowText[lang];
+   for(const [kind,first,second] of [['MASTER','M-A','M-B'],['HOUSE','H-A','H-B']]){
+    await page.locator('[data-bl-tab='+kind+'] button').first().click();await page.getByRole('button',{name:first,exact:true}).click();const editor=page.locator('[data-shipping-bills]');await editor.waitFor();assert.equal(await page.getByRole('dialog').count(),0);const picker=editor.locator('[data-bl-document-picker] [role=combobox]');await picker.click();const options=page.getByRole('option');assert.equal(await options.count(),2);await options.filter({hasText:second}).click();assert.equal(await editor.locator('[name=billNumber]').inputValue(),second);assert.equal(await editor.locator('[name=cargo]').inputValue(),second+' Cargo');
+    await editor.locator('[name=cargo]').fill('Unsaved Change');await picker.click();await page.getByRole('option').filter({hasText:first}).click();assert.equal(await editor.locator('[name=billNumber]').inputValue(),second);assert.equal(await editor.locator('[name=cargo]').inputValue(),'Unsaved Change');
+    page.removeAllListeners('dialog');page.once('dialog',d=>d.accept());await picker.click();await page.getByRole('option').filter({hasText:first}).click();assert.equal(await editor.locator('[name=billNumber]').inputValue(),first);assert.equal(await editor.locator('[name=cargo]').inputValue(),first+' Cargo');page.on('dialog',d=>d.dismiss());await page.getByRole('button',{name:t.detail,exact:true}).click();await editor.waitFor({state:'hidden'});
+   }
+   assert.equal(writes.length,0);assert.equal(billWrites.length,0);assert.deepEqual(errors,[]);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));console.log('PASS multi Master/House selection with same-kind options and discard guards',lang,width);await page.close();continue;
+  }
   if(process.argv.includes('--inline-bl-only')){
    const flow=billWorkflowText[lang],labels=shippingWorkbenchText[lang];await page.evaluate(()=>{window.printed=[];window.open=()=>({opener:null,document:{write(html){window.printed.push(html);},close(){}},focus(){},print(){},close(){}});});
    await form.locator('[name=cargo]').fill('Waybill Draft');await page.getByRole('button',{name:flow.addMaster,exact:true}).click();await page.getByRole('button',{name:flow.direct,exact:true}).click();
