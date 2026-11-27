@@ -34,6 +34,21 @@ try{
   await page.goto(`http://127.0.0.1:${port}/bill-workflow-test.html?lang=${lang}&theme=${theme}`,{waitUntil:'domcontentloaded',timeout:60000});
   await page.locator('[data-bl-tab=MASTER]').waitFor();
   for(const kind of ['MASTER','HOUSE']){const tab=page.locator('[data-bl-tab='+kind+']');assert.equal(await tab.locator('button').count(),2);assert.equal(await tab.locator('button button').count(),0);const bounds=await tab.boundingBox();for(const button of await tab.locator('button').all()){const b=await button.boundingBox();assert.ok(b.x>=bounds.x&&b.x+b.width<=bounds.x+bounds.width+1);assert.ok(Math.abs(b.y-(bounds.y+1))<=1,JSON.stringify({bounds,b}));assert.ok(Math.abs(b.height-(bounds.height-2))<=1,JSON.stringify({bounds,b}));if(await button.locator("svg").count()){const icon=await button.locator("svg").boundingBox();assert.ok(Math.abs(icon.y+icon.height/2-b.y-b.height/2)<=1);}}}
+  for(const kind of ['MASTER','HOUSE']){
+   const tab=page.locator('[data-bl-tab='+kind+']'),title=tab.locator('button').first(),add=tab.locator('button').last();
+   for(const selected of [false,true]){
+    if(selected)await title.click();await add.hover();
+    const bounds=await tab.boundingBox(),b=await add.boundingBox();assert.ok(Math.abs(b.y-bounds.y-1)<1);assert.ok(Math.abs(b.height-bounds.height+2)<1,JSON.stringify({bounds,b}));
+    const colors=await add.evaluate(n=>({color:getComputedStyle(n.querySelector('svg')).color,background:getComputedStyle(n).backgroundColor}));
+    const luminance=value=>{const channels=value.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;});return channels[0]*.2126+channels[1]*.7152+channels[2]*.0722;};
+    const a=luminance(colors.color),c=luminance(colors.background);assert.ok((Math.max(a,c)+.05)/(Math.min(a,c)+.05)>=3,JSON.stringify(colors));
+    if(selected)await title.click();
+   }
+  }
+  for(const kind of ['MASTER','HOUSE']){
+   const tab=page.locator('[data-bl-tab='+kind+']'),title=tab.locator('button').first(),add=tab.locator('button').last();await title.focus();await title.press('Enter');assert.equal(await title.getAttribute('aria-expanded'),'true');await title.press('Enter');assert.equal(await title.getAttribute('aria-expanded'),'false');
+   if(width===390)await add.tap();else{await add.focus();await add.press('Enter');}await page.getByRole('dialog').waitFor();assert.equal(await title.getAttribute('aria-expanded'),'false');await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
+  }
   if(process.argv.includes('--tabs-only')){console.log('PASS BL split tabs '+lang+' '+theme+' '+width);await page.close();continue;}
   await page.getByRole('button',{name:'Master BL (2)',exact:true}).click();
   if(process.argv.includes('--shared-containers-only')){await page.getByRole('button',{name:'M-1',exact:true}).click();const dialog=page.getByRole('dialog');const container=dialog.locator('[data-bl-region=containers] [data-container-row]');await container.waitFor();const count=container.locator('input').first();assert.equal(await count.inputValue(),'1');await count.fill('3');await dialog.getByRole('button',{name:bt.save,exact:true}).click();await page.waitForTimeout(300);assert.equal(saves.length,1);assert.deepEqual(saves[0].data.containers,[{size:'20',type:'DC',count:'3'}]);assert.deepEqual(errors,[]);console.log('PASS BL shared container edit',lang,theme,width);await page.close();continue;}

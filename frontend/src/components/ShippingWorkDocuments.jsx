@@ -1,3 +1,4 @@
+import SplitActionTab from './SplitActionTab';
 import AddActionButton from './AddActionButton';
 import {RecordOpenButton} from './RecordInteraction';
 import {billWorkflowText} from '../constants/billWorkflow';
@@ -47,7 +48,7 @@ export default function ShippingWorkDocuments({job,orgId,languageCode,forwarder,
  return <Stack spacing={1.5} data-shipping-work-documents>
   {toolbar&&<Box data-shipping-work-actions sx={{display:'grid',gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',sm:`repeat(${hasBills?5:3},minmax(0,1fr))`},gap:1}}>
    <Button type="button" variant={!panel?'contained':'outlined'} disabled={blocked} aria-current={!panel?'page':undefined} onClick={returnDetail}>{t.detail}</Button>
-   {hasBills&&['MASTER','HOUSE'].map(kind=><Box key={kind} data-bl-tab={kind} sx={{display:'flex',alignItems:'stretch',minWidth:0,minHeight:'var(--ui-control-height)',border:1,borderColor:panel===kind?'primary.main':'divider',borderRadius:1,overflow:'hidden',bgcolor:panel===kind?'primary.main':'transparent',color:panel===kind?'primary.contrastText':'primary.main'}}><Button type="button" fullWidth variant="text" sx={{minWidth:0,height:'auto',minHeight:0,borderRadius:0,color:'inherit','@media (pointer: coarse)':{minHeight:38}}} disabled={blocked} aria-expanded={panel===kind} aria-controls={`shipping-${job.id}-${kind}`} onClick={()=>setPanel(old=>old===kind?null:kind)}>{job.mode==='AIR'?(kind==='MASTER'?'MAWB':'HAWB'):(kind==='MASTER'?flow.master:flow.house)} ({kind==='MASTER'?masters.length:houses.length})</Button>{canEdit&&<AddActionButton disabled={blocked} title={kind==='MASTER'?flow.addMaster:flow.addHouse} sx={{flexShrink:0,width:40,height:'auto',minHeight:0,alignSelf:'stretch',borderRadius:0,borderLeft:1,borderColor:'divider',color:'inherit','@media (pointer: coarse)':{minHeight:38},'&:hover':{bgcolor:panel===kind?'rgba(255,255,255,0.12)':'action.hover',color:'inherit'}}} onClick={()=>setCreating(kind)}/>}</Box>)}
+   {hasBills&&['MASTER','HOUSE'].map(kind=><SplitActionTab key={kind} data-bl-tab={kind} selected={panel===kind} disabled={blocked} controls={`shipping-${job.id}-${kind}`} onClick={()=>setPanel(old=>old===kind?null:kind)} addLabel={kind==='MASTER'?flow.addMaster:flow.addHouse} onAdd={canEdit?()=>setCreating(kind):undefined}>{job.mode==='AIR'?(kind==='MASTER'?'MAWB':'HAWB'):(kind==='MASTER'?flow.master:flow.house)} ({kind==='MASTER'?masters.length:houses.length})</SplitActionTab>)}
 
    {actions}
   </Box>}
