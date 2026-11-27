@@ -8,6 +8,7 @@ import { invoiceMessages } from '../frontend/src/constants/invoiceMessages.js';
 import { getOrderWorkflowLabel,ORDER_WORKFLOW_KEYS } from '../frontend/src/constants/orderWorkflow.mjs';
 import {orderWorkflowInformation} from '../frontend/src/constants/orderWorkflowInformation.mjs';
 import {rowActionsText,orderInvoiceNavigationText} from '../frontend/src/constants/rowActions.js';
+import {orderShipmentText} from '../frontend/src/constants/orderShipments.js';
 
 const filename = 'order-target-menu-test.html';
 const fixture = 'frontend/' + filename;
@@ -84,7 +85,7 @@ async function configurePage(page, language, orgType, orgRole) {
     if (url.pathname === '/orders') {
       const workflowStatus = (saved.INVOICE.excluded || saved.receiptClosed) ? 'COMPLETED' : 'RECEIVED';
       orderReads.push(workflowStatus);orderQueries.push(Object.fromEntries(url.searchParams));
-      return route.fulfill({ headers, json: [{ id: 'order-001', dbId: 17, orderNumber: 'ORDER-001', sellerOrgId:1,issuedInvoiceCount:1,items: [], workflowStatus },{id:'empty-order',dbId:18,orderNumber:'EMPTY-ORDER',sellerOrgId:1,issuedInvoiceCount:0,items:[],workflowStatus:'RECEIVED'}].filter(row=>url.searchParams.get('excludeClosed')!=='true'||row.workflowStatus!=='COMPLETED') });
+      return route.fulfill({ headers, json: [{ id: 'order-001', dbId: 17, orderNumber: 'ORDER-001', sellerOrgId:1,shippingManagementExcluded:false,issuedInvoiceCount:1,items: [], workflowStatus },{id:'empty-order',dbId:18,orderNumber:'EMPTY-ORDER',sellerOrgId:1,shippingManagementExcluded:true,issuedInvoiceCount:0,items:[],workflowStatus:'RECEIVED'}].filter(row=>url.searchParams.get('excludeClosed')!=='true'||row.workflowStatus!=='COMPLETED') });
     }
     if (url.pathname === '/invoices/issued') {invoiceReads.push(Object.fromEntries(url.searchParams));return route.fulfill({ headers, json: { rows: [{id:'scope-invoice',invoiceNumber:'INV-SCOPED',status:'ISSUED',buyerName:'Frozen Buyer',buyerDisplayNames:{name:'BUYER EN',nameKo:'BUYER KO',nameVi:'BUYER VI'},currencyCode:'USD',total:'30',receivedAmount:'0',familyBalanceAmount:'30',familyBalanceKind:'DUE',issuedAt:'2020-01-02',orders:[{sourceOrderNumber:'26AW2'}],accountingCodes:['CMTE','PBGE'],descriptions:['TKD Crew Tee','Other'],itemSummary:{firstDescription:'TKD Crew Tee',additionalCount:2,quantities:[{unit:'GARMENT',quantity:'600.0000'}]}}], hasMore: false,orderScope:url.searchParams.has('orderId')?{orderId:url.searchParams.get('orderId'),orderNumber:'ORDER-001'}:null } });}
     if (url.pathname === '/orders/shipments') {
@@ -130,6 +131,15 @@ try {
     await filter('ALL');
     assert.equal(await page.getByRole('columnheader',{name:rowActionsText[language],exact:true}).count(),1);
     assert.equal(await page.getByRole('row',{name:/EMPTY-ORDER/}).getByRole('button',{name:orderInvoiceNavigationText[language].view,exact:true}).isDisabled(),true);
+    const shippingText=orderShipmentText[language];
+    const excludedShipping=page.getByRole('row',{name:/EMPTY-ORDER/}).getByRole('button',{name:shippingText.title,exact:true});
+    assert.equal(await excludedShipping.isDisabled(),true);
+    assert.equal(await excludedShipping.textContent(),'📦');
+    await excludedShipping.locator('..').hover();await page.getByRole('tooltip',{name:shippingText.excluded,exact:true}).waitFor();
+    const invoiceButton=page.getByRole('row',{name:/ORDER-001/}).getByRole('button',{name:orderInvoiceNavigationText[language].view,exact:true});
+    assert.equal(await invoiceButton.textContent(),'🧾');await invoiceButton.hover();await page.getByRole('tooltip',{name:orderInvoiceNavigationText[language].view,exact:true}).waitFor();
+    const activeShipping=page.getByRole('row',{name:/ORDER-001/}).getByRole('button',{name:shippingText.title,exact:true});
+    assert.equal(await activeShipping.isEnabled(),true);await activeShipping.hover();await page.getByRole('tooltip',{name:shippingText.title,exact:true}).waitFor();
     const tableTone=await orderStatus('RECEIVED').evaluate(el=>getComputedStyle(el.closest('.MuiChip-root')).backgroundColor);
     const information=page.getByRole('button',{name:new RegExp('^'+orderWorkflowInformation[language].title+' ·')});
     await information.focus();await page.keyboard.press('Enter');

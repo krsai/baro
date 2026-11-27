@@ -28998,6 +28998,7 @@ app.get("/orders", async (req, res) => {
     req.query.excludeClosed==='true',
   );
   const invoiceCounts=await loadOrderInvoiceCounts(prisma,organization.id,orders);
+  const shippingExcludedIds=new Set((orders.length?await prisma.$queryRawUnsafe<Array<{workOrderId:number}>>('SELECT "workOrderId" FROM "OrderShippingPolicy" WHERE "orgId"=$1 AND excluded=true AND "workOrderId"=ANY($2::int[])',organization.id,orders.map(order=>order.id)):[]).map(row=>row.workOrderId));
   const assignmentLockMap = await loadOrderAssignmentModificationLockMap(orders);
   const currentOrderValueByOrderDbId = await loadCurrentOrderValueByOrderDbId(orders);
   // Match DELETE's history guard across both direct and card links, regardless
@@ -29046,7 +29047,7 @@ app.get("/orders", async (req, res) => {
         return { ...toOrderResponse(order, {
           isAssignmentModificationLocked: Boolean(assignmentLockMap.get(orderKey)),
           currentOrderValue: currentOrderValueByOrderDbId.get(order.id),
-        }),issuedInvoiceCount:invoiceCounts.get(order.id)||0, workflowStatus, productionProgressPercent: production.progressPercent,
+        }),issuedInvoiceCount:invoiceCounts.get(order.id)||0, shippingManagementExcluded:shippingExcludedIds.has(order.id), workflowStatus, productionProgressPercent: production.progressPercent,
           hasProductionRecords: productionOrderIds.has(order.id),
           hasAssignments: assignedOrderIds.has(order.id),
           producedQuantity: production.producedQuantity,

@@ -3231,10 +3231,10 @@ const OrderList = () => {
                           </Typography>
                         </TableCell>
                         <TableCell data-table-actions sx={{ textAlign: 'center',whiteSpace:'nowrap' }}>
-                          {authState.activeOrgType==='MANUFACTURER'&&['ADMIN','OPERATOR','ACCOUNTANT'].includes(activeProfile?.orgRole)&&Number(order.sellerOrgId)===Number(activeOrgId)&&<Button size="small" onClick={event=>{event.stopPropagation();navigateToPath('/order/'+order.dbId+'/shipments');}}>{(orderShipmentText[languageCode]||orderShipmentText.en).title}</Button>}
-                          <Button size="small" disabled={!order.issuedInvoiceCount||!canAccessPath('/invoices',authState)} onClick={event=>{event.stopPropagation();navigateToPath('/invoices?orderId='+encodeURIComponent(order.id));}}>
-                            {(orderInvoiceNavigationText[languageCode]||orderInvoiceNavigationText.en).view}
-                          </Button>
+                          {authState.activeOrgType==='MANUFACTURER'&&['ADMIN','OPERATOR','ACCOUNTANT'].includes(activeProfile?.orgRole)&&Number(order.sellerOrgId)===Number(activeOrgId)&&<Tooltip title={order.shippingManagementExcluded?(orderShipmentText[languageCode]||orderShipmentText.en).excluded:(orderShipmentText[languageCode]||orderShipmentText.en).title}><span><IconButton size="small" aria-label={(orderShipmentText[languageCode]||orderShipmentText.en).title} disabled={order.shippingManagementExcluded===true} onClick={event=>{event.stopPropagation();navigateToPath('/order/'+order.dbId+'/shipments');}}><span aria-hidden="true">📦</span></IconButton></span></Tooltip>}
+                          <Tooltip title={(orderInvoiceNavigationText[languageCode]||orderInvoiceNavigationText.en).view}><span><IconButton size="small" aria-label={(orderInvoiceNavigationText[languageCode]||orderInvoiceNavigationText.en).view} disabled={!order.issuedInvoiceCount||!canAccessPath('/invoices',authState)} onClick={event=>{event.stopPropagation();navigateToPath('/invoices?orderId='+encodeURIComponent(order.id));}}>
+                            <span aria-hidden="true">🧾</span>
+                          </IconButton></span></Tooltip>
                           <DeleteActionButton
                             disabled={!deletable}
                             title={deletable ? orderPageText.deleteOrder : deleteDisabledReason}
