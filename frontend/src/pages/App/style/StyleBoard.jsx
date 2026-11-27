@@ -7,6 +7,7 @@ import AppNotice from '../../../components/AppNotice';
 import SearchPanel from '../../../components/SearchPanel';
 import StyleProductPicker from './StyleProductPicker';
 import DeleteActionButton from '../../../components/DeleteActionButton';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import { waitForAtSyncJob } from '../../../utils/atSyncJob.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
@@ -685,7 +686,7 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
                 {canViewProcessSummary ? (
                   <TableCell sx={{ width: 160 }}>{formatTimeReferenceColumnLabel('AT')}</TableCell>
                 ) : null}
-                <TableCell align="center" sx={{ width: 190 }}>
+                <TableCell align="center" sx={{ width: isBrand ? 64 : 96 }}>
                   {getUiMessage('styleBoard.action', '작업', languageCode)}
                 </TableCell>
               </TableRow>
@@ -764,9 +765,11 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
                     ) : null}
                     <TableCell align="center" onDoubleClick={event => event.stopPropagation()}>
                       <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, whiteSpace: 'nowrap'}}>
-                      <Button variant="outlined" size="small" onClick={event => { event.stopPropagation(); setHistoryStyle(style); }}>
-                        {getUiMessage('styleBoard.orderHistory', '주문 내역', languageCode)}
-                      </Button>
+                      <Tooltip title={getUiMessage('styleBoard.orderHistory', '주문 내역', languageCode)}>
+                        <IconButton size="small" color="primary" aria-label={getUiMessage('styleBoard.orderHistory', '주문 내역', languageCode)} onClick={event => { event.stopPropagation(); setHistoryStyle(style); }}>
+                          <ReceiptLongOutlinedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                       {!isBrand && <Tooltip title={deleteTooltipTitle}>
                         <span
                           onClick={(event) => event.stopPropagation()}
