@@ -30,6 +30,9 @@ try{
    const body=r.request().postDataJSON();saves.push(body);const previous=job.bills.find(row=>row.id===body.id);const row={...body,number:body.kind==='HOUSE'&&!body.number?'DEXL2611'+String(++autoNumber).padStart(3,'0'):body.number,jobId:'job',version:(previous?.version||0)+1,houseNumberManaged:body.kind==='HOUSE'};job.bills=job.bills.filter(b=>b.id!==row.id).concat(row);return r.fulfill({json:row});
   });
   await page.goto(`http://127.0.0.1:${port}/bill-workflow-test.html?lang=${lang}&theme=${theme}`,{waitUntil:'domcontentloaded',timeout:60000});
+  await page.locator('[data-bl-tab=MASTER]').waitFor();
+  for(const kind of ['MASTER','HOUSE']){const tab=page.locator('[data-bl-tab='+kind+']');assert.equal(await tab.locator('button').count(),2);assert.equal(await tab.locator('button button').count(),0);const bounds=await tab.boundingBox();for(const button of await tab.locator('button').all()){const b=await button.boundingBox();assert.ok(b.x>=bounds.x&&b.x+b.width<=bounds.x+bounds.width+1);}}
+  if(process.argv.includes('--tabs-only')){console.log('PASS BL split tabs '+lang+' '+theme+' '+width);await page.close();continue;}
   await page.getByRole('button',{name:'Master BL (2)',exact:true}).click();
   await page.getByRole('button',{name:'M-1',exact:true}).waitFor();await page.getByRole('button',{name:'H-1',exact:true}).waitFor();assert.equal(saves.length,0);
   await page.getByRole('button',{name:t.addMaster,exact:true}).click();await page.getByRole('button',{name:t.direct,exact:true}).click();
