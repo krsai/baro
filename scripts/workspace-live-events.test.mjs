@@ -39,6 +39,23 @@ test('successful company writes publish metadata using resolved employee company
  await service.close();
 });
 
+test('posted bank changes and invoice writes invalidate order closure, but pending or unrelated approvals do not',async()=>{
+ const writes=[],db={employee:{findFirst:async()=>({orgId:7})},$queryRawUnsafe:async(...args)=>writes.push(args)},service=createWorkspaceEvents(db,{});
+ try{
+  for(const [path,body,expected] of [
+   ['/bank-ledger/entry-1/settlements',{ok:true},true],
+   ['/change-approval-requests/request-1/decisions',{menu:'BANK_LEDGER',status:'APPROVED'},true],
+   ['/change-approval-requests',{menu:'BANK_LEDGER',status:'PENDING'},false],
+   ['/change-approval-requests/request-1/decisions',{menu:'EXPENSE',status:'APPROVED'},false],
+   ['/invoices/issued/invoice-1',{id:'invoice-1'},true],
+  ]){
+   const req={method:'POST',path,get:()=>''},res=response();
+   await runWithRequestActor('test@example.test',async()=>{setCurrentRequestActorEmployeeId(3);service.middleware(req,res,()=>{});res.json(body);await settle();});
+   assert.equal(JSON.parse(writes.at(-1)[2]).topics.includes('orders'),expected,path);
+  }
+ }finally{await service.close();}
+});
+
 test('factory and production allowance changes invalidate every affected authorized view',()=>{
  for(const path of ['/factories','/factories/12','/factories/12/production-allowance-version-boundaries']){
   const topics=workspaceTopics(path);for(const topic of ['employees','attendance','assignment-board','payroll-sources','production-allowance-settings'])assert.ok(topics.includes(topic),path+': '+topic);

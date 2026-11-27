@@ -80,7 +80,7 @@ test('invoice and shipment exclusions are independent, atomic, audited and prese
   assert.equal(await db.orderInvoicePolicy.count(),0,'failure rolls back all rows');
   const input=[change(orders[0])];await save('INVOICE',input);await save('INVOICE',input);
   assert.equal(await db.orderInvoicePolicyEvent.count(),1);
-  assert.equal(await workflow(org),'COLLECTION');
+  assert.equal(await workflow(org),'COMPLETED');
   assert.equal(await workflow(s.vendor.id),'RECEIVED');
   assert.equal((await list('INVOICE',true)).rows[0].id,orders[0].id);
   assert.equal((await list('SHIPPING',true)).rows.length,0);

@@ -1,0 +1,51 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {createRequire} from 'node:module';
+import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
+import {combineInvoiceSources} from '../frontend/src/utils/invoiceDraft.mjs';
+const require=createRequire(import.meta.url);
+const {loadOrderWorkflowStatuses}=require('../backend/dist/services/orderWorkflow');
+const {loadInvoiceBillingCoverage}=require('../backend/dist/services/invoiceWorkflow');
+const {loadOrderReceiptSettlement}=require('../backend/dist/services/orderReceiptSettlement');
+const {saveInvoiceDraft}=require('../backend/dist/services/invoiceDraftStore');
+const {issueInvoiceDraft}=require('../backend/dist/services/invoiceIssueStore');
+const {buildInvoiceSource}=require('../backend/dist/services/invoiceSource');
+const {previewChangeApproval,requestChangeApproval,decideChangeApproval}=require('../backend/dist/services/changeApprovals');
+const {saveManagementTargets}=require('../backend/dist/services/managementTargets');
+test('posted invoice evidence closes the actual fully billed order; pending/partial payments do not, reversal reopens and exclusions project closed without writes',async()=>{
+ const f=await changeApprovalFixture({registration:true});try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id;
+  await db.organization.update({where:{id:org},data:{type:'MANUFACTURER'}});
+  await db.transactionCodeBase.update({where:{id:s.code.baseId},data:{code:'CMT'}});
+  const work=await db.workOrder.create({data:{orgId:org,sellerOrgId:org,buyerOrgId:s.vendor.id,orderId:randomUUID(),orderNumber:'RECEIPT-ORDER',workOrderItems:{create:{totalQuantity:10}}},include:{workOrderItems:true,buyerOrg:true,sellerOrg:true}});
+  const combined=combineInvoiceSources([JSON.parse(JSON.stringify(buildInvoiceSource(work,[],[],null)))]);
+  const draft=await saveInvoiceDraft(db,org,'actor',{clientKey:randomUUID(),buyerOrgId:s.vendor.id,orders:combined.orders,lines:combined.lines.map(row=>({...row,quantity:'10',unitPriceOverride:'10'})),basis:'MANUFACTURING_SERVICE_PRICE',currency:'USD',percentages:{},settlements:{},fields:{date:'2026-11-27',seller:{name:'Seller'},buyer:{name:'Buyer'}}});
+  const invoice=await issueInvoiceDraft(db,org,'actor',draft.id,draft.revision),coverage=await loadInvoiceBillingCoverage(db,[work]);assert.equal(coverage.get(work.id).complete,true);
+  const isSettled=async()=>Boolean((await loadOrderReceiptSettlement(db,[work],coverage,org)).get(work.id));
+  const status=async()=> (await loadOrderWorkflowStatuses(db,[work],async()=>[],org)).get(work.id);
+  assert.equal(await isSettled(),false);assert.equal(await status(),'RECEIVED');
+  const approve=async request=>{if(request.status==='PENDING')for(const stage of request.policy.resolvedStages)await decideChangeApproval(db,org,stage.employeeId,request.id,{decision:'APPROVED'});};
+  const pending=async amount=>{
+   const batch=randomUUID(),row={clientKey:randomUUID(),entryKind:'BANK',accountId:s.account.id,transactionDate:'2026-11-27',direction:'IN',amount,evidenceType:'INVOICE',evidenceNumber:invoice.invoiceNumber,accountingCodeId:s.code.id,remark:'Order settlement'};
+   const request=await requestChangeApproval(db,org,s.people.admin.id,{menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:batch,clientKey:randomUUID(),selection:{step1EmployeeId:s.people.junior.id,step2EmployeeId:s.people.lead.id},payload:{schemaVersion:2,accountingCodeVersion:1,clientKey:batch,rows:[row]}});
+   assert.equal(request.status,'PENDING');return {request,row};
+  };
+  const partial=await pending('30');assert.equal(await isSettled(),false);await approve(partial.request);assert.equal(await isSettled(),false);
+  const remaining=await pending('70');assert.equal(await isSettled(),false);await approve(remaining.request);assert.equal(await isSettled(),true);assert.equal(await status(),'COMPLETED');
+  const entry=await db.bankLedgerEntry.findFirstOrThrow({where:{clientKey:partial.row.clientKey}});
+  const deleteInput={menu:'BANK_LEDGER',operation:'DELETE',sourceKind:'ledger',sourceId:entry.id,clientKey:randomUUID(),reason:'Wrong receipt'};
+  const preview=await previewChangeApproval(db,org,s.people.junior.id,deleteInput);
+  const selection=Object.fromEntries(preview.preview.stages.map(stage=>[stage.key+'EmployeeId',stage.candidates[0]?.id]));
+  const deletion=await requestChangeApproval(db,org,s.people.junior.id,{...deleteInput,selection});await approve(deletion);
+  assert.equal(await isSettled(),false);assert.notEqual(await status(),'COMPLETED');
+  assert.equal((await db.invoice.findUnique({where:{id:invoice.id}})).snapshot.total,'100.00');
+  assert.equal((await db.workOrder.findUnique({where:{id:work.id}})).status,work.status);
+  const excluded=await db.workOrder.create({data:{orgId:org,sellerOrgId:org,buyerOrgId:s.vendor.id,orderId:randomUUID(),orderNumber:'EXCLUDED-ORDER'}});
+  await saveManagementTargets(db,org,s.people.admin.id,'INVOICE',{rows:[{id:excluded.id,excluded:true,revision:0,clientKey:randomUUID()}]});
+  const withPolicy=await db.workOrder.findUnique({where:{id:excluded.id},include:{invoiceTargetPolicy:true,workOrderItems:true}});
+  assert.equal((await loadOrderWorkflowStatuses(db,[withPolicy],async()=>[],org)).get(excluded.id),'COMPLETED');
+  assert.equal((await loadOrderWorkflowStatuses(db,[withPolicy],async()=>[],s.vendor.id)).get(excluded.id),'RECEIVED');
+  assert.equal(await db.orderInvoicePolicyEvent.count(),1);assert.equal(await db.invoice.count(),1);
+ }finally{await f.close();}
+});

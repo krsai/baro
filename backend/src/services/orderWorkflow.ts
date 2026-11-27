@@ -1,6 +1,7 @@
 import { orderAssignmentPlans } from './orderAssignments';
 import { invoiceOrderProgress } from './invoiceOrderProgress';
 import { loadInvoiceBillingCoverage, billingCoversProduction } from './invoiceWorkflow';
+import {loadOrderReceiptSettlement} from './orderReceiptSettlement';
 export { orderAssignmentPlans } from './orderAssignments';
 
 export type OrderWorkflowStatus = 'RECEIVED' | 'PRODUCTION' | 'BILLING' | 'COLLECTION' | 'COMPLETED';
@@ -14,8 +15,9 @@ export function orderWorkflowStatus(
 ): OrderWorkflowStatus {
   const target = order.invoiceTargetPolicy;
   if (viewerOrgId && viewerOrgId === order.sellerOrgId && target?.orgId === viewerOrgId && target.excluded === true) {
-    return 'COLLECTION';
+    return 'COMPLETED';
   }
+  if(order.isBillingComplete===true&&order.isReceiptSettled===true&&(!viewerOrgId||viewerOrgId===order.sellerOrgId))return 'COMPLETED';
   const related = orderAssignmentPlans(order.id, plans);
   const prior = (order.priorCompletions || []).filter((entry: any) => !entry.canceledAt);
   const history = prior.length > 0 || related.some(plan => plan._count?.workRecords > 0 || plan._count?.outsourcedWorkRecords > 0 || plan.isCompleted);
@@ -48,7 +50,8 @@ export async function loadOrderWorkflowStatuses(
 ): Promise<Map<number, OrderWorkflowStatus>> {
   if (!orders.length) return new Map();
   const billing = await loadInvoiceBillingCoverage(db, orders);
-  orders = orders.map(order => ({ ...order, isFullyInvoiced: billing.get(order.id)?.complete === true }));
+  const receipts=await loadOrderReceiptSettlement(db,orders,billing,viewerOrgId);
+  orders = orders.map(order => ({ ...order, isFullyInvoiced: billing.get(order.id)?.complete === true,isBillingComplete:billing.get(order.id)?.complete===true,isReceiptSettled:receipts.get(order.id)===true }));
   const ids = orders.map(order => order.id);
   const plans = await db.assignmentPlan.findMany({ where: { OR: [
     { workOrderId: { in: ids } }, { assignmentCard: { is: { workOrderId: { in: ids } } } },

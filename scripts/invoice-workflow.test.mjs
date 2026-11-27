@@ -79,8 +79,9 @@ test('30% and 100% advances can be issued before production finishes without clo
    orderInvoicePolicy:{findFirst:async()=>null,findMany:async()=>[]},
    transactionCode:{findFirst:async()=>({id:91,isActive:true,base:{isActive:true,code:'CMT',cashDirection:'IN',variants:[{id:1,isActive:true,isEnabled:true,taxTreatmentId:1}]},taxTreatmentId:1,taxTreatment:{code:'EXEMPT',suffix:'E'}})},
    assignmentPlan:{findMany:async()=>[{...plan,isCompleted:finished,_count:{workRecords:started?1:0}}]},
+   bankLedgerEvidenceAllocation:{findMany:async()=>[]},
    organizationBankAccount:{findMany:async()=>[]},
-   invoiceOrder:{findMany:async()=>ledger,findFirst:async()=>null,create:async({data})=>{const row={id:10,...data,invoice:invoices[0],lines:[]};ledger.push(row);return row;}},
+   invoiceOrder:{findMany:async()=>ledger.map(row=>({...row,invoice:{...row.invoice,orders:ledger.map(({id,workOrderId,sourceOrderId})=>({id,workOrderId,sourceOrderId}))}})),findFirst:async()=>null,create:async({data})=>{const row={id:10,...data,invoice:invoices[0],lines:[]};ledger.push(row);return row;}},
    invoiceLine:{createMany:async({data})=>{ledger[0].lines.push(...data);}},
    invoice:{findFirst:async({where,orderBy})=>orderBy?invoices.at(-1):where.clientKey?invoices.find(row=>row.clientKey===where.clientKey):invoices.find(row=>row.invoiceNumber.toLowerCase()===where.invoiceNumber.equals.toLowerCase()),create:async({data})=>{const row={id:'issued',status:'ISSUED',...data};invoices.push(row);return row;}},
    systemSetting:{findUnique:async({where})=>settings.get(where.key)||null,upsert:async({where,update})=>settings.set(where.key,update)},$queryRawUnsafe:async()=>[]};

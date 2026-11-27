@@ -35,7 +35,7 @@ test('historical completion counts as production history but cannot replace the 
   assert.equal(orderWorkflowStatus(prior(50),[plan({assignmentQuantity:50,isCompleted:true})]),'PRODUCTION');
   assert.equal(orderWorkflowStatus({...order,priorCompletions:[{styleId:7,quantity:100,canceledAt:'2026-10-15'}]},[]),'RECEIVED');
 });
-test('batch projection reads actual FK history once and never writes statuses or returns completed',async()=>{
+test('unbilled batch projection reads actual FK history once without writing statuses',async()=>{
   let reads=0;
   const db={invoiceOrder:{findMany:async()=>[]},assignmentPlan:{findMany:async({where})=>{reads++;assert.deepEqual(where.OR[0].workOrderId.in,[1,2]);return[plan({workOrderId:null,assignmentCard:{workOrderId:1},_count:{workRecords:1}})];}}};
   const statuses=await loadOrderWorkflowStatuses(db,[order,{...order,id:2}]);

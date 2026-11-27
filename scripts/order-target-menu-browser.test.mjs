@@ -78,7 +78,7 @@ async function configurePage(page, language, orgType, orgRole) {
     }
     if (url.pathname === '/text-acronyms') return route.fulfill({headers,json:{revision:1,entries:[]}});
     if (url.pathname === '/orders') {
-      const workflowStatus = saved.INVOICE.excluded ? 'COLLECTION' : 'RECEIVED';
+      const workflowStatus = (saved.INVOICE.excluded || saved.receiptClosed) ? 'COMPLETED' : 'RECEIVED';
       orderReads.push(workflowStatus);
       return route.fulfill({ headers, json: [{ id: 'order-001', dbId: 17, orderNumber: 'ORDER-001', items: [], workflowStatus }] });
     }
@@ -176,12 +176,18 @@ try {
     await button('INVOICE').waitFor();
     const initialOrderReads = orderReads.length;
     await changeTarget('INVOICE');
-    await orderStatus('COLLECTION').waitFor();
+    await orderStatus('COMPLETED').waitFor();
     assert.ok(orderReads.length > initialOrderReads, 'the active order list reloads after saving invoice targets');
-    assert.equal(orderReads.at(-1), 'COLLECTION');
+    assert.equal(orderReads.at(-1), 'COMPLETED');
     await changeTarget('INVOICE', false);
     await orderStatus('RECEIVED').waitFor();
     assert.equal(orderReads.at(-1), 'RECEIVED');
+    saved.receiptClosed=true;
+    await page.evaluate(async()=>{const {emitWorkspaceDataChanged}=await import('/src/utils/workspaceDataEvents.js');emitWorkspaceDataChanged({orgId:1,topics:['bank-ledger'],source:'posted-receipt'});});
+    await orderStatus('COMPLETED').waitFor();
+    saved.receiptClosed=false;
+    await page.evaluate(async()=>{const {emitWorkspaceDataChanged}=await import('/src/utils/workspaceDataEvents.js');emitWorkspaceDataChanged({orgId:1,topics:['bank-ledger'],source:'voided-receipt'});});
+    await orderStatus('RECEIVED').waitFor();
     assert.ok(reads.slice(previousReadCount).length > 0 && reads.slice(previousReadCount).every(kind => kind === 'INVOICE'));
     assert.deepEqual(writes.map(({ kind, input }) => ({ kind, id: input.rows[0].id, excluded: input.rows[0].excluded, revision: input.rows[0].revision, reason: Object.hasOwn(input, 'reason') })), [
       { kind: 'SHIPPING', id: 17, excluded: true, revision: 0, reason: false },

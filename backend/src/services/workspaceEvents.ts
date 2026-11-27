@@ -106,8 +106,9 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
     }else if(employeeId&&successful){
      // The authenticated employee is set by company access resolution, never by query orgId.
      const order=res.locals?.workspaceOrder;
-     const changedTopics=topics.includes('approval-settings')&&body?.saved?.some((row:any)=>row.menu==='WORK_TIME')
+     let changedTopics=topics.includes('approval-settings')&&body?.saved?.some((row:any)=>row.menu==='WORK_TIME')
       ?[...topics,'work-time-policy','work-time','payroll-sources']:topics;
+     if(/^\/bank-ledger(?:\/|$)/.test(req.path)||/^\/change-approval/.test(req.path)&&body?.menu==='BANK_LEDGER'&&body?.status==='APPROVED'||topics.includes('issued-invoices'))changedTopics=[...new Set([...changedTopics,'orders'])];
      void db.employee.findFirst({where:{id:employeeId,status:'ACTIVE'},select:{orgId:true}}).then(async(employee:any)=>{
       if(!employee)return;
       const orgIds=new Set<number>([employee.orgId,...(order?.orgIds||[])]);

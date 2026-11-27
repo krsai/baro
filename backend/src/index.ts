@@ -1,3 +1,4 @@
+import {loadOrderReceiptSettlement} from './services/orderReceiptSettlement';
 import {retryAssignmentProgress,startAssignmentProgressRetry} from './services/assignmentProgressRetry';
 import {registerLogisticsStatusRoutes} from './services/logisticsStatus';
 import {createWorkspaceEvents} from './services/workspaceEvents';
@@ -28996,6 +28997,7 @@ app.get("/orders", async (req, res) => {
     include: WORK_ORDER_RESPONSE_INCLUDE,
   });
   const invoiceCoverage = await loadInvoiceBillingCoverage(prisma, orders);
+  const receiptSettlement=await loadOrderReceiptSettlement(prisma,orders,invoiceCoverage,organization.id);
   const assignmentLockMap = await loadOrderAssignmentModificationLockMap(orders);
   const currentOrderValueByOrderDbId = await loadCurrentOrderValueByOrderDbId(orders);
   // Match DELETE's history guard across both direct and card links, regardless
@@ -29039,6 +29041,7 @@ app.get("/orders", async (req, res) => {
         const workflowStatus = orderWorkflowStatus({
           ...order,
           isFullyInvoiced: billingCoversProduction(invoiceCoverage.get(order.id), production),
+          isBillingComplete:invoiceCoverage.get(order.id)?.complete===true,isReceiptSettled:receiptSettlement.get(order.id)===true,
         }, deletionPlans, production, organization.id);
         return { ...toOrderResponse(order, {
           isAssignmentModificationLocked: Boolean(assignmentLockMap.get(orderKey)),
@@ -29073,6 +29076,7 @@ app.get("/customer-production-reports", async (req, res) => {
   }
 
   const invoiceCoverage = await loadInvoiceBillingCoverage(prisma, orders);
+  const receiptSettlement=await loadOrderReceiptSettlement(prisma,orders,invoiceCoverage,organization.id);
   const orderIds = orders.map((order) => order.id);
   const plans = await prisma.assignmentPlan.findMany({
     where: { orgId: organization.id, OR: [
@@ -29242,7 +29246,7 @@ app.get("/customer-production-reports", async (req, res) => {
         orderId: order.orderId,
         workOrderId: order.id,
         orderNumber: order.orderNumber,
-        orderStatus: orderWorkflowStatus({ ...order, isFullyInvoiced: billingCoversProduction(invoiceCoverage.get(order.id), production) }, reportWorkflowPlans, production),
+        orderStatus: orderWorkflowStatus({ ...order,isBillingComplete:invoiceCoverage.get(order.id)?.complete===true,isReceiptSettled:receiptSettlement.get(order.id)===true, isFullyInvoiced: billingCoversProduction(invoiceCoverage.get(order.id), production) }, reportWorkflowPlans, production,organization.id),
         orderProgressPercent: production.progressPercent,
         orderProductionCompleted: production.isCompleted,
         orderProducedQuantity: production.producedQuantity,
