@@ -17,6 +17,7 @@ try{
  for(let i=0;i<120;i++){try{if((await fetch(`http://127.0.0.1:${port}/bill-workflow-test.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const lang of ['ko','en','vi'])for(const theme of ['standard','compact'])for(const width of [1440,390]){
+  if(process.argv.includes('--layout-check-only')&&(lang!=='en'||theme!=='standard'))continue;
   const page=await browser.newPage({viewport:{width,height:1000},hasTouch:width===390}),errors=[],saves=[],t=billWorkflowText[lang],bt=shippingBillText[lang];currentPage=page;page.setDefaultTimeout(20000);page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});page.on('dialog',d=>d.accept());
   const data={origin:'Haiphong',destination:'Incheon',shipper:'SHIPPER ORIGINAL',consignee:'CONSIGNEE ORIGINAL',notify:'NOTIFY ORIGINAL',cargo:'Original Cargo',quantity:'77',unit:'CTN',weightKg:'1040',cbm:'5.440'};
   if(process.argv.includes('--shared-containers-only'))Object.assign(data,{shipmentType:'FCL',containers:[{size:'20',type:'DC',count:'1'}]});
@@ -52,6 +53,9 @@ try{
   assert.equal(saves.length,2);assert.equal(saves[1].number,'');assert.equal(saves[1].masterId,saves[0].id);assert.equal(saves[1].data.surrenderStatus,'CONFIRMED');assert.equal(data.cargo,'Original Cargo');
   for(const region of ['route','cargo','freight','delivery'])assert.equal(await page.locator('[data-bl-region="'+region+'"]').count(),1);
   const bounds=await page.locator('[data-bl-document-layout]').evaluate(n=>({width:n.getBoundingClientRect().width,overflow:n.scrollWidth>n.clientWidth+2}));assert.equal(bounds.overflow,false,JSON.stringify(bounds));
+  const parties=await page.locator('[data-bl-parties]').boundingBox(),identity=await page.locator('[data-bl-identity]').boundingBox();
+  if(width>=900){assert.ok(Math.abs(parties.y-identity.y)<1);assert.ok(Math.abs(parties.height-identity.height)<1);}else assert.ok(identity.y>=parties.y+parties.height-1);
+  const sizes=await page.locator('[data-bl-identity] input').evaluateAll(nodes=>nodes.map(n=>n.closest('.MuiInputBase-root').getBoundingClientRect().height));assert.ok(Math.max(...sizes)-Math.min(...sizes)<2,JSON.stringify(sizes));
   await page.locator('summary').filter({hasText:t.logo}).click();await page.getByRole('button',{name:t.saveLogo,exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('[name=\"cargo\"]')?.disabled===true);
   await page.getByRole('button',{name:bt.retry,exact:true}).click();
