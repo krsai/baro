@@ -11,9 +11,10 @@ const fixture = () => ({ status: 'ISSUED', buyer: { name: 'CURRENT MASTER' }, sn
   lines: [{ orderId: 'internal-order-id', quantity: 1, styleCode:'STYLE123',description: 'Jacket', color: 'Blue', gender: 'U', size: 'XL', hsCode:'HS123',origin:'Vietnam',unitPrice: '100', amount: '100', remark:'Customer remark',adjustmentReason: 'INTERNAL REASON' }],
 } });
 
-test('order billing percentage is last while general items have quantity and VAT without order columns',()=>{
+test('order print omits duplicate settlement table and preserves totals while general items retain VAT',()=>{
  const order=fixture(),before=structuredClone(order),html=buildIssuedInvoicePrintHtml(order);
- assert.match(html,/<table class="invoice-billing">[\s\S]*?<th class="num">Billing %<\/th><\/tr>/);
+ assert.doesNotMatch(html,/<table class="invoice-billing">/);
+ assert.match(html,/<div class="invoice-total">/);
  assert.deepEqual(order,before);
  const general=fixture();general.snapshot.documentKind='GENERAL';
  general.snapshot.lines=[{description:'Office items',unit:'Pcs',quantity:'2',unitPrice:'10',vatRate:'10',vatAmount:'2',amount:'22'}];
@@ -72,7 +73,7 @@ test('print uses English for every UI language and keeps cancelled status visibl
     const html=buildIssuedInvoicePrintHtml(invoice,lang);
     assert.ok(html.includes(`<h1 class="invoice-heading">INVOICE</h1>`));
     assert.ok(html.includes(`<p class="invoice-status">Cancelled</p>`));
-    assert.match(html,/class="invoice-parties"/);assert.match(html,/class="invoice-total"/);
+    assert.match(html,/class="invoice-parties invoice-paired-parties"/);assert.match(html,/class="invoice-total"/);
     assert.equal((html.match(/aria-hidden="true"/g)||[]).length,0);
   }
 });

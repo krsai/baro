@@ -12,6 +12,6 @@ export const paymentAccountText=(fields,languageCode='en')=>paymentAccountSelect
 export function paymentAccountsHtml(fields,languageCode,escape){
  const accounts=paymentAccountSelections(fields);
  if(!accounts.length)return `<div class="invoice-bank-lines">${String(paymentAccountText(fields,languageCode)||'—').split(/\r?\n/).map(line=>`<p class="invoice-bank-line">${escape(line)}</p>`).join('')}</div>`;
- return `<div class="invoice-bank-grid" style="--invoice-bank-count:${accounts.length};--invoice-bank-tablet-count:${Math.min(2,accounts.length)}">${accounts.map(account=>`<dl class="invoice-bank-card">${paymentAccountRows(account.snapshot,languageCode).map(row=>`<dt>${escape(row.label)}</dt><dd>${escape(row.value)}</dd>`).join('')}</dl>`).join('')}</div>`;
+ return `<div class="invoice-bank-grid" style="--invoice-bank-count:${accounts.length};--invoice-bank-tablet-count:${Math.min(2,accounts.length)}">${accounts.map(account=>`<dl class="invoice-bank-card">${paymentAccountRows(account.snapshot,languageCode).map(row=>`<dt>${escape(row.label)}</dt><dd>${escape(row.key==='bankName'?String(row.value).toUpperCase():row.value)}</dd>`).join('')}</dl>`).join('')}</div>`;
 }
 export const paymentAccountError=(error,languageCode='en')=>['INVOICE_BANK_ACCOUNT_INVALID','INVOICE_BANK_ACCOUNT_CHANGED'].includes(error)?(invoicePaymentAccountText[languageCode]||invoicePaymentAccountText.en).invalid:'';

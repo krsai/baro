@@ -70,6 +70,11 @@ html,body{box-sizing:border-box;margin:0;padding:0;background:#fff}
 .invoice-print .invoice-heading{font-size:21px;letter-spacing:1px}
 .invoice-print .invoice-document-identifiers{width:52%;gap:18px}
 .invoice-print .invoice-parties{gap:24px;margin:0 0 20px}
+.invoice-print .invoice-paired-parties{display:flex;flex-direction:column;gap:8px}
+.invoice-print .invoice-party-pair-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:stretch}
+.invoice-print .invoice-party-pair-row .invoice-party-row,.invoice-print .invoice-party-pair-row .invoice-party-title{grid-column:auto}
+.invoice-print .invoice-party-pair-row .invoice-cell-value{flex:1}
+.invoice-print .invoice-party-pair-row .invoice-party-title{padding:0 0 4px}
 .invoice-print .invoice-cell-value{padding:2px 0;min-height:18px}
 .invoice-print .invoice-party-title{font-size:11px}
 .invoice-print .invoice-cell-label{font-size:9px}
@@ -77,13 +82,13 @@ html,body{box-sizing:border-box;margin:0;padding:0;background:#fff}
 .invoice-print th,.invoice-print td{padding:8px 5px;font-size:10px;line-height:1.5}
 .invoice-print th{font-size:9px;color:#475569;border-top:1px solid #cbd5e1}
 .invoice-print .num{white-space:nowrap;overflow-wrap:normal}
-.invoice-print .invoice-summary{grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:16px;padding:16px;background:#f8fafc;align-items:start}
+.invoice-print .invoice-summary{grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:16px;padding:16px;background:#f8fafc;align-items:stretch}
 .invoice-print .invoice-subtotals{text-align:right;padding:0 0 14px}
-.invoice-print .invoice-remark{min-height:0}
+.invoice-print .invoice-remark{min-height:0;align-self:stretch}
 .invoice-print .invoice-total{font-size:11px;padding:8px 0;margin:0;font-weight:700}
 .invoice-print .invoice-total span:last-child{color:#2878f0}
-.invoice-print .invoice-bank-section{border-top:1px solid #e7ecf2;padding-top:14px;margin-top:2px}
-.invoice-print .invoice-bank-grid{grid-template-columns:repeat(var(--invoice-bank-count,3),minmax(0,1fr));gap:12px}
+.invoice-print .invoice-bank-section{border-top:1px solid #e7ecf2;padding-top:12px;margin-top:16px}
+.invoice-print .invoice-bank-grid{grid-template-columns:minmax(0,1fr);gap:12px}
 .invoice-print .invoice-bank-card{padding:10px;gap:4px 8px;border-radius:0}
 .invoice-print .invoice-bank-card dt{font-size:9px}
 .invoice-print .invoice-signature{margin-top:24px}

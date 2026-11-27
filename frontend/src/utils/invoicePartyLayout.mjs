@@ -15,3 +15,9 @@ export function invoicePartyHtml(title,party={},languageCode='en'){
  const e=escapeInvoiceHtml,labels=invoicePartyLabels(languageCode);
  return `<section class="invoice-party"><h2 class="invoice-party-title">${e(title)}</h2>${invoicePartyRows.map(row=>`<div class="invoice-party-row ${row.className}">${row.keys.map(key=>`<div class="invoice-cell"><span class="invoice-cell-label">${e(labels[key])}</span><span class="invoice-cell-value">${e(party[key])}</span></div>`).join('')}</div>`).join('')}</section>`;
 }
+
+// Paired rows keep both companies aligned when only one address wraps.
+export function invoicePartyPairHtml(buyerTitle,buyer,sellerTitle,seller,languageCode='en'){
+ const e=escapeInvoiceHtml,labels=invoicePartyLabels(languageCode),parties=[buyer||{},seller||{}];
+ return '<div class="invoice-parties invoice-paired-parties"><div class="invoice-party-pair-row">'+[buyerTitle,sellerTitle].map(title=>'<h2 class="invoice-party-title">'+e(title)+'</h2>').join('')+'</div>'+invoicePartyRows.map(row=>'<div class="invoice-party-pair-row">'+parties.map(party=>'<div class="invoice-party-row '+row.className+'">'+row.keys.map(key=>'<div class="invoice-cell"><span class="invoice-cell-label">'+e(labels[key])+'</span><span class="invoice-cell-value">'+e(party[key])+'</span></div>').join('')+'</div>').join('')+'</div>').join('')+'</div>';
+}
