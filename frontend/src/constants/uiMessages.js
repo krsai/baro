@@ -321,7 +321,7 @@ export const UI_MESSAGES = {
     },
     includeManagementClosed: { ko: '청구 완료 포함', en: 'Include fully billed assignments', vi: 'Bao gồm phân công đã lập đủ hóa đơn' },
     managementClosed: { ko: '청구 완료', en: 'Fully billed', vi: 'Đã lập đủ hóa đơn' },
-    billedAssignmentsHeader: { ko: '청구 완료 목록', en: 'Fully billed assignments', vi: 'Phân công đã lập đủ hóa đơn' },
+    billedAssignmentsHeader: { ko: '청구 완료', en: 'Fully Billed', vi: 'Đã Lập Đủ Hóa Đơn' },
     progressUnknownExplanation: { ko: '공정 연결·기준 ST 누락 또는 작업 기록의 진행률 계산 불가로 남은 작업량 예측에서 제외했습니다. 아래 배정의 공정·수량·작업 기록을 확인하세요. 청구·수금 상태와는 별개입니다.', en: 'Process links or ST references are missing, or recorded work progress cannot be calculated. These assignments are excluded from remaining workload forecasts. Check their processes, quantities and work records. Billing and collection are separate.', vi: 'Thiếu liên kết công đoạn, ST tham chiếu hoặc không tính được tiến độ nên không đưa vào dự báo khối lượng còn lại. Kiểm tra công đoạn, số lượng và nhật ký sản xuất bên dưới. Không liên quan đến lập hóa đơn hay thu tiền.' },
     progressUnknownDetailsPending: { ko: '대상 배정 상세를 아직 불러오지 못했습니다. 조회를 새로고침해 주세요.', en: 'Assignment details are not loaded yet. Refresh the board.', vi: 'Chưa tải được chi tiết phân công. Vui lòng tải lại bảng.' },
     showReviewAssignment: { ko: '배정 카드로 이동', en: 'Go to assignment card', vi: 'Đến thẻ phân công' },
@@ -536,9 +536,9 @@ export const UI_MESSAGES = {
       vi: 'Nhat ky chua lien ket {count}',
     },
     activeAssignmentsHeader: {
-      ko: '현재 대기 작업',
-      en: 'Queued on this line',
-      vi: 'Công việc dang cho tren chuyen',
+      ko: '진행중',
+      en: 'In Progress',
+      vi: 'Đang Thực Hiện',
     },
     finishedAssignmentsHeader: {
       ko: '생산 완료 목록',

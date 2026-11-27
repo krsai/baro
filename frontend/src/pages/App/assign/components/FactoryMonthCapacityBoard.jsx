@@ -212,7 +212,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
   const isLocked = isCompleted || isZeroQuantityOverflow;
   const chips = [
     assignment.isManagementClosed
-      ? { label: getUiMessage('assign.managementClosed', 'Fully billed', languageCode), variant: 'outlined', color: 'default' }
+      ? null
       : isCompleted
       ? {
           label: getUiMessage(
