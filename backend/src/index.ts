@@ -1,5 +1,6 @@
 import {loadOrderInvoiceCounts} from './services/orderInvoiceList';
 import {loadOrderReceiptSettlement} from './services/orderReceiptSettlement';
+import {loadOrderListCandidates} from './services/orderListCandidates';
 import {retryAssignmentProgress,startAssignmentProgressRetry} from './services/assignmentProgressRetry';
 import {registerLogisticsStatusRoutes} from './services/logisticsStatus';
 import {createWorkspaceEvents} from './services/workspaceEvents';
@@ -28992,14 +28993,11 @@ app.get("/orders", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
-  const orders = await prisma.workOrder.findMany({
-    where: { OR: getOrderAccessWhere(organization.id) },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    include: WORK_ORDER_RESPONSE_INCLUDE,
-  });
+  const {orders,invoiceCoverage,receiptSettlement}=await loadOrderListCandidates(
+    prisma,organization.id,getOrderAccessWhere(organization.id),WORK_ORDER_RESPONSE_INCLUDE,
+    req.query.excludeClosed==='true',
+  );
   const invoiceCounts=await loadOrderInvoiceCounts(prisma,organization.id,orders);
-  const invoiceCoverage = await loadInvoiceBillingCoverage(prisma, orders);
-  const receiptSettlement=await loadOrderReceiptSettlement(prisma,orders,invoiceCoverage,organization.id);
   const assignmentLockMap = await loadOrderAssignmentModificationLockMap(orders);
   const currentOrderValueByOrderDbId = await loadCurrentOrderValueByOrderDbId(orders);
   // Match DELETE's history guard across both direct and card links, regardless

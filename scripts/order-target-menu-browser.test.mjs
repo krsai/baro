@@ -32,6 +32,7 @@ function Menus() {
     React.createElement('div', { hidden: pathname !== '/order' }, React.createElement(OrderList)),
     React.createElement(Routes, null,
       React.createElement(Route, { path: '/order', element: null }),
+      React.createElement(Route, { path: '/order/:orderId', element: React.createElement(OrderList) }),
       React.createElement(Route, { path: '/invoices', element: React.createElement(InvoiceWorkspace) })
     )
   );
@@ -46,7 +47,7 @@ const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host
 });
 
 async function configurePage(page, language, orgType, orgRole) {
-  const reads = [], writes = [], shipmentReads = [], orderReads = [],invoiceReads=[];
+  const reads = [], writes = [], shipmentReads = [], orderReads = [],invoiceReads=[],orderQueries=[],editorReads=[];
   const saved = { INVOICE: { excluded: false, revision: 0 }, SHIPPING: { excluded: false, revision: 0 } };
   const stub = (name, body) => page.route('**/src/context/' + name + '.jsx*', route => route.fulfill({ contentType: 'application/javascript', body }));
   await stub('AuthContext', 'const auth=' + JSON.stringify({ isAuthenticated:true,activeOrgId: 1, activeOrgType: orgType, activeProfile: { entryType: 'ORG', orgType, orgRole },accessProfile:{entryType:'ORG',orgType,orgRole} }) + ';export const useAuth=()=>auth;');
@@ -61,6 +62,7 @@ async function configurePage(page, language, orgType, orgRole) {
       'Access-Control-Allow-Headers': request.headers()['access-control-request-headers'] || '*',
     };
     if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
+    if(['/styles','/attributes','/order-parties'].includes(url.pathname))editorReads.push(url.pathname);
     const kind = url.pathname.match(/^\/management-targets\/(INVOICE|SHIPPING)$/)?.[1];
     if (kind) {
       assert.equal(url.searchParams.get('orgId'), '1');
@@ -80,8 +82,8 @@ async function configurePage(page, language, orgType, orgRole) {
     if (url.pathname === '/text-acronyms') return route.fulfill({headers,json:{revision:1,entries:[]}});
     if (url.pathname === '/orders') {
       const workflowStatus = (saved.INVOICE.excluded || saved.receiptClosed) ? 'COMPLETED' : 'RECEIVED';
-      orderReads.push(workflowStatus);
-      return route.fulfill({ headers, json: [{ id: 'order-001', dbId: 17, orderNumber: 'ORDER-001', sellerOrgId:1,issuedInvoiceCount:1,items: [], workflowStatus },{id:'empty-order',dbId:18,orderNumber:'EMPTY-ORDER',sellerOrgId:1,issuedInvoiceCount:0,items:[],workflowStatus:'RECEIVED'}] });
+      orderReads.push(workflowStatus);orderQueries.push(Object.fromEntries(url.searchParams));
+      return route.fulfill({ headers, json: [{ id: 'order-001', dbId: 17, orderNumber: 'ORDER-001', sellerOrgId:1,issuedInvoiceCount:1,items: [], workflowStatus },{id:'empty-order',dbId:18,orderNumber:'EMPTY-ORDER',sellerOrgId:1,issuedInvoiceCount:0,items:[],workflowStatus:'RECEIVED'}].filter(row=>url.searchParams.get('excludeClosed')!=='true'||row.workflowStatus!=='COMPLETED') });
     }
     if (url.pathname === '/invoices/issued') {invoiceReads.push(Object.fromEntries(url.searchParams));return route.fulfill({ headers, json: { rows: [{id:'scope-invoice',invoiceNumber:'INV-SCOPED',status:'ISSUED',buyerName:'Buyer',currencyCode:'USD',total:'30',receivedAmount:'0',familyBalanceAmount:'30',familyBalanceKind:'DUE',issuedAt:'2020-01-02',orders:[],accountingCodes:['CMTE'],descriptions:['Style']}], hasMore: false,orderScope:url.searchParams.has('orderId')?{orderId:url.searchParams.get('orderId'),orderNumber:'ORDER-001'}:null } });}
     if (url.pathname === '/orders/shipments') {
@@ -95,7 +97,7 @@ async function configurePage(page, language, orgType, orgRole) {
     }
     return route.fulfill({ headers, json: [] });
   });
-  return { reads, writes, saved, shipmentReads, orderReads,invoiceReads };
+  return { reads, writes, saved, shipmentReads, orderReads,invoiceReads,orderQueries,editorReads };
 }
 
 let browser;
@@ -112,7 +114,7 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const errors = [];
     page.on('pageerror', error => {errors.push(error.message);console.error(error.message);});
-    const { reads, writes, saved, shipmentReads, orderReads,invoiceReads } = await configurePage(page, language, 'MANUFACTURER', 'ADMIN');
+    const { reads, writes, saved, shipmentReads, orderReads,invoiceReads,orderQueries,editorReads } = await configurePage(page, language, 'MANUFACTURER', 'ADMIN');
     const labels = managementTargetText[language];
     const button = kind => page.getByRole('button', { name: labels[kind], exact: true });
     const orderStatus = status => page.getByRole('row', { name: /ORDER-001/ })
@@ -122,6 +124,9 @@ try {
     assert.equal(await button('SHIPPING').count(), 0);
     assert.equal(await button('INVOICE').count(), 1);
     await orderStatus('RECEIVED').waitFor();
+    assert.equal(orderQueries[0].excludeClosed,'true');assert.deepEqual(editorReads,[],'list does not preload editor catalogs');
+    async function filter(value){await page.getByRole('combobox').click();await page.locator('[role=option][data-value="'+value+'"]').click();}
+    await filter('ALL');
     assert.equal(await page.getByRole('columnheader',{name:rowActionsText[language],exact:true}).count(),1);
     assert.equal(await page.getByRole('row',{name:/EMPTY-ORDER/}).getByRole('button',{name:orderInvoiceNavigationText[language].view,exact:true}).isDisabled(),true);
     const tableTone=await orderStatus('RECEIVED').evaluate(el=>getComputedStyle(el.closest('.MuiChip-root')).backgroundColor);
@@ -178,9 +183,12 @@ try {
     assert.equal(reads.length, previousReadCount);
     await page.evaluate(() => window.testNavigate('/order'));
     await button('INVOICE').waitFor();
+    await filter('ALL');
     const initialOrderReads = orderReads.length;
     await changeTarget('INVOICE');
     await orderStatus('COMPLETED').waitFor();
+    await filter('EXCLUDE_CLOSED');await page.getByRole('row',{name:/ORDER-001/}).waitFor({state:'hidden'});assert.equal(orderQueries.at(-1).excludeClosed,'true');
+    await filter('ALL');await orderStatus('COMPLETED').waitFor();
     assert.ok(orderReads.length > initialOrderReads, 'the active order list reloads after saving invoice targets');
     assert.equal(orderReads.at(-1), 'COMPLETED');
     await changeTarget('INVOICE', false);
@@ -202,6 +210,11 @@ try {
     await page.getByRole('button',{name:/INV-SCOPED/}).waitFor();
     assert.equal(invoiceReads.at(-1).orderId,'order-001');assert.equal(invoiceReads.at(-1).start,undefined);assert.equal(invoiceReads.at(-1).end,undefined);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
+    saved.receiptClosed=true;
+    await page.evaluate(()=>window.testNavigate('/order/order-001'));
+    await page.locator('input[value="ORDER-001"]').waitFor();
+    assert.equal(orderQueries.at(-1).excludeClosed,undefined,'detail loads closed orders');
+    assert.ok(editorReads.includes('/styles')&&editorReads.includes('/attributes')&&editorReads.includes('/order-parties'),'editor catalogs load on entering detail');
     assert.deepEqual(errors, []);
     await page.close();
   }

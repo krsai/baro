@@ -1326,7 +1326,9 @@ const OrderList = () => {
 
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearchTerm = useDeferredValue(searchTerm);
-  const [progressFilter, setProgressFilter] = useState(ORDER_FILTER_ALL);
+  const [progressFilter, setProgressFilter] = useState(ORDER_FILTER_EXCLUDE_CLOSED);
+  const excludeClosed = !isDetailMode && progressFilter === ORDER_FILTER_EXCLUDE_CLOSED;
+  const [loadedExcludeClosed, setLoadedExcludeClosed] = useState(null);
   const [formData, setFormData] = useState(buildInitialFormData);
   const orderDragSensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:6}}),useSensor(KeyboardSensor));
   const [detailViewMode, setDetailViewMode] = useState(ORDER_DETAIL_VIEW_MODES.HORIZONTAL);
@@ -1365,10 +1367,12 @@ const OrderList = () => {
   }, [orderPageText.stylesLoadError, showNotification]);
 
   useEffect(() => {
+    if (!isDetailMode) return;
     refreshStyles(activeOrgId);
-  }, [activeOrgId, refreshStyles]);
+  }, [activeOrgId, refreshStyles, isDetailMode]);
 
   useEffect(() => {
+    if (!isDetailMode) return;
     let cancelled = false;
 
     const loadColors = async () => {
@@ -1391,7 +1395,7 @@ const OrderList = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, languageCode]);
+  }, [activeOrgId, languageCode, isDetailMode]);
 
   const loadOrdersFromDb = useCallback(async ({ forceRefresh = false, cancelledRef = null } = {}) => {
     if (!cancelledRef?.current) {
@@ -1399,9 +1403,10 @@ const OrderList = () => {
     }
     setQueryFailed(false);
     try {
-      const items = await fetchOrdersFromApi({ orgId: activeOrgId, forceRefresh });
+      const items = await fetchOrdersFromApi({ orgId: activeOrgId, forceRefresh, excludeClosed });
       if (!cancelledRef?.current) {
         setOrders(Array.isArray(items) ? items : []);
+        setLoadedExcludeClosed(excludeClosed);
       }
     } catch (error) {
       if (!cancelledRef?.current) {
@@ -1415,7 +1420,7 @@ const OrderList = () => {
         setOrdersLoaded(true);
       }
     }
-  }, [activeOrgId, orderPageText.ordersLoadError, showNotification]);
+  }, [activeOrgId, orderPageText.ordersLoadError, showNotification, excludeClosed]);
 
   useEffect(() => {
     const cancelledRef = { current: false };
@@ -1443,6 +1448,7 @@ const OrderList = () => {
 
 
   useEffect(() => {
+    if (!isDetailMode) return;
     let cancelled = false;
 
     const fetchOrderParties = async () => {
@@ -1479,7 +1485,7 @@ const OrderList = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, orderPageText.partiesLoadError, showNotification]);
+  }, [activeOrgId, orderPageText.partiesLoadError, showNotification, isDetailMode]);
 
   useEffect(() => {
     if (buyerOptions.length === 0 && sellerOptions.length === 0) return;
@@ -1565,7 +1571,7 @@ const OrderList = () => {
     }
 
     const initKey = isNewOrder ? 'new' : orderId || '';
-    if (!isNewOrder && !ordersLoaded) {
+    if (!isNewOrder && (!ordersLoaded || loadedExcludeClosed !== excludeClosed)) {
       return;
     }
     if (detailInitKeyRef.current === initKey) {
@@ -1594,6 +1600,8 @@ const OrderList = () => {
     orderPageText.orderNotFound,
     orders,
     ordersLoaded,
+    loadedExcludeClosed,
+    excludeClosed,
     showNotification,
   ]);
 
@@ -3058,7 +3066,7 @@ const OrderList = () => {
           </Stack>
         )}
         toolbar={(
-          <SearchPanel onReset={()=>{setSearchTerm('');setProgressFilter(ORDER_FILTER_ALL);}}
+          <SearchPanel onReset={()=>{setSearchTerm('');setProgressFilter(ORDER_FILTER_EXCLUDE_CLOSED);}}
 
             search={(
               <SearchInput

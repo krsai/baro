@@ -38,7 +38,13 @@ export async function loadInvoiceBillingCoverage(db: any, orders: any[]) {
   const statements = await db.invoiceOrder.findMany({ where: { workOrderId: { in: orders.map(order => order.id) }, billingPercentage: 100, invoice: { status: 'ISSUED' } },
     include: { invoice: { select: { sellerOrgId: true, buyerOrgId: true, status: true } },
       lines: { select: { workOrderItemId: true, sourceItemId: true, styleId: true, size: true, quantity: true } } } });
-  return new Map<number, ReturnType<typeof invoiceBillingCoverage>>(orders.map(order => [order.id, invoiceBillingCoverage(order, statements)]));
+  const statementsByOrder = new Map<number, any[]>();
+  for (const statement of statements) {
+    const rows = statementsByOrder.get(statement.workOrderId) || [];
+    rows.push(statement);
+    statementsByOrder.set(statement.workOrderId, rows);
+  }
+  return new Map<number, ReturnType<typeof invoiceBillingCoverage>>(orders.map(order => [order.id, invoiceBillingCoverage(order, statementsByOrder.get(order.id) || [])]));
 }
 
 // Annotate display rows only. Never remove assignments from persisted board state.

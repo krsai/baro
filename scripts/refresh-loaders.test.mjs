@@ -13,7 +13,7 @@ function callback(file,name,dependencies){
 }
 const offline=async()=>{throw Error('offline');};
 test('order background refresh preserves rows and reports failure instead of acknowledging it',async()=>{
- const writes=[],deps={activeOrgId:1,setOrdersLoaded(){},setQueryFailed(){},setOrders:rows=>writes.push(rows),fetchOrdersFromApi:offline,showNotification(){},orderPageText:{ordersLoadError:'offline'}};
+ const writes=[],deps={activeOrgId:1,excludeClosed:true,setLoadedExcludeClosed(){},setOrdersLoaded(){},setQueryFailed(){},setOrders:rows=>writes.push(rows),fetchOrdersFromApi:offline,showNotification(){},orderPageText:{ordersLoadError:'offline'}};
  const run=callback('pages/App/order/OrderList.jsx','loadOrdersFromDb',deps);
  assert.equal(await run({forceRefresh:true}),false);assert.equal(writes.length,0);assert.equal(await run(),false);assert.equal(writes.length,1);
 });

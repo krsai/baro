@@ -18,9 +18,11 @@ test('order list resolves invoice exclusions in the seller view and keeps produc
   orders[0].invoiceTargetPolicy = { orgId: 99, excluded: true };
   orders[1].invoiceTargetPolicy = { orgId: 99, excluded: false };
   orders[2].invoiceTargetPolicy = { orgId: 77, excluded: true };
-  let handler, response;
+  let handler, response,expectedIds=[1,2,3,4,5];
   const deps = {
     ...require('../backend/dist/services/invoiceWorkflow.js'),
+    ...require('../backend/dist/services/orderListCandidates.js'),
+    ...require('../backend/dist/services/orderInvoiceList.js'),
     orderWorkflowStatus: require('../backend/dist/services/orderWorkflow.js').orderWorkflowStatus,
     app: { get: (_path, callback) => { handler = callback; } },
     getOrganizationByQuery: async () => ({ id: 99 }),
@@ -31,13 +33,13 @@ test('order list resolves invoice exclusions in the seller view and keeps produc
     invoiceOrderProgress: () => ({ progressPercent: 0, producedQuantity: 0, assignments: [] }),
     toOrderResponse: order => order,
     prisma: {
-      invoiceOrder: { findMany: async () => [] },
+      invoiceOrder: { findMany: async () => [],groupBy:async()=>[] },
       workOrder: { findMany: async () => orders },
       assignmentPlan: { findMany: async query => {
         if (!query.select._count) return [];
         assert.equal(query.where.orgId, undefined);
-        assert.deepEqual(query.where.OR[0].workOrderId.in, [1, 2, 3, 4, 5]);
-        assert.deepEqual(query.where.OR[1].assignmentCard.is.workOrderId.in, [1, 2, 3, 4, 5]);
+        assert.deepEqual(query.where.OR[0].workOrderId.in, expectedIds);
+        assert.deepEqual(query.where.OR[1].assignmentCard.is.workOrderId.in, expectedIds);
         return [
           { workOrderId: 1, _count: { workRecords: 1, outsourcedWorkRecords: 0 } },
           { workOrderId: 2, _count: { workRecords: 0, outsourcedWorkRecords: 1 } },
@@ -49,11 +51,13 @@ test('order list resolves invoice exclusions in the seller view and keeps produc
   };
   const code = ts.transpileModule(route, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
   new Function(...Object.keys(deps), code)(...Object.values(deps));
-  await handler({}, { json: value => { response = value; } });
-  assert.deepEqual(response.map(order => order.workflowStatus), ['COLLECTION', 'PRODUCTION', 'PRODUCTION', 'RECEIVED', 'RECEIVED']);
+  await handler({query:{}}, { json: value => { response = value; } });
+  assert.deepEqual(response.map(order => order.workflowStatus), ['COMPLETED', 'PRODUCTION', 'PRODUCTION', 'RECEIVED', 'RECEIVED']);
   assert.equal(response[0].productionProgressPercent, 0);
   assert.deepEqual(response.map(order => order.hasProductionRecords), [true, true, true, false, false]);
   assert.deepEqual(response.map(order => order.hasAssignments), [true, true, true, true, false]);
+  expectedIds=[2,3,4,5];await handler({query:{excludeClosed:'true'}},{json:value=>{response=value;}});
+  assert.deepEqual(response.map(order=>order.id),expectedIds,'closed orders are omitted before assignment/progress/pricing work');
   assert.match(page, /const deletable = !order\?\.isModificationLocked && !order.hasProductionRecords && !order.hasAssignments/);
 });
 

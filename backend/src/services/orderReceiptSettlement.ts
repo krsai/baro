@@ -9,9 +9,14 @@ export async function loadOrderReceiptSettlement(db:any,orders:any[],coverage:Ma
  if(!eligible.length)return result;
  const statements=await db.invoiceOrder.findMany({where:{workOrderId:{in:eligible.map(order=>order.id)},invoice:{status:'ISSUED',sellerOrgId:{in:[...new Set(eligible.map(order=>order.sellerOrgId))]}}},include:{invoice:{select:{id:true,status:true,sellerOrgId:true,buyerOrgId:true,currencyCode:true,receivableAdded:true,rootInvoiceId:true,orders:{select:{id:true,workOrderId:true,sourceOrderId:true}},credits:{where:{voidedAt:null},select:{amount:true}}}}}});
  const invoiceById=new Map<string,any>(),familiesByOrder=new Map<number,Set<string>>();
+ const statementsByOrder=new Map<number,any[]>();
+ for(const statement of statements){
+  const rows=statementsByOrder.get(statement.workOrderId)||[];
+  rows.push(statement);statementsByOrder.set(statement.workOrderId,rows);
+ }
  for(const order of eligible){
   const families=new Set<string>();
-  for(const statement of statements){
+  for(const statement of statementsByOrder.get(order.id)||[]){
    const invoice=statement.invoice;
    if(statement.workOrderId!==order.id||statement.sourceOrderId!==order.orderId||!invoice?.id||invoice.status!=='ISSUED'||invoice.sellerOrgId!==order.sellerOrgId||invoice.buyerOrgId!==order.buyerOrgId)continue;
    families.add(invoice.rootInvoiceId||invoice.id);invoiceById.set(invoice.id,invoice);

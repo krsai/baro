@@ -10,7 +10,7 @@ const {listManagementTargets,saveManagementTargets}=require('../backend/dist/ser
 const {searchPayrollEvidence,validatePayrollEvidence}=require('../backend/dist/services/payrollPayables');
 const {loadAccountOverview}=require('../backend/dist/services/accountOverview');
 const {issueInvoiceDraft}=require('../backend/dist/services/invoiceIssueStore');
-const {createOrderShipment,listShippingOrders}=require('../backend/dist/services/orderShipments');
+const {createOrderShipment,shippingDetail}=require('../backend/dist/services/orderShipments');
 const {loadOrderWorkflowStatuses}=require('../backend/dist/services/orderWorkflow');
 const {annotateAssignmentInvoiceWorkflow}=require('../backend/dist/services/invoiceWorkflow');
 
@@ -84,7 +84,7 @@ test('invoice and shipment exclusions are independent, atomic, audited and prese
   assert.equal(await workflow(s.vendor.id),'RECEIVED');
   assert.equal((await list('INVOICE',true)).rows[0].id,orders[0].id);
   assert.equal((await list('SHIPPING',true)).rows.length,0);
-  assert.equal((await listShippingOrders(db,org,a.id,{})).rows.length,2);
+  assert.equal((await shippingDetail(db,org,a.id,orders[0].id)).order.id,orders[0].id);
   const draft=await db.invoiceDraft.create({data:{sellerOrgId:org,buyerOrgId:s.vendor.id,clientKey:randomUUID(),createdBy:a.email,updatedBy:a.email,content:{fields:{date:'2026-11-13'},orders:[{orderId:orders[0].orderId}]}}});
   await assert.rejects(issueInvoiceDraft(db,org,a.email,draft.id,1),/INVOICE_ORDER_MANAGEMENT_EXCLUDED/);
   await assert.rejects(db.$transaction(async tx=>{

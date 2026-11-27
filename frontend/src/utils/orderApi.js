@@ -1,7 +1,7 @@
 import { buildQueryString, requestJSON } from './apiClient';
 
-export const fetchOrders = async ({ orgId = null, forceRefresh = false } = {}) => {
-  const query = buildQueryString({ orgId });
+export const fetchOrders = async ({ orgId = null, forceRefresh = false, excludeClosed = false } = {}) => {
+  const query = buildQueryString({ orgId, ...(excludeClosed ? {excludeClosed:true} : {}) });
   const data = await requestJSON('/orders' + query, {
     forceRefresh: Boolean(forceRefresh),
   });
