@@ -1,7 +1,7 @@
 // Move canonical nodes intact so route permissions, partner access keys and badges survive.
 const GROUPS = [
-  ['ORDER', 'salesWorkflow', ['/business-partner', '/style', '/order', '/customer-production-report']],
-  ['RECORDS', 'productionWorkflow', ['/assignment', '/work-history']],
+  ['ORDER', 'salesWorkflow', ['/business-partner', '/customer-production-report']],
+  ['RECORDS', 'productionWorkflow', ['/style', '/order', '/assignment', '/work-history']],
   ['INVENTORY', 'inventoryMaterials', ['/inventory/movements', '/inventory/stock', '/inventory/materials']],
   ['LOGISTICS', 'logistics', ['/order-shipments', '/shipping']],
   ['ACCOUNTING', 'finance', ['/invoices', '/outsourcing-record', '/payroll', '/bank-ledger']],
@@ -22,9 +22,9 @@ export function organizeCompanyMenu(items, translate, orgType) {
   const shipping=leaves.get('/shipping')||items.find(item=>item.path==='/shipping');
   if(shipping)leaves.set('/shipping',shipping);
   if(orgType==='BRAND'){
-    return [['ORDER',['/style','/order','/customer-production-report']],['LOGISTICS',['/shipping']]].flatMap(([key,paths])=>{
+    return [['RECORDS',['/style','/order']],['ORDER',['/customer-production-report']],['LOGISTICS',['/shipping']]].flatMap(([key,paths])=>{
       const source=groups.get(key),children=paths.map(path=>leaves.get(path)).filter(Boolean);
-      return source&&children.length?[{...source,...(key==='LOGISTICS'?{label:translate('menu.logistics')}:{}),children}]:children;
+      return source&&children.length?[{...source,...(key==='LOGISTICS'?{label:translate('menu.logistics')}:key==='RECORDS'?{label:translate('menu.productionWorkflow')}:{}),children}]:children;
     });
   }
   const transport=orgType==='SERVICE'&&shipping;
