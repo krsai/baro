@@ -49,7 +49,7 @@ export const UI_MESSAGES = {
     freight:{ko:'운송',en:'Transport',vi:'Vận chuyển'},
     transportWorkflow:{ko:'운송·영업',en:'Transport & sales',vi:'Vận chuyển & kinh doanh'},
     transportList:{"ko":"운송","en":"Transport","vi":"Vận chuyển"},
-    shippingOperations:{ko:'운송 업무',en:'Shipment Operations',vi:'Nghiệp Vụ Vận Chuyển'},
+    shippingOperations:{ko:'운송장',en:'Waybill',vi:'Phiếu Vận Chuyển'},
     shippingRequest:{ko:'운송 신청',en:'Shipping Request',vi:'Yêu Cầu Vận Chuyển'},
     customerPartners:{ko:'고객·거래처 관리',en:'Customers & partners',vi:'Khách hàng & đối tác'},
     accountOverview:{ko:'계좌 현황',en:'Account overview',vi:'Tổng quan tài khoản'},

@@ -12,7 +12,7 @@ Object.assign(shippingBillText.vi,{addOptionalBills:'Thêm BL (Tùy Chọn)',shi
 Object.assign(shippingBillText.ko,{shipmentTotals:'운송건 전체 합계 (모든 BL 포함)'});
 Object.assign(shippingBillText.en,{shipmentTotals:'Shipment Total (All BL Included)'});
 Object.assign(shippingBillText.vi,{shipmentTotals:'Tổng Lô Hàng (Gồm Tất Cả BL)'});
-Object.assign(shippingBillText.ko,{requestTitle:'운송 신청',transportDetails:'운송 상세',selectBills:'BL 종류 선택',NONE:'BL 없이 진행',dc:'DC · Debit / Credit Note',ar:'Debit Note (매출)',ap:'Credit Note (매입)',dcScope:'선택한 BL 구성의 DC 입력 대상을 확인하세요.'});
+Object.assign(shippingBillText.ko,{requestTitle:'운송 신청',transportDetails:'운송장',selectBills:'BL 종류 선택',NONE:'BL 없이 진행',dc:'DC · Debit / Credit Note',ar:'Debit Note (매출)',ap:'Credit Note (매입)',dcScope:'선택한 BL 구성의 DC 입력 대상을 확인하세요.'});
 Object.assign(shippingBillText.en,{requestTitle:'Shipping Request',transportDetails:'Transport Details',selectBills:'Select BL Type',NONE:'Continue Without BL',dc:'DC · Debit / Credit Note',ar:'Debit Note (Sales)',ap:'Credit Note (Purchases)',dcScope:'Check the DC target for the selected BL composition.'});
 Object.assign(shippingBillText.vi,{requestTitle:'Yêu Cầu Vận Chuyển',transportDetails:'Chi Tiết Vận Chuyển',selectBills:'Chọn Loại BL',NONE:'Tiếp Tục Không Có BL',dc:'DC · Debit / Credit Note',ar:'Debit Note (Doanh Thu)',ap:'Credit Note (Chi Phí)',dcScope:'Kiểm Tra Đối Tượng DC Theo Cấu Trúc BL.'});
 Object.assign(shippingBillText.ko,{masterDocument:'Master BL · AWB',houseDocument:'House BL · AWB'});
@@ -37,8 +37,8 @@ Object.assign(shippingBillText.en,{"master":"Linked MBL (Optional)","unlinked":"
 
 Object.assign(shippingBillText.vi,{"master":"Liên Kết MBL (Tùy Chọn)","unlinked":"HBL Độc Lập"});
 
-Object.assign(shippingBillText.ko,{transportDetails:"업무 정보"});
+Object.assign(shippingBillText.ko,{transportDetails:"운송장 정보"});
 
-Object.assign(shippingBillText.en,{transportDetails:"Overview"});
+Object.assign(shippingBillText.en,{transportDetails:"Waybill Information"});
 
-Object.assign(shippingBillText.vi,{transportDetails:"Thông Tin Nghiệp Vụ"});
+Object.assign(shippingBillText.vi,{transportDetails:"Thông Tin Phiếu Vận Chuyển"});

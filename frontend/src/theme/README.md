@@ -1,5 +1,7 @@
 # 공통 UI 사용 기준
 
+- 접수 후 기본 화면과 업무 탭의 이름은 운송장이다. 상단 mBL/hBL은 등록 선택창을 여는 버튼이며 기존 B/L은 서류 목록에서 조회·편집한다. mBL은 One Master / Master + House를 선택하고, Master + House 저장 후 같은 모달에서 House를 입력한다. hBL부터 시작하면 기존 Master 검색·연결 또는 신규 Master 등록을 선택한다. B/L 편집 모달은 관련 없는 CI/Packing List 영역과 분리해 문서형 당사자·번호/발행사·구간·화물 칸을 배치하고 모바일은 세로로 이어진다. 조회만으로 저장 원문이나 원래 운송장 폼을 변경하지 않는다.
+
 - 운송 JOB의 AR/AP는 `ShippingJobCharges`의 `ListDetailDialog`에서 AR(청구)/AP(비용신청) 탭으로 구분한다. `DialogRecordList`·`DialogDetailPanel`·`DialogRecordActions`와 공통 추가 버튼을 사용하고 B/L 선택·반복 부제목·운송 상세 복귀 버튼은 두지 않는다. 저장 후 청구서/비용신청 작성으로 이동하며 원래 JOB/항목 FK를 유지한다. 과거 B/L 금액은 조회로 보존하고 새 문서 연결 대상으로 재분류하지 않는다.
 
 - 운송 업무의 구간 날짜 힌트는 CARGO READY / ETD/ATD / ETA/ATA / DELIVERY다. 별도 ETD·ETA 입력을 중복 배치하지 않고 선박명·항차는 같은 행에서 컨테이너 규격과 함께 둔다. 컨테이너는 대수 → 길이 → 타입 순서다. 업무 담당자는 공통 검색 선택의 standard 입력으로 표시하고 운임 조건·비고 입력은 업무 화면에서 제외하되 저장된 값은 보존한다. 거부는 업무 화면 맨 아래 전체 너비의 outlined 버튼이며 운송번호를 포함한 공통 확인창을 거친다.

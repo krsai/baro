@@ -2,8 +2,15 @@ import {shippingWorkData} from './shippingWorkData.mjs';
 export const billFields=['shipper','consignee','notify','deliveryAgent','vessel','voyage','origin','destination','placeOfReceipt','placeOfDelivery','etd','eta','issueDate','issuePlace','marks','cargo','quantity','unit','weightKg','cbm','cbmFormula','freightTerms'];
 export const requiresBillHierarchy=job=>job?.service!=='EXPRESS'&&['SEA','AIR'].includes(job?.mode);
 const routeFields=['vessel','voyage','origin','destination','placeOfReceipt','placeOfDelivery','etd','eta'];
-export function initialBillData(job,bill,parent){
+export function initialBillData(job,bill,parent,forwarder){
+ if(bill.version)return {...bill.data};
  const source=shippingWorkData(job.data||{}),result=Object.fromEntries(billFields.map(key=>[key,String(source[key]??(['quantity','weightKg','cbm'].includes(key)?'0':key==='unit'?'PKG':''))]));
+ if(job.service!=='EXPRESS'&&['SEA','AIR'].includes(job.mode)){
+  result.origin=String(source.routeLocations?.ORIGIN_TERMINAL||source.originPortCode||source.origin||'');
+  result.destination=String(source.routeLocations?.DESTINATION_TERMINAL||source.destinationPortCode||source.destination||'');
+  result.placeOfReceipt=String(source.placeOfReceipt||source.origin||'');
+  result.placeOfDelivery=String(source.placeOfDelivery||source.destination||'');
+ }
  for(const role of ['shipper','consignee','notify']){
   const party=source[(role==='notify'&&source.notifySameAsConsignee?'consignee':role)+'Party'];
   if(Object.hasOwn(job.data.workDetails||{},role))continue;
@@ -11,6 +18,10 @@ export function initialBillData(job,bill,parent){
   else if(role==='notify'&&source.notifySameAsConsignee)result.notify=String(source.consignee||'');
  }
  if(parent)for(const key of routeFields)if(parent.data?.[key]!==undefined)result[key]=parent.data[key];
+ if(!bill.version&&bill.kind==='MASTER'&&bill.partyMode==='FORWARDER'){
+  const text=[forwarder?.name,forwarder?.address,[forwarder?.representative,forwarder?.phone,forwarder?.email].filter(Boolean).join(' / ')].filter(Boolean).join('\n');
+  for(const role of ['shipper','consignee','notify'])result[role]=text;
+ }
  if(Object.hasOwn(bill.data||{},'cbm')&&!Object.hasOwn(bill.data||{},'cbmFormula'))delete result.cbmFormula;
  return {...result,...bill.data};
 }

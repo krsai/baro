@@ -14,6 +14,15 @@ const {createJobDocument}=require('../backend/dist/services/freightJobWorkflow')
 const {transportSnapshot}=require('../backend/dist/services/transportExchange');
 const {freightDocumentHtml}=await import('../frontend/src/utils/freightPrint.js');
 
+test('new Master composition selects actual or forwarder parties while House and saved snapshots remain independent',()=>{
+ const job={data:{shipper:'ACTUAL SHIPPER',consignee:'ACTUAL CONSIGNEE',notify:'ACTUAL NOTIFY',workDetails:{shipper:'WORK SHIPPER'}}},forwarder={name:'DEX LOGIS',address:'Forwarder Address',representative:'Official Representative',phone:'+84 111',email:'ops@example.test',code:'DO NOT PRINT'};
+ const direct=initialBillData(job,{kind:'MASTER',partyMode:'DIRECT',data:{}},null,forwarder);assert.equal(direct.shipper,'WORK SHIPPER');assert.equal(direct.consignee,'ACTUAL CONSIGNEE');
+ const master=initialBillData(job,{kind:'MASTER',partyMode:'FORWARDER',data:{}},null,forwarder);for(const role of ['shipper','consignee','notify']){assert.ok(master[role].startsWith('DEX LOGIS\n'));assert.ok(master[role].includes('Official Representative'));assert.ok(!master[role].includes('ACTUAL'));assert.ok(!master[role].includes('DO NOT PRINT'));}
+ const house=initialBillData(job,{kind:'HOUSE',data:{}},{data:{...master,vessel:'MASTER VESSEL'}},forwarder);assert.equal(house.shipper,'WORK SHIPPER');assert.equal(house.consignee,'ACTUAL CONSIGNEE');assert.equal(house.notify,'ACTUAL NOTIFY');assert.equal(house.vessel,'MASTER VESSEL');
+ const saved={kind:'MASTER',version:2,partyMode:'FORWARDER',data:{shipper:'PRESERVED',cargo:'PRESERVED CARGO'}};assert.deepEqual(initialBillData(job,saved,null,forwarder),saved.data);
+ const routed=initialBillData({mode:'SEA',data:{origin:'Factory Door',destination:'Customer Door',originPortCode:'VNHPH',destinationPortCode:'KRINC'}},{kind:'MASTER',data:{}});assert.equal(routed.origin,'VNHPH');assert.equal(routed.destination,'KRINC');assert.equal(routed.placeOfReceipt,'Factory Door');assert.equal(routed.placeOfDelivery,'Customer Door');
+});
+
 test('job routes no longer expose document composition setup',()=>{
  const routes=[],app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path)=>routes.push(method+' '+path)]));
  registerJobRoutes(app,{},()=>{});

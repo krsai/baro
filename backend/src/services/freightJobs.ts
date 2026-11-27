@@ -21,7 +21,7 @@ export async function jobDetail(db:any,orgId:number,actorId:number,id:string){
 }
 export async function jobOptions(db:any,orgId:number,actorId:number){
  await freightForwarder(db,orgId,actorId);
- return {forwarder:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true}}),employees:await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:'OPERATOR'},select:{id:true,name:true,employeeNo:true},orderBy:{name:'asc'}}),currencies:await db.currency.findMany({select:{code:true,name:true},orderBy:{code:'asc'}})};
+ return {forwarder:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true,address:true,representative:true,phone:true,email:true}}),employees:await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:'OPERATOR'},select:{id:true,name:true,employeeNo:true},orderBy:{name:'asc'}}),currencies:await db.currency.findMany({select:{code:true,name:true},orderBy:{code:'asc'}})};
 }
 export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:string,input:any,id?:string,remove=false){
  await freightForwarder(db,orgId,actorId);
