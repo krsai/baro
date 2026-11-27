@@ -62,8 +62,8 @@ try{
   await page.waitForFunction(()=>document.querySelector('[name=\"cargo\"]')?.disabled===false);
   assert.deepEqual(logos[0],logos[1]);assert.equal(saves.length,2);await page.locator('summary').filter({hasText:t.logo}).click();
   await page.getByRole('textbox',{name:'Shipper',exact:true}).fill('Incorrect Party');
-  await page.getByRole('button',{name:t.reapply,exact:true}).click();
-  assert.match((await page.getByRole('textbox',{name:'Shipper',exact:true}).inputValue()).toUpperCase(),/SHIPPER ORIGINAL/);
+  assert.equal(await page.getByRole('button',{name:t.reapply,exact:true}).count(),0);
+  assert.equal(await page.getByRole('textbox',{name:'Shipper',exact:true}).inputValue(),'Incorrect Party');
   assert.equal(await number.inputValue(),'DEXL2611001');
   if(lang==='en'&&theme==='standard'){const dir=path.join(tmpdir(),'baro-bl-preview');mkdirSync(dir,{recursive:true});await page.locator('.MuiDialogContent-root').first().evaluate(n=>n.scrollTop=0);await page.screenshot({path:path.join(dir,'editor-'+width+'.png')});}
   await page.getByRole('button',{name:'Return',exact:true}).click();await page.getByRole('button',{name:'House BL (2)',exact:true}).click();
