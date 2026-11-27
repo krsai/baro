@@ -1,3 +1,4 @@
+import {prepareSharedJob,syncBillsFromJob} from './shippingSharedData';
 import {validateVolumeFormula} from '../utils/validateVolumeFormula';
 import {directoryShippingParty,recentShippingParties} from './shippingPartyDirectory';
 import {assertDistinctShippingParties} from './shippingParties';
@@ -155,6 +156,7 @@ export async function saveFreight(db:any,orgId:number,actorId:number,type:keyof 
   if(type==='jobs'&&before?.data?.documentSetup){
    value.data.documentSetup=before.data.documentSetup;
   }
+  if(type==='jobs'&&before){const prepared=prepareSharedJob(before,value.data,'SR');value.data=prepared.data;(value as any).requestSnapshot=prepared.requestSnapshot;}
   // A status is an operational observation, not an automatically signed POD.
   if(type==='jobs'&&value.status==='DELIVERED'&&(!value.data.deliveryDate||!value.data.recipient))fail('FREIGHT_DELIVERY_REQUIRED');
   const sourceId=id||randomUUID(),columns=Object.keys(value),params=columns.map(k=>k==='data'?JSON.stringify((value as any)[k]):(value as any)[k]);
@@ -172,7 +174,7 @@ export async function saveFreight(db:any,orgId:number,actorId:number,type:keyof 
    const values:any={id:sourceId,orgId,clientKey,requestHash,...value,...(type!=='masters'?{number}:{}),createdByEmployeeId:actorId,updatedByEmployeeId:actorId};
    const cols=Object.keys(values);rows=await tx.$queryRawUnsafe(`INSERT INTO "${tables[type]}"(${cols.map(k=>`"${k}"`).join(',')}) VALUES(${cols.map((k,i)=>`$${i+1}${k==='data'?'::jsonb':''}`).join(',')}) RETURNING *`,...cols.map(k=>k==='data'?JSON.stringify(values[k]):values[k]));
   }
-  await audit(tx,orgId,type,rows[0],before,actorId);return rows[0];
+  await audit(tx,orgId,type,rows[0],before,actorId);if(type==='jobs'&&before)await syncBillsFromJob(tx,actorId,before,rows[0]);return rows[0];
  });
 }
 export async function listFreight(db:any,orgId:number,actorId:number,type:keyof typeof tables,input:any={}){

@@ -1,3 +1,4 @@
+import {syncJobFromBill} from './shippingSharedData';
 import {linkedJobBills,searchJobMasters,changeJobMasterLink} from './freightMasterLinks';
 import {randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
@@ -42,6 +43,7 @@ export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:strin
   const masterId=remove?before.masterId:input.masterId==null||input.masterId===''?null:text(input.masterId,100);
 
   const data=remove?before.data:input.data===undefined?before?.data||{}:billData(input.data);
+  if(!remove&&before?.data?.cbmFormula&&input.data?.cbm!==undefined&&!Object.hasOwn(input.data,'cbmFormula'))data.cbmFormula='';
   if(!remove){
    const status=data.surrenderStatus||'NONE',oldStatus=before?.data?.surrenderStatus||'NONE';
    if(status!=='NONE'&&(current.mode!=='SEA'||data.releaseType==='SEA_WAYBILL'))fail('FREIGHT_SURRENDER_SCOPE');
@@ -76,6 +78,7 @@ export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:strin
    rows=await tx.$queryRawUnsafe('INSERT INTO "FreightBill"(id,"orgId","jobId",kind,number,issuer,"masterId",data,"createdByEmployeeId","updatedByEmployeeId","houseNumberManaged") VALUES($1,$2,$3,$4,$5,$6,$7,$9::jsonb,$8,$8,$10) RETURNING *',billId,orgId,jobId,kind,number,issuer,masterId,actorId,JSON.stringify(data),kind==='HOUSE');
   }
   await tx.$executeRawUnsafe('INSERT INTO "FreightAudit"(id,"orgId",entity,"sourceId",version,"actorId","before","after") VALUES($1,$2,\'bills\',$3,$4,$5,$6::jsonb,$7::jsonb)',randomUUID(),orgId,billId,rows[0].version,actorId,before?JSON.stringify(before):null,JSON.stringify(rows[0]));
+  if(!remove)await syncJobFromBill(tx,actorId,current,before,rows[0]);
   return rows[0];
  });
 }

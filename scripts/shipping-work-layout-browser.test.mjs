@@ -10,13 +10,14 @@ const html='frontend/shipping-work-layout-test.html',port=43563;
 assert.ok(!existsSync(html));
 writeFileSync(html,`<html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module">
 import React from 'react';import{createRoot}from'react-dom/client';import{MemoryRouter,Routes,Route}from'react-router-dom';import{ThemeProvider,CssBaseline}from'@mui/material';import{appThemes}from'/src/theme';import Page from'/src/pages/App/FreightJobs';import'/src/styles/form.css';
-const theme=new URLSearchParams(location.search).get('theme');createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,{initialEntries:['/shipping/job1']},React.createElement(ThemeProvider,{theme:appThemes[theme]},React.createElement(CssBaseline),React.createElement(Routes,null,React.createElement(Route,{path:'/shipping/:jobId',element:React.createElement(Page)})))));
+const theme=new URLSearchParams(location.search).get('theme');createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,{initialEntries:['${process.argv.includes('--shared-sr-only')?'/shipping':'/shipping/job1'}']},React.createElement(ThemeProvider,{theme:appThemes[theme]},React.createElement(CssBaseline),React.createElement(Routes,null,React.createElement(Route,{path:'/shipping/:jobId?',element:React.createElement(Page)})))));
 </script></html>`);
 const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:'frontend',stdio:'ignore',windowsHide:true});let browser;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/shipping-work-layout-test.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const lang of ['ko','en','vi'])for(const width of [1440,390])for(const mode of ['FCL','LCL','AIR','EXPRESS']){
+  if(process.argv.includes('--shared-sr-only')&&mode!=='FCL')continue;
   if(process.argv.includes('--customer-only')&&mode!=='FCL')continue;
   if(process.argv.includes('--volume-formula-only')&&mode!=='EXPRESS')continue;
   if(process.argv.includes('--return-locks-only')&&(lang!=='ko'||width!==1440||mode!=='FCL'))continue;
@@ -32,6 +33,7 @@ try{
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={showNotification(message,severity){window.notices=[...(window.notices||[]),{message,severity}];},setUnsavedChangesGuard(){},clearUnsavedChangesGuard(){},markTabChanged(){},clearTabChanged(){},navigateToPath(){}};export const useAppActions=()=>a;'}));
   await page.route('**/text-acronyms',r=>r.fulfill({json:{revision:0,entries:[{acronym:'MBL'},{acronym:'HBL'},{acronym:'AR'},{acronym:'AP'}]}}));
   const customer={id:11,name:'CUSTOMER'},job={id:'job1',number:'JOB-000001',orgId:7,mode:['FCL','LCL'].includes(mode)?'SEA':'AIR',service:mode==='EXPRESS'?'EXPRESS':'GENERAL',receiptStatus:'ACCEPTED',status:'DRAFT',version:1,bills:[],documents:[],data:{customer,shipmentType:mode,shipper:'SENDER\nSender Address',consignee:'BUYER\nBuyer Address',notify:'NOTIFY',origin:'Origin Address',destination:'Destination Address',originPortCode:'VNHPH',destinationPortCode:'KRINC',cargo:'Garment',marks:'PRESERVE MARKS',placeOfReceipt:'PRESERVE RECEIPT',placeOfDelivery:'PRESERVE DELIVERY',incoterms:'CIF',freightTerms:'Prepaid',quantity:'99',cbm:'88',weightKg:'120',unit:'PKG',containers:mode==='FCL'?[{size:'20',type:'DC',count:'1'}]:[],packages:mode==='FCL'?[]:[{quantity:'3',lengthM:'0.1',widthM:'0.2',heightM:'0.3'}]}},original=structuredClone(job.data);
+  if(process.argv.includes('--shared-sr-only')){job.customerId=11;job.requestCreatedByOrgId=7;job.requestSnapshot={mode:job.mode,status:'DRAFT',data:structuredClone(job.data)};}
   if(mode==='FCL')job.data.workScope={start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'};
   if(mode==='LCL')job.data.workScope={start:'ORIGIN_TERMINAL',end:'DESTINATION_TERMINAL'};
   if(mode==='AIR')job.data.workScope={start:'ORIGIN_DOOR',end:'DESTINATION_TERMINAL'};
@@ -39,14 +41,24 @@ try{
   if(process.argv.includes('--route-colors-only'))Object.assign(job.data,{plannedDate:'2026-11-26',etd:'2026-11-27',routeDateDESTINATION_TERMINAL:'2026-11-28',routeDateDESTINATION_DOOR:''});
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'},charges=[];
   await page.route('**/freight/**',async route=>{const req=route.request();if(req.method()==='OPTIONS')return route.fulfill({headers});const key=new URL(req.url()).pathname.split('/freight/')[1];let json;
-   if(key==='options')json=[customer,{id:12,code:'NEW',name:'NEW CUSTOMER'}];else if(key==='transport-jobs/options')json={forwarder:{id:7,name:'DEX LOGIS'},employees:[],currencies:[{code:'USD'}]};else if(key==='transport-jobs/job1')json=job;
+   if(key==='transport-jobs')json={rows:[job],total:1};else if(key==='options')json=[customer,{id:12,code:'NEW',name:'NEW CUSTOMER'}];else if(key==='transport-jobs/options')json={forwarder:{id:7,name:'DEX LOGIS'},employees:[],currencies:[{code:'USD'}]};else if(key==='transport-jobs/job1')json=job;
    else if(key==='transport-jobs/job1/bills'){const body=req.postDataJSON();billWrites.push(body);if(billWrites.length===1)return route.fulfill({headers,status:503,json:{error:'UNCONFIRMED'}});json={...body,jobId:job.id,orgId:7,version:1};job.bills=[json];}
-   else if(key==='transport-jobs/job1/operation-details'){const body=req.postDataJSON();writes.push(body);if(body.fields.customerId){if(process.argv.includes('--customer-only')&&writes.length===1)return route.fulfill({headers,status:503,json:{error:'UNCONFIRMED'}});job.customerId=body.fields.customerId;job.data.customer={id:12,name:'NEW CUSTOMER'};job.version++;return route.fulfill({headers,json:job});}job.data.workDetails={...job.data.workDetails,...body.fields};job.version++;json=job;}
+   else if(key==='transport-jobs/job1/operation-details'){const body=req.postDataJSON();writes.push(body);if(body.fields.customerId){if(process.argv.includes('--customer-only')&&writes.length===1)return route.fulfill({headers,status:503,json:{error:'UNCONFIRMED'}});job.customerId=body.fields.customerId;job.data.customer={id:12,name:'NEW CUSTOMER'};job.version++;return route.fulfill({headers,json:job});}job.data.workDetails={...job.data.workDetails,...body.fields};if(process.argv.includes('--shared-sr-only')){Object.assign(job.data,body.fields);Object.assign(job.requestSnapshot.data,body.fields);}job.version++;json=job;}
    else throw Error('Unexpected freight API '+key);return route.fulfill({headers,json});});
   await page.route('**/shipping-requests/**',async route=>{const req=route.request();if(req.method()==='OPTIONS')return route.fulfill({headers});const key=new URL(req.url()).pathname.split('/shipping-requests/')[1];let json;
    if(key==='job1/charges'&&req.method()==='POST'){const body=req.postDataJSON();chargeWrites.push(body);if(chargeWrites.length===1)return route.fulfill({headers,status:503,json:{error:'UNCONFIRMED'}});json={...body,version:1};charges.push(json);}
    else if(key==='job1/charges')json={rows:charges,currencies:[{code:'USD'}],parties:[customer]};else json=[];return route.fulfill({headers,json});});
   await page.goto(`http://127.0.0.1:${port}/shipping-work-layout-test.html?theme=${width===390?'standard':'compact'}`);
+  if(process.argv.includes('--shared-sr-only')){
+   await page.getByRole('button',{name:opView(),exact:true}).click();
+   function opView(){return t.viewSr+' \u00b7 '+job.number;}
+   const dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:t.editSr,exact:true}).click();
+   const sr=dialog.getByTestId('shipping-operations-form');await sr.waitFor();await sr.locator('[name=cargo]').fill('SR Changed Cargo');
+   const count=sr.locator('[data-container-row] input').first();await count.fill('3');assert.equal(writes.length,0);
+   await dialog.getByRole('button',{name:t.save,exact:true}).click();await page.waitForFunction(()=>window.notices?.some(n=>n.severity==='success'));
+   assert.equal(writes.length,1);assert.deepEqual(writes[0].fields,{cargo:'SR Changed Cargo',containers:[{size:'20',type:'DC',count:'3'}]});assert.equal(job.requestSnapshot.data.cargo,'SR Changed Cargo');
+   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert.deepEqual(errors,[]);await dialog.getByRole('button',{name:t.close,exact:true}).click();console.log('PASS current SR shared cargo/containers edit and save',lang,width);await page.close();continue;
+  }
   const form=page.getByTestId('shipping-operations-form');await form.waitFor();
   if(process.argv.includes('--customer-only')){
    const input=form.getByRole('textbox',{name:t.customer,exact:true});await input.fill('NEW');await input.press('Enter');assert.equal(writes.length,0);

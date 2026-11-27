@@ -5,7 +5,7 @@ import {billRouteFields,billFreightFields} from '../utils/billFormLayout.mjs';
 
 // The sample's document regions are shared by Master and House, not rebuilt
 // as unrelated cards. Mobile keeps the same reading order without tiny text.
-export default function BillDocumentForm({field,numberField,issuerField,masterField,logo,logoActions,logoActionsLabel,air=false}){
+export default function BillDocumentForm({field,numberField,issuerField,masterField,logo,logoActions,logoActionsLabel,containerField,air=false}){
  const region={p:1.25,minWidth:0,borderColor:'divider'};
  return <>
   {logoActions&&<Box component="details" sx={{border:1,borderColor:'divider',borderRadius:1,p:1}}><Typography component="summary" sx={{cursor:'pointer'}}>{logoActionsLabel}</Typography><Box sx={{pt:1}}>{logoActions}</Box></Box>}
@@ -21,6 +21,7 @@ export default function BillDocumentForm({field,numberField,issuerField,masterFi
    </Stack>
   </Box>
   <Box data-bl-region="route" sx={{...region,borderTop:1,borderColor:'divider',display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))'},gap:1.25}}>{billRouteFields.map(key=>field(key))}</Box>
+  {containerField&&<Box data-bl-region="containers" sx={{...region,borderTop:1,borderColor:'divider'}}>{containerField}</Box>}
   <Box data-bl-region="cargo" sx={{...region,borderTop:1,borderColor:'divider',display:'grid',gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',md:'1.2fr .8fr 2.4fr 1fr 1fr'},gap:1,alignItems:'start'}}>
    <Box sx={{gridColumn:{xs:'1 / -1',md:'auto'}}}>{field('marks',true)}</Box>
    <Stack spacing={1}>{field('quantity')}{field('unit')}</Stack>

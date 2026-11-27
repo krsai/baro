@@ -35,3 +35,6 @@ Object.assign(shippingOperationText.vi,{placeOfReceipt:'N\u01A1i Nh\u1EADn H\u00
 Object.assign(shippingOperationText.ko,{routeCompleted:'날짜 경과',routePending:'날짜 미경과'});
 Object.assign(shippingOperationText.en,{routeCompleted:'Date Passed',routePending:'Date Not Passed'});
 Object.assign(shippingOperationText.vi,{routeCompleted:'Đã Qua Ngày',routePending:'Chưa Qua Ngày'});
+Object.assign(shippingOperationText.ko,{editSr:'SR 수정'});
+Object.assign(shippingOperationText.en,{editSr:'Edit SR'});
+Object.assign(shippingOperationText.vi,{editSr:'Sửa SR'});

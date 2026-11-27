@@ -1,9 +1,9 @@
 import {shippingWorkData} from './shippingWorkData.mjs';
-export const billFields=['shipper','consignee','notify','deliveryAgent','vessel','voyage','origin','destination','placeOfReceipt','placeOfDelivery','etd','eta','issueDate','issuePlace','marks','cargo','quantity','unit','weightKg','cbm','cbmFormula','freightTerms','preCarriage','finalDestination','totalPackagesWords','revenueTons','rate','ratePer','prepaid','collect','freightPayableAt','originalCount','onBoardDate','releaseType','surrenderStatus','surrenderRequestedAt','surrenderConfirmedAt','surrenderReference','surrenderReason','logoDataUrl'];
+export const billFields=['shipper','consignee','notify','deliveryAgent','vessel','voyage','origin','destination','placeOfReceipt','placeOfDelivery','etd','eta','issueDate','issuePlace','marks','cargo','quantity','unit','weightKg','cbm','cbmFormula','freightTerms','billTo','incoterms','preCarriage','finalDestination','totalPackagesWords','revenueTons','rate','ratePer','prepaid','collect','freightPayableAt','originalCount','onBoardDate','releaseType','surrenderStatus','surrenderRequestedAt','surrenderConfirmedAt','surrenderReference','surrenderReason','logoDataUrl'];
 export const requiresBillHierarchy=job=>job?.service!=='EXPRESS'&&['SEA','AIR'].includes(job?.mode);
 const routeFields=['vessel','voyage','origin','destination','placeOfReceipt','placeOfDelivery','etd','eta'];
 export function initialBillData(job,bill,parent,forwarder){
- if(bill.version)return {...bill.data};
+ if(bill.version){const containers=shippingWorkData(job.data||{}).containers;return {...bill.data,...(bill.data?.containers===undefined&&containers&&!(bill.kind==='MASTER'&&bill.linkedJobCount>1)?{containers:structuredClone(containers)}:{})};}
  const source=shippingWorkData(job.data||{}),result=Object.fromEntries(billFields.map(key=>[key,String(source[key]??(['quantity','weightKg','cbm'].includes(key)?'0':key==='unit'?'PKG':''))]));
  if(job.service!=='EXPRESS'&&['SEA','AIR'].includes(job.mode)){
   result.origin=String(source.routeLocations?.ORIGIN_TERMINAL||source.originPortCode||source.origin||'');
@@ -17,6 +17,8 @@ export function initialBillData(job,bill,parent,forwarder){
   if(party)result[role]=[party.name,party.address,[party.contactName,party.phone,party.email].filter(Boolean).join(' / ')].filter(Boolean).join('\n');
   else if(role==='notify'&&source.notifySameAsConsignee)result.notify=String(source.consignee||'');
  }
+ result.billTo=source.billTo||source.customer?.name||'';
+ result.containers=structuredClone(source.containers||[]);
  if(parent)for(const key of routeFields)if(parent.data?.[key]!==undefined)result[key]=parent.data[key];
  if(!bill.version&&bill.kind==='MASTER'&&bill.partyMode==='FORWARDER'){
   const text=[forwarder?.name,forwarder?.address,[forwarder?.representative,forwarder?.phone,forwarder?.email].filter(Boolean).join(' / ')].filter(Boolean).join('\n');

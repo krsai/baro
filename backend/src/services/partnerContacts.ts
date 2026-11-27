@@ -1,3 +1,4 @@
+import {syncPartnerDocuments} from './shippingSharedData';
 import {editRevision} from '../utils/editRevision';
 import {titleCaseWords} from '../utils/humanTextCase';
 import {normalizeStoredAddress} from './companyDocumentContact';
@@ -66,4 +67,6 @@ export async function savePartnerContacts(tx:any,orgId:number,entityId:number,ac
  const mode=input.mode||(Object.values(input.patch).some(value=>value!==null)?'LOCAL':profile.contactMode);
  const base=input.baseMode==='DEFAULT'?profile.contactDefaults:current?.base||profile.contactBase;
  await tx.$executeRawUnsafe('INSERT INTO "PartnerContact"("orgId","entityId",data,revision,"updatedByEmployeeId",base,mode) VALUES($1,$2,$3::jsonb,1,$4,$5::jsonb,$6) ON CONFLICT("orgId","entityId") DO UPDATE SET data=EXCLUDED.data,base=EXCLUDED.base,mode=EXCLUDED.mode,revision="PartnerContact".revision+1,"updatedByEmployeeId"=EXCLUDED."updatedByEmployeeId","updatedAt"=CURRENT_TIMESTAMP',orgId,entityId,JSON.stringify(data),actorId,JSON.stringify(base),mode);
+ const next=mode==='DEFAULT'?profile.contactDefaults:{...base,...data};
+ await syncPartnerDocuments(tx,orgId,actorId,entityId,{...profile,phone:profile.contactPhone??profile.phone},{...next,phone:next.contactPhone??next.phone});
 }

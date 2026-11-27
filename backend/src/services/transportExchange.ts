@@ -13,11 +13,11 @@ const strings=['origin','destination','etd','eta','plannedDate','vessel','voyage
 export function transportSnapshot(input:any){
  if(!input||!['SEA','AIR','ROAD'].includes(input.mode))fail('TRANSPORT_INVALID');
  const data:any={};
- for(const key of strings){const value=input.data?.[key];if(value!==undefined&&value!==null){if(typeof value!=='string'||value.length>2000)fail('TRANSPORT_INVALID');data[key]=value;}}
+ for(const key of strings){const value=input.data?.[key];if(value!==undefined&&value!==null){if(typeof value!=='string'||value.length>(key==='cargo'?4000:2000))fail('TRANSPORT_INVALID');data[key]=value;}}
  for(const key of ['pickupRequired','dangerousGoods'])if(input.data?.[key]!==undefined){if(typeof input.data[key]!=='boolean')fail('TRANSPORT_INVALID');data[key]=input.data[key];}
  for(const key of ['quantity','containerCount'])if(data[key]&&!/^\d{1,12}$/.test(data[key]))fail('TRANSPORT_INVALID');
  for(const key of ['weightKg','cbm'])if(data[key]&&!new RegExp('^\\d{1,12}(?:\\.\\d{1,'+(key==='weightKg'?4:6)+'})?$').test(data[key]))fail('TRANSPORT_INVALID');
- for(const [key,max] of Object.entries({origin:160,destination:160,vessel:160,voyage:100,incoterms:80,incotermsPlace:200,pickupAddress:1000,shipper:1000,consignee:1000,notify:1000,marks:1000,unit:30,containerType:input.data?.cargoSchemaVersion===1?500:40,dangerousGoodsDetails:500,recipient:200}))if(data[key]?.length>max)fail('TRANSPORT_INVALID');
+ for(const [key,max] of Object.entries({origin:1000,destination:1000,vessel:160,voyage:100,incoterms:80,incotermsPlace:200,pickupAddress:1000,shipper:2000,consignee:2000,notify:2000,marks:1000,unit:30,containerType:input.data?.cargoSchemaVersion===1?500:40,dangerousGoodsDetails:500,recipient:200}))if(data[key]?.length>max)fail('TRANSPORT_INVALID');
  for(const key of ['etd','eta','plannedDate','deliveryDate'])if(data[key]&&(!/^\d{4}-\d{2}-\d{2}$/.test(data[key])||!Number.isFinite(Date.parse(data[key]))||new Date(data[key]+'T00:00:00Z').toISOString().slice(0,10)!==data[key]))fail('TRANSPORT_INVALID');
  if(data.shipmentType&&(input.mode==='SEA'?!['FCL','LCL'].includes(data.shipmentType):data.shipmentType!==input.mode))fail('TRANSPORT_INVALID');
  const scope=input.data?.workScope,nodes=input.mode==='ROAD'||input.mode==='AIR'&&input.data?.transportService==='EXPRESS'&&scope?.start==='ORIGIN_DOOR'&&scope?.end==='DESTINATION_DOOR'?['ORIGIN_DOOR','DESTINATION_DOOR']:['ORIGIN_DOOR','ORIGIN_TERMINAL','DESTINATION_TERMINAL','DESTINATION_DOOR'];

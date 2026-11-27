@@ -15,7 +15,7 @@ const {transportSnapshot}=require('../backend/dist/services/transportExchange');
 test('operational customer changes use a scoped FK while preserving SR, parties, bills and saved documents',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
-  const customerMigration=readFileSync('backend/prisma/migrations/20261127070000_shipping_customer_correction/migration.sql','utf8');await f.pg.exec(customerMigration);await f.pg.exec(customerMigration);
+  const customerMigration=readFileSync('backend/prisma/migrations/20261127070000_shipping_customer_correction/migration.sql','utf8');await f.pg.exec(customerMigration);await f.pg.exec(customerMigration);await f.pg.exec(readFileSync('backend/prisma/migrations/20261127080000_shipping_shared_data/migration.sql','utf8'));
   const customer=await db.organization.create({data:{name:'NEW CUSTOMER',type:'LOGISTICS_PROVIDER',ownerOrgId:org}});
   const inactive=await db.organization.create({data:{name:'INACTIVE',type:'LOGISTICS_PROVIDER',ownerOrgId:org,isActive:false}});
   const job=await saveFreight(db,org,actor,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,mode:'SEA',data:{shipper:'SENDER',consignee:'BUYER',cargo:'Cargo',origin:'Hanoi',destination:'Busan'}});
@@ -27,16 +27,16 @@ test('operational customer changes use a scoped FK while preserving SR, parties,
   await assert.rejects(saveJobOperationDetails(db,org,999999,job.id,request),/ACTIVE_EMPLOYEE_REQUIRED/);
   const saved=await saveJobOperationDetails(db,org,actor,job.id,request);
   assert.equal(saved.customerId,customer.id);assert.equal(saved.data.customer.id,customer.id);assert.equal(saved.version,job.version+1);
-  for(const key of ['requestSnapshot','sharedSnapshot','orgId','requesterOrgId','requestCreatedByOrgId'])assert.deepEqual(saved[key],job[key]);
+  for(const key of ['sharedSnapshot','orgId','requesterOrgId','requestCreatedByOrgId'])assert.deepEqual(saved[key],job[key]);
   for(const key of ['shipper','consignee','notify','shipperId','consigneeId','origin','destination'])assert.deepEqual(saved.data[key],job.data[key]);
   assert.equal(saved.data.customerId,undefined);assert.equal(saved.data.workDetails?.customerId,undefined);
   assert.equal((await saveJobOperationDetails(db,org,actor,job.id,request)).version,saved.version);
   await assert.rejects(saveJobOperationDetails(db,org,actor,job.id,{...request,requestId:randomUUID()}),/FREIGHT_CHANGED/);
-  assert.deepEqual((await db.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE id=$1',bill.id))[0],bill);
+  const syncedBill=(await db.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE id=$1',bill.id))[0];assert.equal(syncedBill.number,bill.number);assert.equal(syncedBill.data.cargo,bill.data.cargo);assert.equal(syncedBill.data.shipper,bill.data.shipper||saved.data.shipper);
   assert.deepEqual((await db.$queryRawUnsafe('SELECT snapshot FROM "FreightDocument" WHERE id=$1',document.id))[0].snapshot,document.snapshot);
   const audit=(await db.$queryRawUnsafe('SELECT "before","after" FROM "FreightAudit" WHERE entity=\'operation-details\' AND "sourceId"=$1',job.id))[0];assert.equal(audit.before.customerId,s.vendor.id);assert.equal(audit.after.customerId,customer.id);
-  await assert.rejects(db.$executeRawUnsafe('UPDATE "FreightJob" SET "customerId"=$1,"requestSnapshot"=$3::jsonb,version=version+1 WHERE id=$2',s.vendor.id,job.id,'{}'),/SHIPPING_CUSTOMER_IMMUTABLE/);
-  const next=await saveJobOperationDetails(db,org,actor,job.id,{version:saved.version,requestId:randomUUID(),fields:{vessel:'Next Vessel'}});assert.equal(next.customerId,customer.id);assert.deepEqual(next.requestSnapshot,job.requestSnapshot);
+  await assert.rejects(db.$executeRawUnsafe('UPDATE "FreightJob" SET "customerId"=$1,"requestSnapshot"=$3::jsonb,version=version+1 WHERE id=$2',s.vendor.id,job.id,'{}'),/SHIPPING_CUSTOMER_IMMUTABLE|SHIPPING_PUBLIC_FIELDS_REQUIRED/);
+  const next=await saveJobOperationDetails(db,org,actor,job.id,{version:saved.version,requestId:randomUUID(),fields:{vessel:'Next Vessel'}});assert.equal(next.customerId,customer.id);assert.equal(next.requestSnapshot.data.vessel,'Next Vessel');assert.equal(next.requestSnapshot.data.cargo,job.requestSnapshot.data.cargo);
  }finally{await f.close();}
 });
 
@@ -63,7 +63,7 @@ test('editable package dimensions preserve original cargo and reject malformed, 
   for(const value of [null,{},[null],[{...packages[0],quantity:'1.5'}],[{...packages[0],lengthM:''}],[{...packages[0],widthM:'-1'}],[{...packages[0],heightM:'1e3'}],[{...packages[0],lengthM:'1000000',widthM:'1000000',heightM:'1000000'}],[{...packages[0],orgId:999}],Array(51).fill(packages[0])])await assert.rejects(saveJobOperationDetails(db,org,actor,job.id,input({packages:value})),/FREIGHT_INVALID_INPUT/);
   const fields={packages,...shippingPackageTotals(packages),chargeableWeightKg:'12.5'},request=input(fields);
   const saved=await saveJobOperationDetails(db,org,actor,job.id,request);
-  assert.deepEqual(saved.data.workDetails,fields);assert.equal(saved.data.marks,'Original Marks');assert.equal(saved.data.placeOfReceipt,job.data.placeOfReceipt);assert.deepEqual(saved.requestSnapshot,job.requestSnapshot);
+  assert.deepEqual(saved.data.workDetails,fields);assert.equal(saved.data.marks,'Original Marks');assert.equal(saved.data.placeOfReceipt,job.data.placeOfReceipt);assert.equal(saved.requestSnapshot.data.cargo,saved.data.cargo);assert.equal(saved.requestSnapshot.data.quantity,saved.data.quantity);
   assert.equal((await saveJobOperationDetails(db,org,actor,job.id,request)).version,saved.version);
   assert.equal(transportSnapshot(saved).data.workDetails,undefined);
  }finally{await f.close();}
@@ -80,18 +80,18 @@ test('operational patch changes only selected fields and preserves request, prog
   const saved=await saveJobOperationDetails(db,org,actor,job.id,input);
   assert.equal(saved.version,job.version+1);assert.equal(saved.data.voyage,'0230W');
   for(const key of ['origin','destination','shipper','consignee','cargo','operations'])assert.deepEqual(saved.data[key],job.data[key]);
-  for(const key of ['orgId','customerId','mode','service','receiptStatus','requestSnapshot','sharedSnapshot'])assert.deepEqual(saved[key],job[key]);
+  for(const key of ['orgId','customerId','mode','service','receiptStatus','sharedSnapshot'])assert.deepEqual(saved[key],job[key]);
   assert.equal((await saveJobOperationDetails(db,org,actor,job.id,input)).version,saved.version);
   await assert.rejects(saveJobOperationDetails(db,org,actor,job.id,{...input,fields:{vessel:'Different retry'}}),/FREIGHT_CHANGED/);
   await assert.rejects(saveJobOperationDetails(db,org,actor,job.id,{...input,requestId:randomUUID()}),/FREIGHT_CHANGED/);
   assert.equal((await db.$queryRawUnsafe('SELECT count(*)::int AS n FROM "FreightAudit" WHERE entity=\'operation-details\''))[0].n,1);
   const again=await saveJobOperationDetails(db,org,actor,job.id,{version:saved.version,requestId:randomUUID(),fields:{eta:'2026-12-05'}});
-  assert.deepEqual(again.requestSnapshot,job.requestSnapshot,'repeated operational saves must not replace the original with the previous working data');
+  assert.equal(again.requestSnapshot.data.eta,'2026-12-05');assert.equal(again.requestSnapshot.data.vessel,'Working vessel');
   assert.deepEqual((await db.$queryRawUnsafe('SELECT snapshot FROM "FreightDocument" WHERE id=$1',copy.id))[0].snapshot,copy.snapshot);
   assert.equal(transportSnapshot(saved).data.operationEdit,undefined);
   const migration=readFileSync(new URL('../backend/prisma/migrations/20261124020000_shipping_operation_snapshot/migration.sql',import.meta.url),'utf8');
   await f.pg.exec(migration);await f.pg.exec(migration);
-  assert.deepEqual((await db.$queryRawUnsafe('SELECT "requestSnapshot" FROM "FreightJob" WHERE id=$1',job.id))[0].requestSnapshot,job.requestSnapshot);
+  assert.deepEqual((await db.$queryRawUnsafe('SELECT "requestSnapshot" FROM "FreightJob" WHERE id=$1',job.id))[0].requestSnapshot,again.requestSnapshot);
   assert.equal((await db.$queryRawUnsafe('SELECT count(*)::int AS n FROM "BankLedgerEntry"'))[0].n,0);
  }finally{await f.close();}
 });
@@ -121,7 +121,7 @@ test('operational patch validates exact fields, dates, company employees and wri
  }finally{await f.close();}
 });
 
-test('editable BL-like work values preserve SR, saved bills and snapshots while new documents use the working copy',async()=>{
+test('common work edits update current SR and inherited bill fields while custom cargo and saved output copies remain intact',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
   const job=await saveFreight(db,org,actor,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,mode:'SEA',data:{origin:'Original Factory',destination:'Original Buyer',shipper:'ORIGINAL SENDER',consignee:'ORIGINAL BUYER',cargo:'Original Cargo'}});
@@ -129,12 +129,12 @@ test('editable BL-like work values preserve SR, saved bills and snapshots while 
   const old=await createJobDocument(db,org,actor,job.id,{clientKey:randomUUID(),version:job.version,kind:'AN'});
   const fields={shipper:'WORK SENDER\nWorking Address',consignee:'WORK BUYER',notify:'WORK NOTIFY',cargo:'Working Cargo',origin:'Working Factory',destination:'Working Buyer',quantity:'12',weightKg:'120.25',freightTerms:'Prepaid',incoterms:'CIF',remark:'Internal Working Remark',containers:[{size:'20',type:'DC',count:'2'}]};
   const input={version:job.version,requestId:randomUUID(),fields},saved=await saveJobOperationDetails(db,org,actor,job.id,input);
-  assert.deepEqual(saved.data.workDetails,fields);assert.equal(saved.data.cargo,'Original Cargo');assert.equal(saved.data.shipper,'ORIGINAL SENDER');assert.deepEqual(saved.requestSnapshot,job.requestSnapshot);
+  assert.deepEqual(saved.data.workDetails,fields);assert.equal(saved.data.cargo,'Working Cargo');assert.equal(saved.data.shipper,fields.shipper);assert.equal(saved.requestSnapshot.data.cargo,saved.data.cargo);assert.equal(saved.requestSnapshot.data.quantity,saved.data.quantity);
   assert.equal((await saveJobOperationDetails(db,org,actor,job.id,input)).version,saved.version);
   const next=await createJobDocument(db,org,actor,job.id,{clientKey:randomUUID(),version:saved.version,kind:'AN'});
   assert.equal(next.snapshot.source.data.cargo,'Working Cargo');assert.equal(next.snapshot.source.data.shipper,fields.shipper);
   assert.deepEqual((await db.$queryRawUnsafe('SELECT snapshot FROM "FreightDocument" WHERE id=$1',old.id))[0].snapshot,old.snapshot);
-  assert.deepEqual((await db.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE id=$1',bill.id))[0],bill);
-  assert.equal(transportSnapshot(saved).data.workDetails,undefined);assert.equal(transportSnapshot(saved).data.cargo,'Original Cargo');
+  const preserved=(await db.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE id=$1',bill.id))[0];assert.equal(preserved.data.cargo,bill.data.cargo);assert.equal(preserved.number,bill.number);assert.equal(preserved.data.shipper,fields.shipper);
+  assert.equal(transportSnapshot(saved).data.workDetails,undefined);assert.equal(transportSnapshot(saved).data.cargo,'Working Cargo');
  }finally{await f.close();}
 });

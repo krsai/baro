@@ -1,3 +1,4 @@
+import {prepareSharedJob,syncBillsFromJob} from './shippingSharedData';
 import {linkedJobBills} from './freightMasterLinks';
 import {Prisma} from '@prisma/client';
 import {workFieldLimits,shippingWorkData} from './shippingWorkData';
@@ -31,7 +32,7 @@ export async function saveJobOperationDetails(db:any,orgId:number,actorId:number
    if(volume.gte('1000000000000'))fail('FREIGHT_INVALID_INPUT');
   }else if(key==='containers'){
    const allowed=['20DC','40DC','40HQ','45HQ','20RF','40RF','40RH','20OT','40OT','40OH','20FR','40FR','40FH','20TK'];
-   if(!Array.isArray(value)||value.length>100||value.some((r:any)=>!r||Object.keys(r).some(k=>!['size','type','count'].includes(k))||!allowed.includes(String(r.size)+String(r.type))||!/^\d{1,6}$/.test(String(r.count))||Number(r.count)<1))fail('FREIGHT_INVALID_INPUT');
+   if(!Array.isArray(value)||value.length>50||value.some((r:any)=>!r||Object.keys(r).some(k=>!['size','type','count'].includes(k))||!allowed.includes(String(r.size)+String(r.type))||!/^\d{1,6}$/.test(String(r.count))||Number(r.count)<1))fail('FREIGHT_INVALID_INPUT');
    fields[key]=value.map((r:any)=>({size:String(r.size),type:String(r.type),count:String(r.count)}));
   }else if(key==='etd'||key==='eta'||key==='plannedDate'||key.startsWith('routeDate')){
    if(value!==null&&(typeof value!=='string'||!/^\d{4}-\d\d-\d\d$/.test(value)||!Number.isFinite(Date.parse(value))||new Date(value).toISOString().slice(0,10)!==value))fail('FREIGHT_INVALID_INPUT');fields[key]=value;
@@ -51,8 +52,10 @@ export async function saveJobOperationDetails(db:any,orgId:number,actorId:number
   const working=Object.fromEntries(Object.entries(fields).filter(([key])=>Object.hasOwn(workFieldLimits,key)||key==='containers'||key==='packages'));
   if(Object.hasOwn(fields,'cbm')&&!Object.hasOwn(fields,'cbmFormula')&&shippingWorkData(row.data).cbmFormula)working.cbmFormula='';
   const base=Object.fromEntries(Object.entries(fields).filter(([key])=>!Object.hasOwn(working,key)&&key!=='customerId'));
-  const data={...row.data,...base,...(customer?{customer,generalCustomer:false}:{}),...(Object.keys(working).length?{workDetails:{...row.data.workDetails,...working}}:{}),operationEdit:{id:input.requestId,hash:requestHash}};
-  const updated=(await tx.$queryRawUnsafe('UPDATE "FreightJob" SET data=$1::jsonb,"customerId"=$5,version=version+1,"updatedByEmployeeId"=$2,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$3 AND "orgId"=$4 RETURNING *',JSON.stringify(data),actorId,id,orgId,fields.customerId??row.customerId))[0];
+  const data={...row.data,...base,...(customer?{customer,generalCustomer:false,...(!row.data.billTo||row.data.billTo===row.data.customer?.name?{billTo:customer.name}:{})}:{}),...(Object.keys(working).length?{workDetails:{...row.data.workDetails,...working}}:{}),operationEdit:{id:input.requestId,hash:requestHash}};
+  const prepared=prepareSharedJob(row,data);
+  const updated=(await tx.$queryRawUnsafe('UPDATE "FreightJob" SET data=$1::jsonb,"requestSnapshot"=$6::jsonb,"customerId"=$5,version=version+1,"updatedByEmployeeId"=$2,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$3 AND "orgId"=$4 RETURNING *',JSON.stringify(prepared.data),actorId,id,orgId,fields.customerId??row.customerId,JSON.stringify(prepared.requestSnapshot)))[0];
+  await syncBillsFromJob(tx,actorId,row,updated);
   await tx.$executeRawUnsafe('INSERT INTO "FreightAudit"(id,"orgId",entity,"sourceId",version,"actorId","before","after") VALUES($1,$2,\'operation-details\',$3,$4,$5,$6::jsonb,$7::jsonb)',randomUUID(),orgId,id,updated.version,actorId,JSON.stringify(row),JSON.stringify(updated));
   return updated;
  });

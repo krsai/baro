@@ -19,6 +19,7 @@ try{
  for(const lang of ['ko','en','vi'])for(const theme of ['standard','compact'])for(const width of [1440,390]){
   const page=await browser.newPage({viewport:{width,height:1000},hasTouch:width===390}),errors=[],saves=[],t=billWorkflowText[lang],bt=shippingBillText[lang];currentPage=page;page.setDefaultTimeout(20000);page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});page.on('dialog',d=>d.accept());
   const data={origin:'Haiphong',destination:'Incheon',shipper:'SHIPPER ORIGINAL',consignee:'CONSIGNEE ORIGINAL',notify:'NOTIFY ORIGINAL',cargo:'Original Cargo',quantity:'77',unit:'CTN',weightKg:'1040',cbm:'5.440'};
+  if(process.argv.includes('--shared-containers-only'))Object.assign(data,{shipmentType:'FCL',containers:[{size:'20',type:'DC',count:'1'}]});
   let autoNumber=0;const logos=[];
   const job={id:'job',orgId:7,version:1,number:'JOB-1',mode:'SEA',service:'GENERAL',status:'DRAFT',receiptStatus:'ACCEPTED',data,bills:[{id:'m1',jobId:'job',kind:'MASTER',number:'M-1',version:1,data:{}},{id:'m2',jobId:'job',kind:'MASTER',number:'M-2',version:1,data:{}},{id:'h1',jobId:'job',kind:'HOUSE',number:'H-1',masterId:'m1',version:1,data:{}}],documents:[]};
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={showNotification(){},setUnsavedChangesGuard(){},clearUnsavedChangesGuard(){}};export const useAppActions=()=>a;'}));
@@ -26,7 +27,7 @@ try{
   await page.route('**/text-acronyms',r=>r.fulfill({json:{revision:0,entries:[]}}));
   await page.route('**/freight/transport-jobs/bill-branding*',r=>{logos.push(r.request().postDataJSON());return logos.length===1?r.fulfill({status:503,json:{error:'UNCONFIRMED'}}):r.fulfill({json:{version:1,logoDataUrl:logos[0].logoDataUrl}});});
   await page.route('**/test-job',r=>r.fulfill({json:job}));
-  await page.route('**/freight/transport-jobs/job/bills*',r=>{
+  await page.route('**/freight/transport-jobs/job/bills**',r=>{
    const body=r.request().postDataJSON();saves.push(body);const previous=job.bills.find(row=>row.id===body.id);const row={...body,number:body.kind==='HOUSE'&&!body.number?'DEXL2611'+String(++autoNumber).padStart(3,'0'):body.number,jobId:'job',version:(previous?.version||0)+1,houseNumberManaged:body.kind==='HOUSE'};job.bills=job.bills.filter(b=>b.id!==row.id).concat(row);return r.fulfill({json:row});
   });
   await page.goto(`http://127.0.0.1:${port}/bill-workflow-test.html?lang=${lang}&theme=${theme}`,{waitUntil:'domcontentloaded',timeout:60000});
@@ -34,6 +35,7 @@ try{
   for(const kind of ['MASTER','HOUSE']){const tab=page.locator('[data-bl-tab='+kind+']');assert.equal(await tab.locator('button').count(),2);assert.equal(await tab.locator('button button').count(),0);const bounds=await tab.boundingBox();for(const button of await tab.locator('button').all()){const b=await button.boundingBox();assert.ok(b.x>=bounds.x&&b.x+b.width<=bounds.x+bounds.width+1);}}
   if(process.argv.includes('--tabs-only')){console.log('PASS BL split tabs '+lang+' '+theme+' '+width);await page.close();continue;}
   await page.getByRole('button',{name:'Master BL (2)',exact:true}).click();
+  if(process.argv.includes('--shared-containers-only')){await page.getByRole('button',{name:'M-1',exact:true}).click();const dialog=page.getByRole('dialog');const container=dialog.locator('[data-bl-region=containers] [data-container-row]');await container.waitFor();const count=container.locator('input').first();assert.equal(await count.inputValue(),'1');await count.fill('3');await dialog.getByRole('button',{name:bt.save,exact:true}).click();await page.waitForTimeout(300);assert.equal(saves.length,1);assert.deepEqual(saves[0].data.containers,[{size:'20',type:'DC',count:'3'}]);assert.deepEqual(errors,[]);console.log('PASS BL shared container edit',lang,theme,width);await page.close();continue;}
   await page.getByRole('button',{name:'M-1',exact:true}).waitFor();await page.getByRole('button',{name:'H-1',exact:true}).waitFor();assert.equal(saves.length,0);
   await page.getByRole('button',{name:t.addMaster,exact:true}).click();await page.getByRole('button',{name:t.direct,exact:true}).click();
   const number=page.locator('input[name="billNumber"]');await number.fill('WRONG DRAFT');
