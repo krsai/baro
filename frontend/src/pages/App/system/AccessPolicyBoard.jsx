@@ -10,6 +10,8 @@ import {subscriberAccessText} from '../../../constants/subscriberAccess';
 import {organizeCompanyMenu} from '../../../utils/companyMenuLayout.mjs';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React from 'react';
+import DragIndicator from '@mui/icons-material/DragIndicator';
+import {DndContext,PointerSensor,useSensor,useSensors,useDraggable,useDroppable,closestCenter,DragOverlay} from '@dnd-kit/core';
 import {IconButton,Button,Checkbox,Paper,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -112,6 +114,14 @@ const mergeMenus=(left,right)=>{
  for(const node of right){const index=result.findIndex(item=>(item.path||item.id)===(node.path||node.id));if(index<0)result.push(node);else if(node.type==='group')result[index]={...result[index],children:mergeMenus(result[index].children,node.children)};}
  return result;
 };
+function ReorderRow({row,parentId,locked,onMove,children,...props}){
+ const {languageCode}=useLanguage();
+ const label={ko:'순서 변경',en:'Reorder',vi:'Đổi Thứ Tự'}[languageCode]||'Reorder';
+ const id=navigationNodeId(row),data={parentId,row};
+ const drag=useDraggable({id,data,disabled:locked}),drop=useDroppable({id,data,disabled:locked});
+ const handle=<IconButton {...drag.attributes} {...drag.listeners} data-menu-drag-handle={id} aria-label={`${row.label} ${label}`} title={label} disabled={locked} size="small" onKeyDown={event=>{if(['ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();event.stopPropagation();onMove(event.key==='ArrowUp'?-1:1);}}} sx={{mr:1,color:'text.disabled',touchAction:'none',cursor:locked?'default':'grab','&:active':{cursor:'grabbing'}}}><DragIndicator fontSize="small"/></IconButton>;
+ return <TableRow {...props} ref={node=>{drag.setNodeRef(node);drop.setNodeRef(node);}} data-record-interaction="drag" sx={{...props.sx,opacity:drag.isDragging?.4:1,outline:drop.isOver?'2px solid var(--ui-color-primary, #2f75ed)':undefined,outlineOffset:-2}}>{children(handle)}</TableRow>;
+}
 function AccessPolicyBoard(){
  const {activeProfile}=useAuth(),{languageCode}=useLanguage(),{showNotification}=useAppActions();
  const allowed=activeProfile?.entryType==='SYSTEM'&&activeProfile?.systemRole==='SYSTEM_ADMIN';
@@ -121,6 +131,8 @@ function AccessPolicyBoard(){
  const t=subscriberAccessText[languageCode]||subscriberAccessText.en,layout=accessPolicyLayoutText[languageCode]||accessPolicyLayoutText.en;
 
  const [saving,setSaving]=React.useState(false);
+ const [dragged,setDragged]=React.useState(null);
+ const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:5}}));
  const [policy,setPolicy]=React.useState(null),[original,setOriginal]=React.useState(null),[roleError,setRoleError]=React.useState(false);
  const loadRoles=React.useCallback(async()=>{setRoleError(false);try{const value=toEditablePolicy((await fetchRoleAccessPolicy()).policy);setPolicy(value);setOriginal(value);}catch{setRoleError(true);}},[]);
  React.useEffect(()=>{if(allowed)loadRoles();},[allowed,loadRoles]);
@@ -132,11 +144,15 @@ function AccessPolicyBoard(){
  useUnsavedChanges(dirty);
  const locked=menus.loading||ordering.loading||saving||!menus.loaded||!ordering.loaded||!policy||roleError;
  const actionText=accessPolicyActionText[languageCode]||accessPolicyActionText.en;
- const orderText={ko:{up:'위로 이동',down:'아래로 이동'},en:{up:'Move up',down:'Move down'},vi:{up:'Di chuyển lên',down:'Di chuyển xuống'}}[languageCode]||{up:'Move up',down:'Move down'};
- const moveControls=row=>{
+ const positionFor=row=>{
   const parent=row.depth===0?'root':row.id.split(':').slice(0,-1).join(':'),parentNode=rows.find(node=>node.id===parent);
   const parentId=row.depth===0?'root':navigationNodeId(parentNode||{}),siblings=row.depth===0?tree:parentNode?.children||[],index=siblings.findIndex(node=>node.id===row.id);
-  return <span style={{display:'inline-flex',marginRight:8}}>{[-1,1].map(delta=><IconButton key={delta} data-menu-move={delta} size="small" aria-label={row.label+' '+(delta<0?orderText.up:orderText.down)} title={delta<0?orderText.up:orderText.down} disabled={locked||index<0||(delta<0?index===0:index===siblings.length-1)} onClick={()=>ordering.setDraft(previous=>moveNavigationNode(tree,previous,parentId,navigationNodeId(row),delta))}>{delta<0?'↑':'↓'}</IconButton>)}</span>;
+  return {parentId,siblings,index};
+ };
+ const finishDrag=({active,over})=>{setDragged(null);if(locked||!over||active.id===over.id||active.data.current.parentId!==over.data.current.parentId)return;
+  const {parentId,siblings,index}=positionFor(active.data.current.row),target=siblings.findIndex(node=>navigationNodeId(node)===over.id);
+  if(index<0||target<0)return;
+  ordering.setDraft(previous=>{let next=previous;const step=target>index?1:-1;for(let i=index;i!==target;i+=step)next=moveNavigationNode(applyNavigationOrder(tree,next),next,parentId,active.id,step);return next;});
  };
  const toggleRole=(type,features,role,checked)=>setPolicy(previous=>({...previous,[type]:{...previous[type],[role]:checked?[...new Set([...previous[type][role],...features])]:previous[type][role].filter(key=>!features.includes(key))}}));
  const save=async()=>{if(locked||!dirty)return;setSaving(true);try{if(ordering.dirty)await ordering.save();if(menus.dirty)await menus.save();if(roleDirty){const saved=toEditablePolicy(await saveRoleAccessPolicy(policy));setPolicy(saved);setOriginal(saved);}showNotification(layout.saved,'success');}catch{showNotification(layout.partial,'error');}finally{setSaving(false);}};
@@ -145,12 +161,14 @@ function AccessPolicyBoard(){
  {ordering.error&&<Alert severity="error" action={<Button onClick={async()=>{if(!ordering.dirty||await dialogs.confirm('',{purpose:'discard'}))ordering.reload({discard:true});}} disabled={saving}>{layout.reload}</Button>}>{t[ordering.error]}</Alert>}
  {menus.error&&<Alert severity="error" action={<Button onClick={menus.reload} disabled={saving}>{layout.reload}</Button>}>{t[menus.error]}</Alert>}
  {roleError&&<Alert severity="error" action={<Button onClick={loadRoles} disabled={saving}>{layout.reload}</Button>}>{t.failed}</Alert>}
+ <DndContext sensors={sensors} accessibility={{screenReaderInstructions:{draggable:{ko:'드래그하거나 위·아래 방향키로 순서를 변경하세요.',en:'Drag or use the up and down arrow keys to reorder.',vi:'Kéo hoặc dùng phím mũi tên lên và xuống để đổi thứ tự.'}[languageCode]||'Drag or use the up and down arrow keys to reorder.'}}} collisionDetection={args=>closestCenter({...args,droppableContainers:args.droppableContainers.filter(item=>item.data.current?.parentId===args.active.data.current?.parentId)})} onDragStart={({active})=>setDragged(active.data.current.row)} onDragCancel={()=>setDragged(null)} onDragEnd={finishDrag}>
  <Paper variant="outlined" sx={{overflow:'hidden',borderRadius:2}}><TableContainer><Table size="small" stickyHeader sx={{minWidth:1100}}>
  <TableHead><TableRow><TableCell rowSpan={2}>{getUiMessage('accessPolicy.menuTree','Menu structure',languageCode)}</TableCell>{TYPES.map(type=><TableCell key={type} align="center" colSpan={5}>{type==='MANUFACTURER'?t.factory:t.logistics}</TableCell>)}</TableRow><TableRow>{TYPES.map(type=><React.Fragment key={type}><TableCell align="center">{layout.provided}</TableCell>{roles.map((role,index)=><TableCell key={role} align="center">{labels[index]}</TableCell>)}</React.Fragment>)}</TableRow></TableHead>
  <TableBody>{rows.map(row=>{
- if(row.type==='group')return <TableRow key={row.id} data-menu-group={row.menuGroupKey} sx={{bgcolor:'action.hover'}}><TableCell colSpan={11}><Typography variant="subtitle2" fontWeight={700}>{moveControls(row)}{row.label}</Typography></TableCell></TableRow>;
- return <TableRow key={row.path} data-menu-path={row.path}>
- <TableCell><Typography sx={{pl:row.depth*2}}>{moveControls(row)}{row.label.replace(/[\p{Extended_Pictographic}\uFE0F]/gu,'').trim()}</Typography></TableCell>
+ const position=positionFor(row),onMove=delta=>{if(!locked)ordering.setDraft(previous=>moveNavigationNode(tree,previous,position.parentId,navigationNodeId(row),delta));};
+ if(row.type==='group')return <ReorderRow key={row.id} row={row} parentId={position.parentId} locked={locked} onMove={onMove} data-menu-group={row.menuGroupKey} sx={{bgcolor:'action.hover'}}>{handle=><TableCell colSpan={11}><Typography variant="subtitle2" fontWeight={700}>{handle}{row.label}</Typography></TableCell>}</ReorderRow>;
+ return <ReorderRow key={row.path} row={row} parentId={position.parentId} locked={locked} onMove={onMove} data-menu-path={row.path}>{handle=><>
+ <TableCell><Typography sx={{pl:row.depth*2}}>{handle}{row.label.replace(/[\p{Extended_Pictographic}\uFE0F]/gu,'').trim()}</Typography></TableCell>
  {TYPES.map(type=>{
  const features=row.featureKeys;
  const supported=features.every(feature=>type==='SERVICE'?SERVICE_FEATURES.includes(feature):feature!=='FREIGHT');
@@ -162,8 +180,8 @@ function AccessPolicyBoard(){
  {roles.map((role,index)=><TableCell key={role} align="center"><Checkbox size="small" checked={supported&&(row.fixedAccess||features.every(feature=>policy?.[type]?.[role]?.includes(feature)))} disabled={locked||unavailable||row.fixedAccess||(role==='WORKER'&&features.some(feature=>(['FREIGHT','INVOICE','SHIPPING_REQUEST','ORDER_SHIPMENTS'].includes(feature)||type==='SERVICE'&&feature==='PRODUCTION_STATUS')))} onChange={(_,checked)=>toggleRole(type,features,role,checked)} slotProps={{input:{'aria-label':industryLabel+' '+row.label+' '+labels[index]}}}/></TableCell>)}
  </React.Fragment>;
  })}
- </TableRow>;
- })}</TableBody></Table></TableContainer></Paper></>}
+ </>}</ReorderRow>;
+ })}</TableBody></Table></TableContainer></Paper><DragOverlay>{dragged?<Paper variant="outlined" sx={{p:1,display:'flex',alignItems:'center',gap:1}}><DragIndicator fontSize="small"/>{dragged.label}</Paper>:null}</DragOverlay></DndContext></>}
  </AppPageContainer>;
 }
 export default AccessPolicyBoard;

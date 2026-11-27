@@ -28,27 +28,27 @@ if(url.includes('industry-menu-policy'))return {revision:1,industries:{},fullSco
 return {policy:getDefaultRoleAccessPolicy()};}`}));
   await page.goto(`http://127.0.0.1:${port}/navigation-order-acceptance.html`);
   const group=key=>page.locator('[data-menu-group="'+key+'"]'),row=p=>page.locator('[data-menu-path="'+p+'"]');
-  await group('ADMIN').locator('[data-menu-move="-1"]').waitFor();
-  await page.waitForFunction(()=>!document.querySelector('[data-menu-group="ADMIN"] [data-menu-move="-1"]').disabled);
+  await group('ADMIN').locator('[data-menu-drag-handle]').waitFor();
+  await page.waitForFunction(()=>!document.querySelector('[data-menu-group="ADMIN"] [data-menu-drag-handle]').disabled);
   const grants=()=>page.locator('[data-menu-path]').evaluateAll(nodes=>Object.fromEntries(nodes.map(row=>[row.dataset.menuPath,[...row.querySelectorAll('input')].map(n=>[n.checked,n.disabled])])));
   const policyBefore=await grants();
-  await group('ADMIN').locator('[data-menu-move="-1"]').click();
+  const from=group('ADMIN').locator('[data-menu-drag-handle]'),to=group('ACCOUNTING').locator('[data-menu-drag-handle]');await from.scrollIntoViewIfNeeded();const a=await from.boundingBox(),b=await to.boundingBox();await page.mouse.move(a.x+a.width/2,a.y+a.height/2);await page.mouse.down();await page.mouse.move(a.x+a.width/2,a.y+a.height/2-10,{steps:3});await page.mouse.move(b.x+b.width/2,b.y+b.height/2,{steps:12});await page.mouse.up();
   assert.deepEqual(await page.locator('[data-menu-group]').evaluateAll(nodes=>nodes.map(n=>n.dataset.menuGroup)),['ADMIN','ACCOUNTING','SETTINGS']);
   assert.ok((await page.locator('output').textContent()).indexOf('ACCOUNTING')<(await page.locator('output').textContent()).indexOf('ADMIN'),'Sidebar observer waits for save');
-  await row('/payroll').locator('[data-menu-move="-1"]').click();
+  await row('/payroll').locator('[data-menu-drag-handle]').press('ArrowUp');
   const save=page.locator('.app-page-header button').last();await save.click();
   await page.waitForFunction(()=>window.order.revision===1);
   const observed=JSON.parse(await page.locator('output').textContent());assert.equal(observed[1][0],'ADMIN');assert.equal(observed[2][1][0],'/payroll');
   assert.equal(await page.evaluate(()=>window.calls.some(([url,method])=>method==='PUT'&&url!=='/system/navigation-order')),false,'Order-only edit never writes permissions');
   // Check each path retains its grants after moving, rather than comparing row order.
   assert.deepEqual(await grants(),policyBefore,'Each menu retains its own availability and role grants');
-  await page.evaluate(()=>window.fail=true);await row('/invoices').locator('[data-menu-move="-1"]').click();await save.click();
+  await page.evaluate(()=>window.fail=true);await row('/invoices').locator('[data-menu-drag-handle]').press('ArrowUp');await save.click();
   await page.waitForFunction(()=>document.querySelector('[data-app-notice]'));
-  assert.equal(await row('/invoices').locator('[data-menu-move="-1"]').isDisabled(),true,'Failed save keeps draft as first item');
+  assert.equal(await page.locator('[data-menu-path]').first().getAttribute('data-menu-path'),'/dashboard');assert.deepEqual(await page.locator('[data-menu-path]').evaluateAll(nodes=>nodes.map(n=>n.dataset.menuPath).filter(p=>['/invoices','/payroll'].includes(p))),['/invoices','/payroll'],'Failed save keeps the draft order');
   assert.equal(await page.evaluate(()=>window.order.revision),1);
   await page.evaluate(()=>{window.order={revision:2,order:{}};window.dispatchEvent(new Event('focus'));});
   await page.waitForFunction(()=>JSON.parse(document.querySelector('output').textContent)[1][0]==='ACCOUNTING');
-  assert.equal(await row('/invoices').locator('[data-menu-move="-1"]').isDisabled(),true,'Focus refresh does not overwrite the unsaved order draft');
+  assert.deepEqual(await page.locator('[data-menu-path]').evaluateAll(nodes=>nodes.map(n=>n.dataset.menuPath).filter(p=>['/invoices','/payroll'].includes(p))),['/invoices','/payroll'],'Focus refresh preserves the draft');
   assert.deepEqual(errors,[]);await page.close();console.log('PASS navigation order '+language+' '+width);
  }
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}
