@@ -22,7 +22,7 @@ try{
    const req=route.request(),headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};if(req.method()==='OPTIONS')return route.fulfill({headers});assert.equal(req.method(),'GET');
    const params=new URL(req.url()).searchParams;requests.push(Object.fromEntries(params));assert.equal(params.get('orgId'),'7');
    if(failed)return route.fulfill({status:503,headers,json:{error:'UNAVAILABLE'}});
-   const customer={id:20,name:'BARO - THE SAN'},second={id:21,name:'DAEWOO'},base={mode:'SEA',service:'GENERAL',jobType:'IMPORT',status:'IN_TRANSIT',cargo:'Steel Coils',origin:'Hai Phong',destination:'Busan',schedules:[{id:'master-1',number:'MBL-1',etd:'2026-11-21',eta:'2026-11-26'},{id:'master-2',number:'MBL-2',etd:'2026-11-22',eta:'2026-11-27'}],quantity:'0',unit:'PKG',weightKg:'1234.5',cbm:'0',containers:[{count:'20',size:'40',type:'HQ'}],remark:'Make DN\nInspection 10 Containers',deliveryDate:null};
+   const customer={id:20,name:'BARO - THE SAN'},second={id:21,name:'DAEWOO'},base={shipmentType:'FCL',mode:'SEA',service:'GENERAL',jobType:'IMPORT',status:'IN_TRANSIT',cargo:'Steel Coils',origin:'Hai Phong',destination:'Busan',schedules:[{id:'master-1',number:'MBL-1',etd:'2026-11-21',eta:'2026-11-26'},{id:'master-2',number:'MBL-2',etd:'2026-11-22',eta:'2026-11-27'}],quantity:'0',unit:'PKG',weightKg:'1234.5',cbm:'0',containers:[{count:'20',size:'40',type:'HQ'}],remark:'Make DN\nInspection 10 Containers',deliveryDate:null};
    let rows=[{...base,id:'job-1',number:'SR-001',customerId:20,customer},{...base,id:'job-2',number:'SR-002',customerId:21,customer:second}];
    if(params.get('includeCompleted')==='true')rows.push({...base,id:'job-3',number:'SR-003',customerId:20,customer,status:'DELIVERED',deliveryDate:'2026-11-25'});
    if(params.get('customerId'))rows=rows.filter(row=>String(row.customerId)===params.get('customerId'));
@@ -32,7 +32,8 @@ try{
   await page.goto(`http://127.0.0.1:${port}/logistics-status-acceptance.html?theme=${theme}`);
   await page.locator('[data-logistics-row="job-1"]').waitFor();await page.getByRole('progressbar').waitFor({state:'hidden'});
   const labels=await page.evaluate(async language=>(await import('/src/pages/App/LogisticsStatusBoard.jsx')).logisticsBoardText[language],language);
-  assert.equal(await page.getByRole('heading',{level:2}).count(),2);assert.ok(await page.locator('[data-logistics-row="job-1"]').innerText().then(text=>text.includes('20 × 40HQ')&&text.includes('MBL-2')&&text.includes('0 PKG')));
+  assert.deepEqual(await page.evaluate(async()=>{const {information:f}=await import('/src/pages/App/LogisticsStatusBoard.jsx');return [f({mode:'SEA',shipmentType:'LCL',cbm:'2.5'}),f({mode:'AIR',chargeableWeightKg:'100'}),f({service:'EXPRESS',chargeableWeightKg:'12'}),f({mode:'ROAD',vehicleCount:2,vehicleUnit:'Vehicles'}),f({mode:'AIR',weightKg:100})];}),['2.5 CBM','100 CWT','12 CWT','2 Vehicles','—']);
+  assert.equal(await page.locator('thead').first().getByRole('columnheader').count(),7);assert.ok(await page.locator('[data-logistics-row="job-1"]').innerText().then(text=>text.includes("20x40'HQ")&&text.includes('MBL-2')&&!text.includes('0 PKG')));
   assert.ok(await page.locator('[data-logistics-row="job-1"] td').nth(4).innerText().then(text=>text==='—'));
   const completion=page.getByRole('combobox').first();await completion.click();await page.getByRole('option').last().click();await page.locator('[data-logistics-row="job-3"]').waitFor();
   const customer=page.getByRole('combobox').nth(1);await customer.click();await page.getByRole('option',{name:'DAEWOO',exact:true}).click();await page.locator('[data-logistics-row="job-1"]').waitFor({state:'hidden'});await page.locator('[data-logistics-row="job-2"]').waitFor();
@@ -41,7 +42,7 @@ try{
   const attempts=requests.length;await page.waitForTimeout(500);assert.equal(requests.length,attempts);failed=false;await page.getByRole('button',{name:labels.retry,exact:true}).click();await page.getByRole('progressbar').waitFor({state:'hidden'});
   if(language==='en'&&width===1440&&theme==='standard'){mkdirSync('logs',{recursive:true});await page.screenshot({path:'logs/logistics-status-preview.png',fullPage:true});}
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
-  await page.locator('[data-logistics-row="job-1"]').getByRole('button',{name:labels.open}).click();assert.equal(await page.evaluate(()=>window.openedPath),'/shipping/job-1');assert.deepEqual(errors,[]);
+  await page.locator('[data-logistics-row="job-1"]').getByRole('button',{name:'BARO - THE SAN'}).click();assert.equal(await page.evaluate(()=>window.openedPath),'/shipping/job-1');assert.deepEqual(errors,[]);
   await page.close();console.log('PASS logistics board filters, MBL dates, retry, retained rows, navigation',language,width,theme);
  }
 }finally{await browser?.close();vite.kill();if(existsSync(file))unlinkSync(file);}

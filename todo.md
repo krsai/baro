@@ -38,6 +38,7 @@
 
 - Login company selector: fixed group/button height mismatch, consistent inset spacing, white selected tab and keyboard focus. Encoding/i18n checks passed; production deployment and visual acceptance unverified.
 
+- 물류사 현황판 표 정리: 구현 / 운영 배포·인수 미확인. 상태 > 고객사 > ETD > ETA > DLV > 화물 > 비고 순서, 작업 열 제거. FCL은 1x20'DC, LCL은 CBM, AIR/특송은 CWT, ROAD는 저장된 차량 대수를 표시하며 미입력은 —. 기존 ROAD 입력폼에 차량 대수 항목이 없어 기존 건은 미입력으로 남음. 비고는 직원이 저장한 업무 비고를 사용.
 - 물류사 현황판: 구현·양쪽 빌드·권한/업종/메뉴/기존 봉제 현황판/입출금 권한 정합성 등 66검사·한영베 PC/모바일 기본/컴팩트 12조합 통과 / 운영 배포·실계정 인수 미확인. 물류 → 현황판에서 실제 고객 FK별 접수 운송건의 운송번호·화물·구간·MBL별 ETD/ETA·완료 건 배송일·컨테이너/수량/중량/부피·진행 상태·업무 비고를 표시한다. 검색·고객·완료 포함·50건 페이지와 운송 업무 이동, 실패 시 조건/기존 표 보존·직접 재시도를 제공한다. 독립 PRODUCTION_STATUS 권한과 역할 schema 20/업종 최초 계승 후 명시 거부를 유지하고 금융/감사/고객 공유 범위는 확장하지 않는다. DB migration·원문 보정 없음. 전용 검사: test:logistics-status.
 
 - 지급 완료 비용 코드 정정의 증빙창 자동 열림: 품목 선택 후 기존 증빙을 보존하고 자동 입력창을 열지 않도록 구현. 일반 코드에서 자재 코드로 변경하는 서버 3건 및 한영베 PC/모바일 브라우저 6조합 통과, 프런트 빌드 통과 / 운영 배포·인수 미확인. EXP-2026-000003의 EQPV → CTNV 수정 미리보기 409는 운영 요청/원문 비교 미확인으로 미해결이며 보호 검사를 완화하지 않았다.
