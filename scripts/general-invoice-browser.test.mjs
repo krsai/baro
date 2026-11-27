@@ -19,7 +19,7 @@ const fixtureName=process.argv.includes('--service')?'general-invoice-service-te
 const html=`frontend/${fixtureName}.html`,jsx=`frontend/${fixtureName}.jsx`;
 writeFileSync(html,`<meta charset="utf-8"><div id="root"></div><script type="module" src="/${fixtureName}.jsx"></script>`);
 // JSX uses a normal Vite entry so the real workspace and all shared inputs run.
-writeFileSync(jsx,`import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Workspace from '/src/pages/App/invoice/InvoiceWorkspace';createRoot(document.getElementById('root')).render(<MemoryRouter><ThemeProvider theme={theme}><CssBaseline/><Workspace view="editor"/></ThemeProvider></MemoryRouter>);`);
+writeFileSync(jsx,`import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Workspace from '/src/pages/App/invoice/InvoiceWorkspace';createRoot(document.getElementById('root')).render(<MemoryRouter initialEntries={['/invoices/new${process.argv.includes('--shipping-source-only')?'?shippingChargeId=charge-source-ar':''}']}><ThemeProvider theme={theme}><CssBaseline/><Workspace view="editor"/></ThemeProvider></MemoryRouter>);`);
 if(process.argv.includes('--tabs-only')){
  const layout=readFileSync('frontend/src/layouts/MainLayout.jsx','utf8');
  const start=layout.indexOf('const isKeepAliveCandidatePath ='),end=layout.indexOf('\n};',start)+3;
@@ -36,6 +36,7 @@ try{
  for(const [lang,width,failure] of [...['ko','en','vi'].flatMap(lang=>[1440,390].map(width=>[lang,width,'none'])),['en',1440,'save'],['en',1440,'issue']]){
   if((process.argv.includes('--customer-only')||process.argv.includes('--layout-only')||process.argv.includes('--codes-only')||process.argv.includes('--selection-only')||process.argv.includes('--tabs-only')||process.argv.includes('--currencies-only')||process.argv.includes('--focus-only')||process.argv.includes('--names-only'))&&failure!=='none')continue;
   if(process.argv.includes('--service')&&lang!=='en')continue;
+  if(process.argv.includes('--shipping-source-only')&&failure!=='none')continue;
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],saves=[],issues=[],sourceReads=[];let failed=false;
   console.log('Checking general invoice',lang,width,failure,process.argv.includes('--material-only')?'material':'standard');
   await page.addInitScript(language=>localStorage.setItem('baro_language_override',language),lang);
@@ -57,7 +58,9 @@ try{
    throw new Error('Unexpected invoice request: '+req.method()+' '+url.pathname);
   });
   await page.route('**/material-items/options?*',route=>route.fulfill({headers,json:[{id:'material-master',baseId:20,unitId:9,variantId:'material-variant',variantRevision:2,data:{nameEn:'Poly Bag Material',nameKo:'Poly Bag Material',nameVi:'Poly Bag Material',details:{length:30,width:40,height:0.08},unit:{id:9,nameEn:'Pcs',nameKo:'\uAC1C',nameVi:'C\u00e1i'},variantId:'material-variant',variantRevision:2}}]}));
+  if(process.argv.includes('--shipping-source-only'))await page.route('**/shipping-requests/charge-sources/*',route=>route.fulfill({json:{id:'charge-source-ar',version:3,jobId:'job2',jobNumber:'JOB-000002',direction:'SALES',partyId:2,description:'Imported Freight',currencyCode:'USD',quantity:'2',unitPrice:'42.5',amount:'85'}}));
   await page.goto(`http://127.0.0.1:${port}/${path.basename(html)}`);
+  if(process.argv.includes('--shipping-source-only')){await page.locator('input[value="Imported Freight"]').waitFor();assert.ok(await page.locator('input').evaluateAll(nodes=>nodes.some(node=>Number(node.value)===42.5)));assert.equal(saves.length,0);assert.equal(sourceReads.length,1);assert.deepEqual(errors,[]);console.log('PASS job AR prefill in native invoice editor',lang,width);await page.close();continue;}
   const t=generalInvoiceText[lang],u=invoiceUi[lang];
   assert.equal(await page.getByRole('textbox',{name:new RegExp('^'+t.type,'i')}).inputValue(),t.general);
   const customer=page.getByRole('textbox',{name:roleName(invoicePartyText[lang].target)});if(process.argv.includes('--customer-only')){

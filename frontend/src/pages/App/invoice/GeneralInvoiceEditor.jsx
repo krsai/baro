@@ -32,7 +32,7 @@ import {invoiceUi,invoiceSubmissionUi} from '../../../constants/invoiceUi';
 import {documentNumberError} from '../../../constants/documentNumber';
 import {emitWorkspaceDataChanged,WORKSPACE_DATA_TOPICS} from '../../../utils/workspaceDataEvents';
 
-export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko',revisionInvoice,draftId,renderSelection,onIssued,onClose,inlineRevision=false,pageTitle,editInvoice=false}){
+export default function GeneralInvoiceEditor({orgId,buyerOrgId,shippingChargeId,languageCode='ko',revisionInvoice,draftId,renderSelection,onIssued,onClose,inlineRevision=false,pageTitle,editInvoice=false}){
  const editText=invoiceEditText[languageCode]||invoiceEditText.en;
  const t=generalInvoiceText[languageCode]||generalInvoiceText.en,ui=invoiceUi[languageCode]||invoiceUi.en,storage=invoiceSubmissionUi[languageCode]||invoiceSubmissionUi.en;
  const dialogs=usePageDialogs(),{showNotification}=useAppActions();
@@ -40,7 +40,7 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
  const [selectingMaterial,setSelectingMaterial]=useState(false),[codeRevision,setCodeRevision]=useState(0);
  const [loading,setLoading]=useState(false),[loadError,setLoadError]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0),[dirty,setDirty]=useState(false),[reviewed,setReviewed]=useState(false),[saving,setSaving]=useState(false),[uncertain,setUncertain]=useState(false);
  const gridRef=useRef(null),materialRef=useRef(null),selectionBusy=useRef(false);
- const draft=useRef(null),clientKey=useRef(crypto.randomUUID()),revisionRequest=useRef(null),submission=useRef(null),busy=useRef(false),scope=useRef(orgId),mounted=useRef(true);
+ const shippingSource=useRef(null),draft=useRef(null),clientKey=useRef(crypto.randomUUID()),revisionRequest=useRef(null),submission=useRef(null),busy=useRef(false),scope=useRef(orgId),mounted=useRef(true);
  scope.current=orgId;useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  useUnsavedChanges(dirty||saving||uncertain);
  useEffect(()=>{
@@ -48,7 +48,10 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
   const load=async()=>{
    const stored=draftId?await requestJSON('/invoices/drafts/'+encodeURIComponent(draftId)+buildQueryString({orgId}),{skipCache:true}):null;
    if(stored&&stored.content?.documentKind!=='GENERAL')throw new Error('GENERAL_INVOICE_INVALID');
-   const buyer=stored?.buyerOrgId||revisionInvoice?.buyerOrgId||buyerOrgId;
+   const charge=shippingChargeId?await requestJSON('/shipping-requests/charge-sources/'+encodeURIComponent(shippingChargeId)+buildQueryString({orgId}),{skipCache:true}):null;
+   if(charge&&charge.direction!=='SALES')throw new Error('SHIPPING_CHARGE_DOCUMENT_SCOPE');
+   if(!shippingSource.current)shippingSource.current=charge||stored?.content;
+   const buyer=charge?.partyId||stored?.buyerOrgId||revisionInvoice?.buyerOrgId||buyerOrgId;
    if(!buyer){if(alive){setSource(null);setFields(null);setDirty(false);setReviewed(false);draft.current=null;submission.current=null;clientKey.current=crypto.randomUUID();}return;}
    const data=await requestJSON('/invoices/general-source'+buildQueryString({orgId,buyerOrgId:buyer}),{skipCache:true});
    if(!alive)return;
@@ -56,14 +59,14 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
    // Retry a failed source load without overwriting an existing draft.
    if(fields)return;
    const content=stored?.content,snapshot=revisionInvoice?.snapshot;
-   const chosenCurrency=content?.currency||snapshot?.currencyTotals?.[0]?.currencyCode||revisionInvoice?.currencyCode||'VND';
-   setCurrency(chosenCurrency);setLines(content?.lines?.map(row=>({...row,currencyCode:row.currencyCode||chosenCurrency}))|| (snapshot?generalInvoiceLines(snapshot):[newGeneralInvoiceLine(data.defaultCurrencyCode||'VND')]));
-   setFields(content?.fields||(snapshot?{...snapshot.fields,number:(inlineRevision||editInvoice)?revisionInvoice.invoiceNumber:revisionInvoice.invoiceNumber+'-R'+(Number(revisionInvoice.revisionNumber||1)+1)}:{number:'',date:new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Ho_Chi_Minh'}),seller:data.seller,buyer:data.buyer,shipTo:'',shipmentDate:'',dueDate:'',expectedCollectionDate:'',incoterm:'',paymentTerms:'',bank:'',bankAccountId:null,notes:''}));
+   const chosenCurrency=charge?.currencyCode||content?.currency||snapshot?.currencyTotals?.[0]?.currencyCode||revisionInvoice?.currencyCode||'VND';
+   setCurrency(chosenCurrency);setLines(charge?[{...newGeneralInvoiceLine(chosenCurrency),description:charge.description,quantity:charge.quantity,unitPrice:charge.unitPrice,remark:charge.jobNumber}]:content?.lines?.map(row=>({...row,currencyCode:row.currencyCode||chosenCurrency}))|| (snapshot?generalInvoiceLines(snapshot):[newGeneralInvoiceLine(data.defaultCurrencyCode||'VND')]));
+   setFields(content?.fields||(snapshot?{...snapshot.fields,number:(inlineRevision||editInvoice)?revisionInvoice.invoiceNumber:revisionInvoice.invoiceNumber+'-R'+(Number(revisionInvoice.revisionNumber||1)+1)}:{number:'',date:new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Ho_Chi_Minh'}),seller:data.seller,buyer:data.buyer,shipTo:'',shipmentDate:'',dueDate:'',expectedCollectionDate:'',incoterm:'',paymentTerms:'',bank:'',bankAccountId:null,notes:charge?.jobNumber||''}));
    if(stored){draft.current=stored;clientKey.current=stored.clientKey;}
   };
   load().catch(()=>{if(alive)setLoadError(true);}).finally(()=>{if(alive)setLoading(false);});
   return()=>{alive=false;};
- },[orgId,buyerOrgId,revisionInvoice?.id,draftId,reload]);
+ },[orgId,buyerOrgId,revisionInvoice?.id,draftId,shippingChargeId,reload]);
  const calculation=useMemo(()=>{
   const calculated=calculateGeneralInvoiceDraft(lines,currency),snapshot=revisionInvoice?.snapshot;
   if(!inlineRevision||dirty||!snapshot)return calculated;
@@ -101,7 +104,7 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
   if(!editInvoice&&revisionInvoice&&!draft.current&&!revisionRequest.current){const reason=await dialogs.prompt(t.reason);if(!reason?.trim())return;revisionRequest.current={clientKey:clientKey.current,reason:reason.trim()};}
   busy.current=true;setSaving(true);setError('');
   try{
-   const attempt=submission.current||{phase:'SAVE',payload:{clientKey:clientKey.current,revision:draft.current?.revision,documentKind:'GENERAL',buyerOrgId:source.buyerOrgId,basis:null,currency,fields:issueFields,orders:[],percentages:{},settlements:{},lines:lines.map(({key,transactionCodeId,description,unit,unitId,materialItemId,materialVariantId,materialVariantRevision,quantity,unitPrice,vatRate,remark,currencyCode})=>({key,transactionCodeId,description,unit,unitId,materialItemId,materialVariantId,materialVariantRevision,quantity,unitPrice,vatRate,remark,currencyCode}))}};
+   const attempt=submission.current||{phase:'SAVE',payload:{...(shippingSource.current?.id?{shippingChargeId:shippingSource.current.id,shippingChargeVersion:shippingSource.current.version}:shippingSource.current?.shippingChargeId?{shippingChargeId:shippingSource.current.shippingChargeId,shippingChargeVersion:shippingSource.current.shippingChargeVersion}:{}),clientKey:clientKey.current,revision:draft.current?.revision,documentKind:'GENERAL',buyerOrgId:source.buyerOrgId,basis:null,currency,fields:issueFields,orders:[],percentages:{},settlements:{},lines:lines.map(({key,transactionCodeId,description,unit,unitId,materialItemId,materialVariantId,materialVariantRevision,quantity,unitPrice,vatRate,remark,currencyCode})=>({key,transactionCodeId,description,unit,unitId,materialItemId,materialVariantId,materialVariantRevision,quantity,unitPrice,vatRate,remark,currencyCode}))}};
    submission.current=attempt;const payload=attempt.payload;
    if(editInvoice){await requestJSON('/invoices/issued/'+encodeURIComponent(revisionInvoice.id)+buildQueryString({orgId}),{method:'PUT',body:JSON.stringify({...payload,editRevision:revisionInvoice.editRevision})});setDirty(false);setUncertain(false);showNotification(editText.saved,'success');emitWorkspaceDataChanged({orgId,topics:[WORKSPACE_DATA_TOPICS.ISSUED_INVOICES]});onIssued?.();return;}
    if(revisionInvoice&&!draft.current){const created=await requestJSON('/invoices/issued/'+encodeURIComponent(revisionInvoice.id)+'/revision-draft'+buildQueryString({orgId}),{method:'POST',body:JSON.stringify(revisionRequest.current)});draft.current=created;clientKey.current=created.clientKey;payload.clientKey=created.clientKey;payload.revision=created.revision;}

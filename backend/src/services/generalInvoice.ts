@@ -96,5 +96,6 @@ export async function issueGeneralInvoice(tx:any,sellerOrgId:number,actor:string
  const invoice=await tx.invoice.create({data:{...invoiceBankLinks(content.fields),sellerOrgId,buyerOrgId:draft.buyerOrgId,documentKind:'GENERAL',pricingBasis:null,clientKey:issueKey,invoiceNumber,sequenceNumber:(latest?.sequenceNumber||0)+1,currencyCode:calculated.currencyCode,subtotal:calculated.subtotal,total:calculated.total,receivableAdded:calculated.total,snapshot:calculated.snapshot,issuedBy:actor,revisionOfInvoiceId:original?.id??null,rootInvoiceId:original?(original.rootInvoiceId||original.id):null,revisionNumber:original?original.revisionNumber+1:1,revisionReason}});
  await tx.invoiceGeneralLine.createMany({data:calculated.lines.map(line=>({...line,sellerOrgId,invoiceId:invoice.id}))});
  if(original){const updated=await tx.invoice.updateMany({where:{id:original.id,sellerOrgId,status:'ISSUED'},data:{status:'SUPERSEDED'}});if(updated.count!==1)throw createHttpError(409,'STALE_EDIT');}
+ if(content.shippingChargeId)await tx.$executeRawUnsafe('UPDATE "ShippingChargeFinancialLink" SET "invoiceId"=$1 WHERE "chargeId"=$2 AND "orgId"=$3 AND "invoiceDraftId"=$4',invoice.id,content.shippingChargeId,sellerOrgId,draft.id);
  return invoice;
 }

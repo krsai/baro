@@ -1,3 +1,4 @@
+import {shippingChargeSource} from './shippingChargeDocuments';
 import {searchShippingCompanies,recentShippingParties} from './shippingPartyDirectory';
 import {assertShippingEnglishData} from './shippingEnglish';
 import {assertDistinctShippingParties} from './shippingParties';
@@ -152,7 +153,7 @@ export async function deleteRejectedShippingRequest(db:any,orgId:number,actorId:
 export async function shippingCharges(db:any,orgId:number,actorId:number,id:string){
  if((await actor(db,orgId,actorId)).type!=='SERVICE')fail('SHIPPING_ACCESS_DENIED',403);const row=await memberJob(db,orgId,id);
  if(row.orgId!==orgId)fail('SHIPPING_ACCESS_DENIED',403);
- return {rows:await db.$queryRawUnsafe('SELECT id,direction,description,"currencyCode",amount::text,version,"billId","partyId",quantity::text,"unitPrice"::text,"sourceKind" FROM "ShippingChargeDraft" WHERE "jobId"=$1 AND "orgId"=$2 ORDER BY "createdAt",id',id,orgId),currencies:await db.currency.findMany({select:{code:true,name:true},orderBy:{code:'asc'}}),parties:await freightOptions(db,orgId,actorId)};
+ return {rows:await db.$queryRawUnsafe('SELECT c.id,c.direction,c.description,c."currencyCode",c.amount::text,c.version,c."billId",c."partyId",c.quantity::text,c."unitPrice"::text,c."sourceKind",l."invoiceDraftId",l."invoiceId",l."expenseRequestId" FROM "ShippingChargeDraft" c LEFT JOIN "ShippingChargeFinancialLink" l ON l."chargeId"=c.id WHERE c."jobId"=$1 AND c."orgId"=$2 ORDER BY c."createdAt",c.id',id,orgId),currencies:await db.currency.findMany({select:{code:true,name:true},orderBy:{code:'asc'}}),parties:await freightOptions(db,orgId,actorId)};
 }
 export async function saveShippingCharge(db:any,orgId:number,actorId:number,id:string,input:any){
  if(typeof input.id!=='string'||!/^[a-zA-Z0-9_-]{8,80}$/.test(input.id)||!['PURCHASE','SALES'].includes(input.direction)||typeof input.description!=='string'||!input.description.trim()||input.description.length>500||typeof input.amount!=='string'||!/^\d{1,20}(?:\.\d{1,4})?$/.test(input.amount)||typeof input.currencyCode!=='string'||Object.keys(input).some(key=>!['id','direction','description','currencyCode','amount','version','billId','partyId','quantity','unitPrice','sourceKind'].includes(key)))fail('SHIPPING_INVALID');
@@ -177,6 +178,7 @@ export async function saveShippingCharge(db:any,orgId:number,actorId:number,id:s
   }
   const sameNumber=(a:any,b:any)=>a===null&&b===null||a!==null&&b!==null&&units(a)===units(b);
   if(old&&old.matches&&old.direction===input.direction&&old.description===input.description.trim()&&old.currencyCode===input.currencyCode&&old.billId===billId&&old.partyId===partyId&&old.sourceKind===sourceKind&&sameNumber(old.quantity,quantity)&&sameNumber(old.unitPrice,unitPrice))return {id:old.id,version:old.version};
+  if(old&&(await tx.$queryRawUnsafe('SELECT "chargeId" FROM "ShippingChargeFinancialLink" WHERE "chargeId"=$1 AND ("invoiceDraftId" IS NOT NULL OR "invoiceId" IS NOT NULL OR "expenseRequestId" IS NOT NULL)',old.id)).length)fail('SHIPPING_CHARGE_DOCUMENT_LINKED',409);
   if(old&&old.version!==input.version)fail('SHIPPING_CHANGED',409);
   const updated=old?await tx.$queryRawUnsafe('UPDATE "ShippingChargeDraft" SET direction=$1,description=$2,"currencyCode"=$3,amount=$4::numeric,version=version+1,"updatedByEmployeeId"=$5,"updatedAt"=CURRENT_TIMESTAMP,"billId"=$7,quantity=$8::numeric,"unitPrice"=$9::numeric,"sourceKind"=$10,"partyId"=$11 WHERE id=$6 RETURNING *',input.direction,input.description.trim(),input.currencyCode,input.amount,actorId,input.id,billId,quantity,unitPrice,sourceKind,partyId):await tx.$queryRawUnsafe('INSERT INTO "ShippingChargeDraft"(id,"orgId","jobId",direction,description,"currencyCode",amount,"createdByEmployeeId","updatedByEmployeeId","billId",quantity,"unitPrice","sourceKind","partyId") VALUES($1,$2,$3,$4,$5,$6,$7::numeric,$8,$8,$9,$10::numeric,$11::numeric,$12,$13) RETURNING *',input.id,orgId,id,input.direction,input.description.trim(),input.currencyCode,input.amount,actorId,billId,quantity,unitPrice,sourceKind,partyId);
   await tx.$executeRawUnsafe('INSERT INTO "FreightAudit"(id,"orgId",entity,"sourceId",version,"actorId","before","after") VALUES($1,$2,\'charge-drafts\',$3,$4,$5,$6::jsonb,$7::jsonb)',randomUUID(),orgId,input.id,updated[0].version,actorId,old?JSON.stringify(old):null,JSON.stringify(updated[0]));
@@ -211,6 +213,7 @@ export function registerShippingRequestRoutes(app:any,db:any,gates:any){
  route('delete','/presets/:presetId',(scope:any,req:any)=>saveShippingPreset(db,scope,{...req.body,id:req.params.presetId},true));
  route('get','/:id',({orgId,actorId}:any,req:any)=>readShippingRequest(db,orgId,actorId,req.params.id));
  const chargeAccess=async({orgId,actorId,org}:any)=>{const employee=await freightForwarder(db,orgId,actorId);if(!(await gates.loadPolicy()).policy?.[org.type]?.[employee.orgRole]?.includes('FREIGHT')||!(await companyIndustryMenuFeatures(db,orgId,org.type)).includes('FREIGHT'))fail('SHIPPING_ACCESS_DENIED',403);};
+ route('get','/charge-sources/:chargeId',async(scope:any,req:any)=>{await chargeAccess(scope);return shippingChargeSource(db,scope.orgId,scope.actorId,req.params.chargeId);});
  route('get','/:id/charges',async(scope:any,req:any)=>{await chargeAccess(scope);return shippingCharges(db,scope.orgId,scope.actorId,req.params.id);});
  route('post','/:id/charges',async(scope:any,req:any)=>{await chargeAccess(scope);return saveShippingCharge(db,scope.orgId,scope.actorId,req.params.id,req.body);});
  route('post','/:id/documents/share',({orgId,actorId}:any,req:any)=>shareShippingDocument(db,orgId,actorId,req.params.id,req.body));

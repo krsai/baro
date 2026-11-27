@@ -1,3 +1,4 @@
+import {shippingChargeReference,linkShippingCharge} from './shippingChargeDocuments';
 import {normalizeDocumentEvidence,storedDocumentEvidence} from './documentEvidence';
 import {normalizeExpensePaymentSchedule,replaceExpensePaymentSchedule} from './expensePaymentSchedule';
 import {cashScheduleDate} from './cashSchedule';
@@ -83,7 +84,8 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   const approval=previous ? {ids:(previous.approvalSteps || []).map((step:any)=>step.employeeId),policy:null} : await resolveExpenseApproval(tx,orgId,actorId,items,body.approvalSelection);
   const approverEmployeeIds=approval.ids;
   const requestedNumber=normalizeDocumentNumber(body.managementNumber);
-  const submissionHash = createHash('sha256').update(JSON.stringify(canonical({ requestDate, remark,...(evidenceFiles===undefined?{}:{evidenceFiles}),...(lineSchedules.some((rows:any[])=>rows.length)?{lineSchedules}:{}),...(scheduledPaymentDate?{scheduledPaymentDate}:{}), approverEmployeeIds, items,...(body.approvalSelection===undefined?{}:{approvalSelection:body.approvalSelection}),...(body.managementNumber===undefined?{}:{managementNumber:requestedNumber}) }))).digest('hex');
+  const shippingReference=shippingChargeReference(body);
+  const submissionHash = createHash('sha256').update(JSON.stringify(canonical({...shippingReference, requestDate, remark,...(evidenceFiles===undefined?{}:{evidenceFiles}),...(lineSchedules.some((rows:any[])=>rows.length)?{lineSchedules}:{}),...(scheduledPaymentDate?{scheduledPaymentDate}:{}), approverEmployeeIds, items,...(body.approvalSelection===undefined?{}:{approvalSelection:body.approvalSelection}),...(body.managementNumber===undefined?{}:{managementNumber:requestedNumber}) }))).digest('hex');
   if (previous) {
     if (previous.createdByEmployeeId !== actorId || previous.submissionHash !== submissionHash) throw createHttpError(409, 'EXPENSE_REQUEST_RETRY_MISMATCH');
     return { ...previous, ...expenseRequestTotals(previous.items) };
@@ -95,6 +97,7 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   const managementNumber=await allocateDocumentNumber(tx,orgId,'EXP',requestDate,requestedNumber);
   const document = await tx.expenseRequest.create({ data: { orgId, managementNumber, ...payeeIds, createdByEmployeeId: actorId, updatedByEmployeeId: actorId, updatedAt: new Date(),
     requestDate, remark,...(evidenceFiles===undefined?{}:{evidenceFiles}), scheduledPaymentDate, currency: items.every((item: any) => item.currency === items[0].currency) ? items[0].currency : null, clientKey: body.clientKey, submissionHash } });
+  await linkShippingCharge(tx,orgId,shippingReference,'PURCHASE',{expenseRequestId:document.id});
   await replaceExpenseApprovers(tx,orgId,document.id,approverEmployeeIds);
   // Caller owns the Serializable transaction: every cost and production write rolls back together.
   for (const [index, item] of items.entries()) {

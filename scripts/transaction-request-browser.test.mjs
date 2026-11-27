@@ -9,18 +9,19 @@ const executablePath = ['C:/Program Files/Google/Chrome/Application/chrome.exe',
 if(!executablePath)throw Error('Chrome required');
 const fixture=path.resolve('frontend/transaction-request-acceptance.html');
 if(existsSync(fixture))throw Error('Fixture already exists');
-writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Entry from '/src/pages/App/TransactionRequestEntry.jsx';import Costs from '/src/pages/App/PartnerTransactionCosts.jsx';createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(location.search?Costs:Entry,location.search?{onOpenRequest:(kind,id)=>document.documentElement.dataset.destination=kind+':'+id}:null))));</script></body></html>`);
+writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Entry from '/src/pages/App/TransactionRequestEntry.jsx';import Costs from '/src/pages/App/PartnerTransactionCosts.jsx';createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,{initialEntries:['/outsourcing-record/new${process.argv.includes('--shipping-source-only')?'?shippingChargeId=charge-source-ap':''}']},React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(location.search?Costs:Entry,location.search?{onOpenRequest:(kind,id)=>document.documentElement.dataset.destination=kind+':'+id}:null))));</script></body></html>`);
 const port=43185,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});
 let browser;
 try {
   for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/transaction-request-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
   browser=await chromium.launch({executablePath,headless:true});
   for(const lang of ['ko','en','vi'])for(const kind of ['LOGISTICS','PROCESS']) {
+    if(process.argv.includes('--shipping-source-only')&&kind!=='LOGISTICS')continue;
     const page=await browser.newPage({viewport:{width:1920,height:1080}}),errors=[];let payload;const attempts=[];
     page.setDefaultTimeout(15000);console.log('Checking',lang,kind);
-    page.on('pageerror',error=>errors.push(error.message));
+    page.on('pageerror',error=>{errors.push(error.message);console.error(error.message);});
     await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1,activeOrgRole:"ADMIN"});'}));
-    await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
+    await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`import React from '/node_modules/.vite/deps/react.js';export const LanguageContext=React.createContext({languageCode:'${lang}'});export const useLanguage=()=>({languageCode:'${lang}'});`}));
     await page.route('**/src/context/AppContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({navigateToPath:()=>document.documentElement.dataset.saved="true",showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
     const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
     const service={id:4,entryMode:kind,orderInput:'OPTIONAL',styleInput:'HIDDEN',processInput:'HIDDEN',requiredFields:[],isActive:true};
@@ -30,7 +31,10 @@ try {
     await page.route('**/orders?*',route=>route.fulfill({headers,json:[{id:'PUBLIC',dbId:30,ownerOrgId:1,orderNumber:'L18-1'}]}));
     await page.route('**/transaction-request-options?*',route=>route.fulfill({headers,json:{styles:[{id:40,name:'Shirt',code:'S40',styleProcesses:[{id:50,processName:'Buttonhole',processCode:'BH'}]}],plans:[{id:60,styleId:40,factoryName:'Factory A',processIds:[50]},{id:61,styleId:40,factoryName:'Factory B',processIds:[50]}]}}));
     await page.route('**/expense-requests?*',route=>{if(route.request().method()==='OPTIONS')return route.fulfill({headers,status:204});payload=route.request().postDataJSON();attempts.push(payload);if(attempts.length===1&&kind==='LOGISTICS')return route.fulfill({headers,status:503,json:{error:'unavailable'}});return route.fulfill({headers,json:{id:1}});});
+    if(process.argv.includes('--shipping-source-only')){await page.route('**/expense-payees?*',route=>route.fulfill({headers,json:[{id:11,name:'Trucking Partner',isActive:true}]}));await page.route('**/expense-units?*',route=>route.fulfill({headers,json:[]}));}
+    if(process.argv.includes('--shipping-source-only'))await page.route('**/shipping-requests/charge-sources/*',route=>route.fulfill({headers,json:{id:'charge-source-ap',version:2,jobId:'job2',jobNumber:'JOB-000002',direction:'PURCHASE',partyId:11,description:'Imported Trucking',currencyCode:'USD',quantity:'2',unitPrice:'42.5',amount:'85'}}));
     await page.goto(`http://127.0.0.1:${port}/transaction-request-acceptance.html`);
+    if(process.argv.includes('--shipping-source-only')){const code=page.getByRole('textbox',{name:EXPENSE_REQUEST_TEXT[lang].code,exact:false});await code.fill('TRK');await code.press('Enter');await page.waitForFunction(()=>Array.from(document.querySelectorAll('input')).some(node=>Number(node.value)===42.5)).catch(async error=>{console.error(await page.locator('body').innerText());throw error;});assert.ok((await page.locator('body').innerText()).includes('Imported Trucking')||await page.locator('textarea').evaluateAll(nodes=>nodes.some(node=>node.value==='Imported Trucking')));assert.equal(await page.locator('input[value="2"]').count(),1);assert.equal(attempts.length,0);assert.deepEqual(errors,[]);console.log('PASS job AP prefill in native expense request editor',lang);await page.close();continue;}
     const l=EXPENSE_REQUEST_TEXT[lang],labels={partner:l.payee,code:l.code,price:l.price,qty:l.quantity,order:l.order,style:l.style,process:l.process,assignment:l.assignment,submit:await page.evaluate(async language=>(await import('/src/constants/uiMessages.js')).getUiMessage('common.save','Save',language),lang)};
     const headerSave=page.getByRole('button',{name:labels.submit,exact:true});
     await headerSave.waitFor();
@@ -117,6 +121,7 @@ try {
     assert.equal(payload.vatRate,kind==='PROCESS'?'0':'8');assert.ok(!('coverageStartDate'in payload));assert.ok(!('createdByEmployeeId'in payload));assert.deepEqual(errors,[]);
     await page.close();
   }
+  if(!process.argv.includes('--shipping-source-only')){
   const list=await browser.newPage({viewport:{width:1440,height:1000}}),listErrors=[];
   list.on('pageerror',error=>listErrors.push(error.message));
   await list.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1});'}));
@@ -132,4 +137,5 @@ try {
   await list.getByRole('tab',{name:EXPENSE_REQUEST_TEXT.ko.all,exact:true}).click();await list.getByText('Legacy cost',{exact:true}).waitFor();
   assert.deepEqual(listErrors,[]);await list.close();
   console.log('Expense document UI passed: ko/en/vi, multiple rows, add/remove, totals, same-body retry, code defaults and process FK payloads.');
+  }
 } finally {if(browser)await browser.close();vite.kill();unlinkSync(fixture);}

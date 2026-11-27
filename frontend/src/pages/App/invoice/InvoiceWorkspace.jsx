@@ -28,6 +28,8 @@ function InvoiceMenuWorkspace({ activeOrgId, view = 'list' }) {
   const location=useLocation();
   const sourceOrderId=routeOrderId||new URLSearchParams(location.search).get('orderId');
   if (view === 'editor') {
+    const shippingChargeId=new URLSearchParams(location.search).get('shippingChargeId');
+    if(shippingChargeId)return <GeneralInvoiceEditor key={activeOrgId+':shipping:'+shippingChargeId} orgId={activeOrgId} shippingChargeId={shippingChargeId} languageCode={languageCode} onClose={()=>navigateToPath('/invoices')} onIssued={()=>navigateToPath('/invoices',{closeTabId:location.pathname,skipUnsavedChangesCheck:true})}/>;
     if(sourceOrderId&&!new URLSearchParams(location.search).has('revision'))return <InvoiceEditor key={activeOrgId+':'+sourceOrderId} orgId={activeOrgId} orderId={sourceOrderId} languageCode={languageCode} onClose={()=>navigateToPath('/order/'+encodeURIComponent(sourceOrderId))} onIssued={()=>navigateToPath('/invoices',{closeTabId:location.pathname,skipUnsavedChangesCheck:true})}/>;
     return <InvoiceCustomerWorkspace activeOrgId={activeOrgId} onBack={() => navigateToPath('/invoices',{closeTabId:'/invoices/new',skipUnsavedChangesCheck:true})} />;
   }

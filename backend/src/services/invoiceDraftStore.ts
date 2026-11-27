@@ -1,3 +1,4 @@
+import {shippingChargeReference,linkShippingCharge} from './shippingChargeDocuments';
 import {cashScheduleDate} from './cashSchedule';
 import {resolveInvoicePaymentAccount,invoiceBankLinks} from './invoicePaymentAccount';
 import {normalizeStoredAddress} from './companyDocumentContact';
@@ -24,6 +25,7 @@ export const normalizeInvoiceDraftContent = (body: any) => {
   object(body);
   if (!Number.isSafeInteger(body.buyerOrgId) || body.buyerOrgId <= 0) return bad();
   const general=body.documentKind==='GENERAL';
+  if(body.shippingChargeId!==undefined&&!general)return bad();
   if(body.documentKind!==undefined&&!['GENERAL','ORDER'].includes(body.documentKind))return bad();
   if (!Array.isArray(body.orders) || (!general&&!body.orders.length) || body.orders.length > 100 || general&&body.orders.length) return bad();
   const orders = body.orders.map((row: any) => {
@@ -64,7 +66,7 @@ export const normalizeInvoiceDraftContent = (body: any) => {
   }));
   if(body.fields.bankAccounts!==undefined){if(!Array.isArray(body.fields.bankAccounts)||body.fields.bankAccounts.length>3)return bad();fields.bankAccounts=body.fields.bankAccounts.map((row:any)=>({id:text(row?.id,100),revision:text(row?.revision??'',100)}));}
   if(body.fields.bankAccountId!==undefined){const id=body.fields.bankAccountId;if(id!==null&&(typeof id!=='string'||!id||id.length>100))return bad();fields.bankAccountId=id;}
-  return { version: 2,...(general?{documentKind:'GENERAL'}:{}), buyerOrgId: body.buyerOrgId, orders, basis: general?null:body.basis, currency, fields, percentages, settlements, lines };
+  return { ...shippingChargeReference(body),version: 2,...(general?{documentKind:'GENERAL'}:{}), buyerOrgId: body.buyerOrgId, orders, basis: general?null:body.basis, currency, fields, percentages, settlements, lines };
 };
 
 export async function saveInvoiceDraft(db: any, sellerOrgId: number, actor: string, body: any, id?: string) {
@@ -79,6 +81,7 @@ export async function saveInvoiceDraft(db: any, sellerOrgId: number, actor: stri
       if (!id && isDeepStrictEqual(normalizeInvoiceDraftContent(existing.content), content)) return existing;
       if(id&&content.documentKind==='GENERAL'&&existing.clientKey===clientKey&&existing.revision===body.revision+1&&isDeepStrictEqual(normalizeInvoiceDraftContent(existing.content),content))return existing;
       if (!id || existing.revision !== body.revision || existing.clientKey !== clientKey) throw createHttpError(409, STALE_EDIT);
+      if((existing.content?.shippingChargeId||null)!==(content.shippingChargeId||null))return bad();
       if((existing.content?.documentKind||'ORDER')!==(content.documentKind||'ORDER'))return bad();
     }
     await resolveInvoicePaymentAccount(tx,sellerOrgId,content.fields);
@@ -86,9 +89,10 @@ export async function saveInvoiceDraft(db: any, sellerOrgId: number, actor: stri
     if(content.documentKind==='GENERAL'){
       await generalInvoiceSource(tx,sellerOrgId,content.buyerOrgId);
       await validateGeneralInvoiceCodes(tx,sellerOrgId,content.lines);
-      if(!id)return tx.invoiceDraft.create({data:{...bankLink,sellerOrgId,buyerOrgId:content.buyerOrgId,clientKey,content,createdBy:actor,updatedBy:actor}});
+      if(!id){const saved=await tx.invoiceDraft.create({data:{...bankLink,sellerOrgId,buyerOrgId:content.buyerOrgId,clientKey,content,createdBy:actor,updatedBy:actor}});await linkShippingCharge(tx,sellerOrgId,shippingChargeReference(content),'SALES',{invoiceDraftId:saved.id});return saved;}
       const result=await tx.invoiceDraft.updateMany({where:{id,sellerOrgId,revision:body.revision},data:{...bankLink,content,buyerOrgId:content.buyerOrgId,updatedBy:actor,revision:{increment:1}}});
       if(result.count!==1)throw createHttpError(409,STALE_EDIT);
+      await linkShippingCharge(tx,sellerOrgId,shippingChargeReference(content),'SALES',{invoiceDraftId:id});
       return tx.invoiceDraft.findFirst({where:{id,sellerOrgId}});
     }
     const rows = await tx.workOrder.findMany({
@@ -132,6 +136,7 @@ export async function saveInvoiceDraft(db: any, sellerOrgId: number, actor: stri
 export async function deleteInvoiceDraft(db: any, sellerOrgId: number, id: string, revision: unknown) {
   if (!Number.isSafeInteger(revision) || Number(revision) < 1) return bad();
   return editTransaction(db, async (tx: any) => {
+    await tx.$executeRawUnsafe('UPDATE "ShippingChargeFinancialLink" SET "invoiceDraftId"=NULL WHERE "orgId"=$1 AND "invoiceDraftId"=$2',sellerOrgId,id);
     const result = await tx.invoiceDraft.deleteMany({ where: { id, sellerOrgId, revision } });
     if (result.count !== 1) throw createHttpError(409, STALE_EDIT);
   });

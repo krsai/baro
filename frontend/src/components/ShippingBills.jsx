@@ -51,7 +51,7 @@ export default function ShippingBills({job,orgId,languageCode,onDirtyChange,onSt
    detail={current?<Stack spacing={2}>
     <BillForm key={current.id+':'+(current.version?'saved':'new')} initial={current} rows={rows} job={job} orgId={orgId} languageCode={languageCode} readOnly={!canEdit} disabled={busy} onBusyChange={setBusy} onDirtyChange={markForm} onStateChange={markFormState} onSaved={saved} onDelete={current.version&&(current.kind!=='MASTER'||current.jobId===job.id&&!(current.linkedJobCount>1))?()=>remove(current):undefined}/>
     {current.version&&canEdit&&current.jobId!==job.id&&current.kind==='MASTER'&&<Typography variant="caption" color="text.secondary">{({ko:'MBL 금액은 등록 업무에서 관리합니다.',en:'MBL charges are managed in its source job.',vi:'Chi Phí MBL Được Quản Lý Trong Công Việc Gốc.'})[languageCode]}</Typography>}
-    {current.version&&canEdit&&current.jobId===job.id&&<ShippingChargeDrafts key={current.id} billId={current.id} orgId={orgId} jobId={job.id} languageCode={languageCode} readOnly={false} onDirtyChange={markCharges} onStateChange={markChargeState} refreshKey={job.version+':'+chargeRevision} onSaved={chargesSaved}/>}
+    {current.version&&canEdit&&current.jobId===job.id&&<ShippingChargeDrafts key={current.id} billId={current.id} orgId={orgId} jobId={job.id} languageCode={languageCode} readOnly onDirtyChange={markCharges} onStateChange={markChargeState} refreshKey={job.version+':'+chargeRevision} onSaved={chargesSaved}/>}
    </Stack>:null}/>
 
  </Stack>;

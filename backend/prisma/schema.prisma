@@ -239,6 +239,18 @@ model ShippingDocumentShare {
  createdAt DateTime @default(now())
  @@unique([jobId,documentId])
 }
+// Company-scoped financial/source FKs and immutable-source guards are installed
+// by 20261127040000_shipping_charge_financial_links.
+model ShippingChargeFinancialLink {
+ chargeId String @id
+ orgId Int
+ jobId String
+ chargeVersion Int
+ invoiceDraftId String? @unique
+ invoiceId String? @unique
+ expenseRequestId Int? @unique
+ createdAt DateTime @default(now())
+}
 model FreightMaster {
  id String @id
  orgId Int

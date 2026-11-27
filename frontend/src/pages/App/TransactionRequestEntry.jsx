@@ -22,7 +22,7 @@ import {documentNumberError,documentNumberText} from '../../constants/documentNu
 import { ENTITY_TEXT } from '../../constants/entityProfile';
 import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams,useLocation } from 'react-router-dom';
 import {Box,Button,CircularProgress,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import Alert from "../../components/AppNotice";
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
@@ -60,6 +60,7 @@ const documentSnapshot = form => JSON.stringify({evidenceFiles:form.evidenceFile
 
 export default function TransactionRequestEntry() {
   const { sourceKind, sourceId } = useParams();
+  const location=useLocation(),shippingChargeId=new URLSearchParams(location.search).get('shippingChargeId'),shippingSource=useRef(null);
   const { active: isTabActive } = useRequestScopeContext();
   const isTabActiveRef = useRef(isTabActive), mountedRef = useRef(true);
   isTabActiveRef.current = isTabActive;
@@ -98,7 +99,7 @@ export default function TransactionRequestEntry() {
   useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['bank-ledger','ledger-entries','expense-requests','expense-approvals'],isActive:isTabActive&&editing,isBlocked:dirty||saving,onRefresh:()=>setReload(value=>value+1)});
   useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['business-partners','expense-settings','accounting-codes'],isActive:isTabActive,isBlocked:dirty||saving,onRefresh:async()=>{const [partners,codes]=await Promise.all([requestJSON('/expense-payees'+buildQueryString({orgId:activeOrgId}),{skipCache:true}),requestJSON('/transaction-codes'+buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'}),{skipCache:true})]);setData(previous=>({...previous,partners,codes}));}});
   useUnsavedChanges(dirty);
-  useEffect(() => { const draft=newDocument();setForm(draft);setInitialSnapshot(documentSnapshot(draft));setStatuses({}); setApprovalStatus(null); setSubmission(null); setError(''); setSaving(false); }, [activeOrgId,sourceKind,sourceId]);
+  useEffect(() => { const draft=newDocument();shippingSource.current=null;setForm(draft);setInitialSnapshot(documentSnapshot(draft));setStatuses({}); setApprovalStatus(null); setSubmission(null); setError(''); setSaving(false); }, [activeOrgId,sourceKind,sourceId,shippingChargeId]);
   useEffect(() => {
     let alive = true; setLoading(true); setLoadError(false);
     const query = buildQueryString({ orgId: activeOrgId });
@@ -111,6 +112,7 @@ export default function TransactionRequestEntry() {
         }
         return loaded;
       }) : Promise.resolve(null),
+      ...(!editing&&shippingChargeId?[requestJSON('/shipping-requests/charge-sources/'+encodeURIComponent(shippingChargeId)+query,{skipCache:true}).then(charge=>{if(charge.direction!=='PURCHASE')throw new Error('SHIPPING_CHARGE_DOCUMENT_SCOPE');if(alive&&!shippingSource.current){shippingSource.current=charge;const seeded={...newDocument(),partnerOrgId:charge.partyId||'',remark:charge.description,items:[{...newExpenseLine(),currency:charge.currencyCode,quantity:charge.quantity,unitPrice:charge.unitPrice,details:{reference:charge.jobNumber}}]};setForm(seeded);setInitialSnapshot(documentSnapshot(seeded));}return charge;})]:[]),
     ])
       .then(([partners,codes,settings,orders,units,loaded]) => { if (alive) {
         if (loaded?.partner && !partners.some(row=>row.id===loaded.partner.id)) partners=[...partners,{...loaded.partner,isActive:false}];
@@ -118,7 +120,7 @@ export default function TransactionRequestEntry() {
       } })
       .catch(() => { if (alive) setLoadError(true); }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [activeOrgId, reload,editing,editorPath,canReadOrders]);
+  }, [activeOrgId, reload,editing,editorPath,canReadOrders,shippingChargeId]);
   const update = patch => {setValidation('');setForm(current => ({ ...current, ...patch }));};
   const changeLine = useCallback((key, patch) => {setValidation('');setForm(current => ({ ...current,
     items: current.items.map(line => line.key === key ? { ...line, ...patch } : line) }));}, []);
@@ -210,7 +212,7 @@ export default function TransactionRequestEntry() {
     try {
     const selection=submission?submission.approvalSelection:editing?(form.approvalSelection||{}):await approvalRef.current?.prepare();
     if(selection==null||organizationRef.current!==activeOrgId||!mountedRef.current)return;
-    const body = submission || { evidenceFiles:form.evidenceFiles||[], scheduledPaymentDate:form.scheduledPaymentDate||null, remark: form.remark, approverEmployeeIds: form.approverEmployeeIds, approvalSelection:selection, automaticRequestDate:true, partnerOrgId:form.partnerOrgId||null,...(form.payeeEmployeeId?{payeeEmployeeId:form.payeeEmployeeId}:{}), clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
+    const body = submission || { ...(!editing&&shippingSource.current?{shippingChargeId:shippingSource.current.id,shippingChargeVersion:shippingSource.current.version}:{}),evidenceFiles:form.evidenceFiles||[], scheduledPaymentDate:form.scheduledPaymentDate||null, remark: form.remark, approverEmployeeIds: form.approverEmployeeIds, approvalSelection:selection, automaticRequestDate:true, partnerOrgId:form.partnerOrgId||null,...(form.payeeEmployeeId?{payeeEmployeeId:form.payeeEmployeeId}:{}), clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
     setSubmission(body); setSaving(true); setError('');
     try {
       if(editing){const request=await changeRef.current.prepare({menu:'EXPENSE',operation:'UPDATE',sourceKind,sourceId,revision:form.revision,version:form.version,payload:body});if(!request){setSubmission(null);return;}}else await requestJSON(`${editorPath}${buildQueryString({orgId:activeOrgId})}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
