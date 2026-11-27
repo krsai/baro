@@ -1,5 +1,4 @@
 import {RecordInteractionScope, RecordRow, RecordOpenButton} from './RecordInteraction';
-import LedgerReferences from './LedgerReferences';
 import TableStatusRow from './TableStatusRow';
 import GlobalNotice from "./AppNotice";
 import {ledgerAccountingSummary} from '../utils/ledgerAccountingSummary.mjs';
@@ -29,7 +28,7 @@ export default function LedgerActivityTable({rows=[],loading,text:t,labels:l,cur
    {rows.map(row=>{const summary=ledgerAccountingSummary(row,languageCode);return <React.Fragment key={row.id}>
     <RecordRow recordKey={row.id} onOpen={()=>onEdit(row)} {...interaction(row)}>
      <TableCell sx={{whiteSpace:'nowrap'}}><RecordOpenButton disabled={loading||!!row.voidedAt} onOpen={()=>onEdit(row)}>{row.transactionDate}</RecordOpenButton>{row.voidedAt&&<Typography variant="caption" display="block">{l.deleted}</Typography>}</TableCell>
-     <TableCell sx={{overflowWrap:'anywhere'}}>{row.direction==='OUT'?row.accountName:row.evidenceType==='ADJUSTMENT'?'—':row.currentCounterpartyName||row.counterpartyName||'—'}</TableCell><TableCell sx={{overflowWrap:'anywhere'}}>{row.direction==='IN'?row.accountName:row.evidenceType==='ADJUSTMENT'?'—':row.currentCounterpartyName||row.counterpartyName||'—'}</TableCell><TableCell title={summary.codeTitle}>{summary.code}{warning(row.accountingCode,row.direction)}</TableCell><TableCell title={summary.descriptionTitle} sx={{overflowWrap:'anywhere'}}>{summary.description}<LedgerReferences row={row} languageCode={languageCode}/>{row.voidedAt&&<Typography variant="caption" display="block">{row.voidReason}</Typography>}</TableCell><TableCell align="right">{row.currencyCode}</TableCell>
+     <TableCell sx={{overflowWrap:'anywhere'}}>{row.direction==='OUT'?row.accountName:row.evidenceType==='ADJUSTMENT'?'—':row.currentCounterpartyName||row.counterpartyName||'—'}</TableCell><TableCell sx={{overflowWrap:'anywhere'}}>{row.direction==='IN'?row.accountName:row.evidenceType==='ADJUSTMENT'?'—':row.currentCounterpartyName||row.counterpartyName||'—'}</TableCell><TableCell title={summary.codeTitle}>{summary.code}{warning(row.accountingCode,row.direction)}</TableCell><TableCell title={summary.descriptionTitle} sx={{overflowWrap:'anywhere'}}>{summary.description}{row.voidedAt&&<Typography variant="caption" display="block">{row.voidReason}</Typography>}</TableCell><TableCell align="right">{row.currencyCode}</TableCell>
      {['IN','OUT'].map(direction=><TableCell key={direction} data-ledger-amount={direction} align="right" sx={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{row.direction===direction?formatLedgerAmount(row.amount,row.currencyCode):'—'}</TableCell>)}
 
      <NameCell>{row.createdByName||'—'}</NameCell>

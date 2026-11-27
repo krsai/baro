@@ -26,7 +26,10 @@ try{
   await page.goto(`http://127.0.0.1:${port}/ledger-number-acceptance.html?lang=${language}&theme=${variant}`);
   const refs=page.locator('[data-ledger-references]').first();await refs.getByText('BNK-2026-000001',{exact:false}).waitFor();
   for(const key of ['number','expense','file'])assert.ok((await refs.textContent()).includes(ledgerReferenceText[language][key]));
-  assert.ok((await page.locator('[data-testid="ledger-activity-table"]').textContent()).includes('BNK-2026-000001'));
+  const activity=page.locator('[data-testid="ledger-activity-table"]');
+  assert.equal(await activity.locator('[data-ledger-references]').count(),0);
+  for(const value of ['BNK-2026-000001','EXP-2026-000003','Receipt.pdf'])assert.ok(!(await activity.textContent()).includes(value));
+  await activity.getByRole('cell',{name:'Equipment',exact:true}).waitFor();
   const vat=page.getByRole('textbox',{name:ledgerEntryText[language].vatAmount,exact:true});
   assert.equal(await vat.inputValue(),'154,444');assert.equal(await vat.evaluate(el=>getComputedStyle(el).textAlign),'right');
   assert.deepEqual(errors,[]);await page.close();
