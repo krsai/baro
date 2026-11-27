@@ -37,7 +37,7 @@ test('monthly HBL allocation, master 1:N links, surrender audit and document sna
   const confirmed=await saveJobBill(db,org,actor,job.id,{...standalone,data:{...standalone.data,surrenderStatus:'CONFIRMED',surrenderConfirmedAt:'2026-11-27',surrenderReference:'Carrier confirmation REF-1',surrenderRecordedBy:'9999'}},house.id);
   assert.equal(confirmed.data.surrenderRecordedBy,String(actor));
   const document=await createJobDocument(db,org,actor,job.id,{clientKey:randomUUID(),version:job.version,kind:'HOUSE_DRAFT',billId:house.id});
-  assert.equal(document.snapshot.layout,'bill-form-v2');assert.equal(document.snapshot.source.data.surrenderRecordedBy,undefined);
+  assert.equal(document.snapshot.layout,'bill-form-v3');assert.equal(document.snapshot.source.data.surrenderRecordedBy,undefined);
   const html=freightDocumentHtml(document,{});assert.match(html,/SURRENDERED/);assert.match(html,/DRAFT \/ FOR REVIEW/);assert.match(html,/Number Of Original BLs/);assert.doesNotMatch(html,/recordedBy/);
   await assert.rejects(saveJobBill(db,org,actor,job.id,{...confirmed,data:{...confirmed.data,surrenderStatus:'NONE',surrenderReason:''}},house.id),/REASON_REQUIRED/);
   const corrected=await saveJobBill(db,org,actor,job.id,{...confirmed,data:{...confirmed.data,surrenderStatus:'NONE',surrenderReason:'Confirmation entered in error'}},house.id);

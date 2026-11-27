@@ -16,7 +16,7 @@ import {usePageDialogs} from './PageDialogProvider';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {shippingOperationText} from '../constants/shippingOperations';
 
-export default function ShippingWorkDocuments({job,orgId,languageCode,forwarder,compact=false,toolbar=false,actions,onOpen,onCreate,onChanged,onDirtyChange,onReturnDetail,onPanelChange,returnVersion=0,busy=false}){
+export default function ShippingWorkDocuments({job,orgId,languageCode,forwarder,compact=false,toolbar=false,actions,onOpen,onCreate,onChanged,onDirtyChange,onReturnDetail,onPanelChange,onSelectPanel,editorKind,returnVersion=0,busy=false}){
  const flow=billWorkflowText[languageCode]||billWorkflowText.en;
  const labels=shippingOperationText[languageCode]||shippingOperationText.en,t=job.mode==='AIR'&&job.service!=='EXPRESS'?Object.fromEntries(Object.entries(labels).map(([key,value])=>[key,value.replaceAll('MBL','MAWB').replaceAll('HBL','HAWB').replaceAll('mBL','MAWB').replaceAll('hBL','HAWB').replaceAll('B/L','AWB')])):labels,dialogs=usePageDialogs();
  const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[rows,setRows]=useState([]),[selected,setSelected]=useState(null),[loading,setLoading]=useState(false),[loadError,setLoadError]=useState(false),[reload,setReload]=useState(0),[working,setWorking]=useState(false),[uncertain,setUncertain]=useState(false),[error,setError]=useState('');
@@ -27,6 +27,8 @@ export default function ShippingWorkDocuments({job,orgId,languageCode,forwarder,
  const createMaster=mode=>{if(blocked||!canEdit)return;if(mode==='FORWARDER'&&!forwarder?.name){setError(t.forwarderUnavailable);return;}setCreating(null);onCreate('MASTER',null,{partyMode:mode,createHouse:mode==='FORWARDER'});};
  useEffect(()=>{setPanel(null);setCreating(null);setOpen(false);setLinkedHouseMaster(null);setHouseAfterLink(false);},[returnVersion,job.id]);
  useEffect(()=>{onPanelChange?.(panel);},[panel,onPanelChange]);
+ useEffect(()=>{if(editorKind)setPanel(editorKind);},[editorKind]);
+ const selectPanel=async kind=>{if(blocked||onSelectPanel&&await onSelectPanel()===false)return;setPanel(old=>editorKind?kind:old===kind?null:kind);};
  const returnDetail=async()=>{if(busy||working||uncertain)return;if(onReturnDetail&&await onReturnDetail()===false)return;setPanel(null);setOpen(false);};
  useEffect(()=>{onDirtyChange?.(working||uncertain);return()=>onDirtyChange?.(false);},[working,uncertain,onDirtyChange]);
  useEffect(()=>{if(!open)return;let live=true;setLoading(true);setLoadError(false);const timer=setTimeout(()=>{requestJSON('/freight/transport-jobs/'+job.id+'/master-bills'+buildQueryString({orgId,q:query}),{skipCache:true}).then(value=>{if(live)setRows(value.rows);}).catch(()=>live&&setLoadError(true)).finally(()=>live&&setLoading(false));},150);return()=>{live=false;clearTimeout(timer);};},[open,query,reload,job.id,orgId]);
@@ -49,15 +51,15 @@ export default function ShippingWorkDocuments({job,orgId,languageCode,forwarder,
  return <Stack spacing={1.5} data-shipping-work-documents>
   {toolbar&&<Box data-shipping-work-actions sx={{display:'grid',gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',sm:`repeat(${hasBills?5:3},minmax(0,1fr))`},gap:1}}>
    <Button type="button" variant={!panel?'contained':'outlined'} disabled={blocked} aria-current={!panel?'page':undefined} onClick={returnDetail}>{t.detail}</Button>
-   {hasBills&&['MASTER','HOUSE'].map(kind=><SplitActionTab key={kind} data-bl-tab={kind} selected={panel===kind} disabled={blocked} controls={`shipping-${job.id}-${kind}`} onClick={()=>setPanel(old=>old===kind?null:kind)} addLabel={kind==='MASTER'?flow.addMaster:flow.addHouse} onAdd={canEdit?()=>setCreating(kind):undefined}>{job.mode==='AIR'?(kind==='MASTER'?'MAWB':'HAWB'):(kind==='MASTER'?flow.master:flow.house)} ({kind==='MASTER'?masters.length:houses.length})</SplitActionTab>)}
+   {hasBills&&['MASTER','HOUSE'].map(kind=><SplitActionTab key={kind} data-bl-tab={kind} selected={panel===kind} disabled={blocked} controls={`shipping-${job.id}-${kind}`} onClick={()=>selectPanel(kind)} addLabel={kind==='MASTER'?flow.addMaster:flow.addHouse} onAdd={canEdit?()=>setCreating(kind):undefined}>{job.mode==='AIR'?(kind==='MASTER'?'MAWB':'HAWB'):(kind==='MASTER'?flow.master:flow.house)} ({kind==='MASTER'?masters.length:houses.length})</SplitActionTab>)}
 
    {actions}
   </Box>}
   {error&&!open&&<AppNotice severity="error" action={uncertain?<Button onClick={()=>act({id:pending.current.masterId})}>{t.retry}</Button>:undefined}>{error}</AppNotice>}
-  <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:compact||toolbar?'minmax(0,1fr)':'repeat(2,minmax(0,1fr))'},gap:toolbar&&!panel?0:2}}>
+  {!editorKind&&<Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:compact||toolbar?'minmax(0,1fr)':'repeat(2,minmax(0,1fr))'},gap:toolbar&&!panel?0:2}}>
    {(!toolbar||panel==='MASTER')&&<Box id={`shipping-${job.id}-MASTER`}><EntityDetailSection title={t.masterSection} actions={canEdit&&<Stack direction="row" useFlexGap flexWrap="wrap" gap={1}><Button type="button" disabled={blocked} onClick={()=>{setError('');setHouseAfterLink(false);setOpen(true);}}>{t.linkMaster}</Button><Button type="button" disabled={blocked} onClick={()=>setCreating('MASTER')}>{t.newMaster}</Button></Stack>}>{masters.length?masters.map(row=><Box key={row.id}>{entry(row,'MASTER')}<Box sx={{pl:3}}>{houses.filter(house=>house.masterId===row.id).map(house=>entry(house,'HOUSE'))}</Box></Box>):<Typography variant="body2" color="text.secondary">{t.noMaster}</Typography>}</EntityDetailSection></Box>}
    {(!toolbar||panel==='HOUSE')&&<Box id={`shipping-${job.id}-HOUSE`}><EntityDetailSection title={t.houseSection} actions={canEdit&&<Button type="button" disabled={blocked} onClick={()=>setCreating('HOUSE')}>{t.newHouse}</Button>}>{houses.length?houses.map(row=>entry(row,'HOUSE')):<Typography variant="body2" color="text.secondary">{t.noHouse}</Typography>}</EntityDetailSection></Box>}
-  </Box>
+  </Box>}
   {open&&<ListDetailDialog open maxWidth="lg" title={t.linkMaster} onClose={()=>{if(!working&&!uncertain)setOpen(false);}}
    search={<SearchInput value={query} onChange={e=>setQuery(e.target.value)} label={t.masterSearch}/>}
    list={<DialogRecordList rows={rows} columns={[{key:'number',label:job.mode==='AIR'?'MAWB':'MBL',value:row=>row.number},{key:'issuer',label:t.issuer,value:row=>row.issuer}]} selectedKey={selected?.id} onSelect={setSelected} disabled={blocked} loading={loading} error={loadError} onRetry={()=>setReload(n=>n+1)} languageCode={languageCode}/>}

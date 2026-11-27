@@ -1,8 +1,10 @@
 import {transportFormHtml} from './transportForms.mjs';
 import {shippingTradeHtml} from './shippingTradePrint.mjs';
 import {billFormHtml} from './billFormPrint.mjs';
+import {billFormHtmlV3} from './billFormPrintV3.mjs';
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function freightDocumentHtml(document,t){
+ if(document.snapshot.layout==='bill-form-v3')return billFormHtmlV3(document);
  if(document.snapshot.layout==='bill-form-v2')return billFormHtml(document);
  if(document.snapshot.layout==='trade-v1')return shippingTradeHtml(document,t?.languageCode||'en');
  if(document.snapshot.layout==='transport-v1')return transportFormHtml(document);
@@ -15,4 +17,4 @@ export function downloadFreightOriginal(document){
  const bytes=Uint8Array.from(atob(trade.file.base64),char=>char.charCodeAt(0)),url=URL.createObjectURL(new Blob([bytes],{type:trade.file.mimeType})),link=window.document.createElement('a');
  link.href=url;link.download=trade.file.name;link.hidden=true;window.document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);return true;
 }
-export function printFreightDocument(document,t){const popup=window.open('','_blank','width=900,height=800');if(!popup)return false;popup.opener=null;popup.document.write(freightDocumentHtml(document,t));popup.document.close();popup.focus();popup.print();return true;}
+export function printFreightDocument(document,t,popup=window.open('','_blank','width=900,height=800')){if(!popup)return false;popup.opener=null;popup.document.write(freightDocumentHtml(document,t));popup.document.close();popup.focus();popup.print();return true;}

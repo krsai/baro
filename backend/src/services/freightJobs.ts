@@ -52,6 +52,7 @@ export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:strin
    if(data.surrenderRequestedAt&&data.surrenderConfirmedAt&&data.surrenderConfirmedAt<data.surrenderRequestedAt)fail('FREIGHT_INVALID_INPUT');
    for(const key of ['surrenderRecordedBy','surrenderRecordedAt']){delete data[key];if(before?.data?.[key])data[key]=before.data[key];}
    const changed=['surrenderStatus','surrenderRequestedAt','surrenderConfirmedAt','surrenderReference','surrenderReason'].some(key=>(data[key]||'')!==(before?.data?.[key]||''));
+   if(kind!=='HOUSE'&&changed&&(status!=='NONE'||oldStatus!=='NONE'||['surrenderRequestedAt','surrenderConfirmedAt','surrenderReference','surrenderReason'].some(key=>data[key])))fail('FREIGHT_SURRENDER_SCOPE');
    if(changed&&status!=='NONE'||oldStatus==='CONFIRMED'&&status!==oldStatus){data.surrenderRecordedBy=String(actorId);data.surrenderRecordedAt=new Date().toISOString();}
   }
   if(before&&!remove&&before.number===number&&before.issuer===issuer&&before.masterId===masterId&&JSON.stringify(billData(before.data||{}))===JSON.stringify(data)){

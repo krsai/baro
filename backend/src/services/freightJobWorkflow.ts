@@ -94,12 +94,13 @@ export async function saveJobProgress(db:any,orgId:number,actorId:number,id:stri
 
 export async function createJobDocument(db:any,orgId:number,actorId:number,id:string,input:any){
  await freightForwarder(db,orgId,actorId);
- if(!input||Object.keys(input).some(key=>!['clientKey','version','kind','billId','fields'].includes(key))||typeof input.clientKey!=='string'||!/^[a-zA-Z0-9_-]{8,80}$/.test(input.clientKey)||!Number.isSafeInteger(input.version)||!['AN','DO','POD','MANIFEST','HOUSE_DRAFT','MASTER_DRAFT'].includes(input.kind)||input.billId!=null&&typeof input.billId!=='string')fail('FREIGHT_INVALID_INPUT');
+ if(!input||Object.keys(input).some(key=>!['clientKey','version','kind','billId','billVersion','fields'].includes(key))||typeof input.clientKey!=='string'||!/^[a-zA-Z0-9_-]{8,80}$/.test(input.clientKey)||!Number.isSafeInteger(input.version)||!['AN','DO','POD','MANIFEST','HOUSE_DRAFT','MASTER_DRAFT'].includes(input.kind)||input.billId!=null&&typeof input.billId!=='string')fail('FREIGHT_INVALID_INPUT');
+ if(input.billVersion!==undefined&&(!Number.isSafeInteger(input.billVersion)||input.billVersion<1))fail('FREIGHT_INVALID_INPUT');
  const fields:any={};
  if(input.fields!==undefined){if(!input.fields||typeof input.fields!=='object'||Array.isArray(input.fields)||Object.keys(input.fields).some(key=>!['vessel','voyage','etd','eta','marks','freightTerms'].includes(key)))fail('FREIGHT_INVALID_INPUT');
   for(const key of ['vessel','voyage','etd','eta','marks','freightTerms'])if(input.fields[key]!==undefined){const value=text(input.fields[key],['etd','eta'].includes(key)?10:500);if(['etd','eta'].includes(key)&&value&&(!/^\d{4}-\d\d-\d\d$/.test(value)||!Number.isFinite(Date.parse(value))||new Date(value).toISOString().slice(0,10)!==value))fail('FREIGHT_INVALID_INPUT');fields[key]=value;}
  }
- const requestHash=hash({version:input.version,kind:input.kind,billId:input.billId||null,fields});
+ const requestHash=hash({version:input.version,kind:input.kind,billId:input.billId||null,...(input.billVersion!==undefined?{billVersion:input.billVersion}:{}),fields});
  return retryEditTransaction(db,async(tx:any)=>{
   await freightForwarder(tx,orgId,actorId);
   await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))::text',`freight-document:${orgId}:${input.clientKey}`);
@@ -109,6 +110,7 @@ export async function createJobDocument(db:any,orgId:number,actorId:number,id:st
   if(row.version!==input.version)fail('FREIGHT_CHANGED',409);
   const bills=await linkedJobBills(tx,orgId,id),bill=input.billId?bills.find((b:any)=>b.id===input.billId):null;
   if(input.billId&&!bill)fail('FREIGHT_MASTER_SCOPE');
+  if(input.billVersion!==undefined&&bill?.version!==input.billVersion)fail('FREIGHT_CHANGED',409);
   if((input.kind==='HOUSE_DRAFT'&&(!bill||bill.kind!=='HOUSE'))||(input.kind==='MASTER_DRAFT'&&(!bill||bill.kind!=='MASTER')))fail('FREIGHT_DOCUMENT_REQUIRED');
   const work=shippingWorkData(row.data);
   if(!work.origin||!work.destination)fail('FREIGHT_DOCUMENT_REQUIRED');
@@ -121,7 +123,7 @@ export async function createJobDocument(db:any,orgId:number,actorId:number,id:st
   if(!data.shipper||!data.consignee)fail('FREIGHT_DOCUMENT_REQUIRED');
   const issuer=await tx.organization.findUnique({where:{id:orgId},select:{name:true,address:true,representative:true,phone:true,email:true}}),documentId=randomUUID();
   const source={id:row.id,number:row.number,mode:row.mode,service:row.service,version:row.version,data,bill:bill?{id:bill.id,number:bill.number,kind:bill.kind,issuer:bill.issuer,version:bill.version}:null,master:bill?.masterId?bills.filter((b:any)=>b.id===bill.masterId).map((b:any)=>({id:b.id,number:b.number,version:b.version}))[0]||null:null,documentType:bill?.data?.releaseType==='SEA_WAYBILL'?'SEA_WAYBILL':row.data.documentSetup?.documentType||(row.mode==='SEA'?'BILL_OF_LADING':row.mode==='AIR'?'AIR_WAYBILL':'WAYBILL')};
-  const snapshot={layout:['MASTER_DRAFT','HOUSE_DRAFT'].includes(input.kind)?'bill-form-v2':'transport-v1',requestHash,issuer,source,draft:true,deliveryConfirmed:false,createdByEmployeeId:actorId};
+  const snapshot={layout:['MASTER_DRAFT','HOUSE_DRAFT'].includes(input.kind)?'bill-form-v3':'transport-v1',requestHash,issuer,source,draft:true,deliveryConfirmed:false,createdByEmployeeId:actorId};
   return (await tx.$queryRawUnsafe('INSERT INTO "FreightDocument"(id,"orgId","jobId","clientKey",kind,number,"sourceVersion",snapshot,"createdByEmployeeId") VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9) RETURNING *',documentId,orgId,id,input.clientKey,input.kind,`${input.kind}-${documentId.slice(0,8).toUpperCase()}`,row.version,JSON.stringify(snapshot),actorId))[0];
  });
 }

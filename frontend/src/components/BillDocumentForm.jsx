@@ -13,14 +13,20 @@ export default function BillDocumentForm({field,numberField,issuerField,masterFi
    {masterField&&<Box sx={{maxWidth:{md:440}}}>{masterField}</Box>}
    {logoActions&&<Box component="details" sx={{border:1,borderColor:'divider',borderRadius:1,p:1}}><Typography component="summary" sx={{cursor:'pointer'}}>{logoActionsLabel}</Typography><Box sx={{pt:1}}>{logoActions}</Box></Box>}
   </Stack>}
-  <InvoiceSheet data-shipping-bl-form data-bl-document-layout sx={{borderRadius:0,border:0,p:{xs:1,md:2},color:rule}}>
+  <InvoiceSheet data-shipping-bl-form data-bl-document-layout sx={{borderRadius:0,border:0,p:{xs:1,md:2},color:rule,
+   '& .MuiInputLabel-root':{position:'static',transform:'none',maxWidth:'100%',whiteSpace:'normal',overflow:'visible',fontSize:10,lineHeight:1.25,mb:0.5,color:rule,textTransform:'uppercase'},
+   '& .MuiOutlinedInput-root .MuiOutlinedInput-notchedOutline':{border:0},
+   '& .MuiOutlinedInput-root':{borderRadius:0,p:0,minHeight:28,height:'auto',alignItems:'flex-start','&:hover':{bgcolor:'#f6f8fc'},'&.Mui-focused':{bgcolor:'#edf4ff',boxShadow:'inset 0 -2px 0 #2878f5'}},
+   '& .MuiInputBase-input':{p:'3px 4px',height:'auto',fontSize:12,lineHeight:1.5},
+   '& textarea.MuiInputBase-input':{resize:'none'}
+  }}>
    <Box data-bl-region="identity" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'1fr 1fr'},columnGap:{md:3},alignItems:'stretch'}}>
     <Box data-bl-parties sx={{minWidth:0}}>
      <Stack>{['shipper','consignee','notify'].map(key=><Box key={key} sx={{borderTop:'1px solid '+rule,pt:1.75,pb:1.5}}>{field(key,true)}</Box>)}</Stack>
      <Box data-bl-region="route" sx={{...table,gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))'}}}>{billRouteFields.map(key=><Box key={key} sx={{...cell,px:0.75,pt:1.5,borderBottom:'1px solid '+rule}}>{field(key)}</Box>)}</Box>
     </Box>
     <Stack data-bl-identity spacing={2} sx={{minWidth:0,pt:{xs:2,md:0},pb:2}}>
-     <Box sx={{alignSelf:'flex-end',width:{xs:'100%',md:'82%'}}}>{numberField}</Box>
+     <Box sx={{alignSelf:'flex-end',width:{xs:'100%',md:'82%'},border:1,borderColor:rule,p:0.75}}>{numberField}</Box>
      {logo&&<Box component="img" alt="BL Issuer Logo" src={logo} sx={{alignSelf:'center',width:'min(100%, 300px)',height:90,objectFit:'contain'}}/>}
      <Typography component="h2" align="center" sx={{fontWeight:800,lineHeight:1.1,letterSpacing:0.5,fontSize:{xs:22,md:26}}}>
       {!air&&<Box component="span" sx={{display:'block',fontSize:13,letterSpacing:1}}>COMBINED TRANSPORT</Box>}{air?'AIR WAYBILL':'BILL OF LADING'}
