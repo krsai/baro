@@ -17,6 +17,7 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/shipping-work-layout-test.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const lang of ['ko','en','vi'])for(const width of [1440,390])for(const mode of ['FCL','LCL','AIR','EXPRESS']){
+  if(process.argv.includes('--info-layout-only')&&mode!=='FCL')continue;
   if(process.argv.includes('--shared-sr-only')&&mode!=='FCL')continue;
   if(process.argv.includes('--customer-only')&&mode!=='FCL')continue;
   if(process.argv.includes('--volume-formula-only')&&mode!=='EXPRESS')continue;
@@ -32,7 +33,7 @@ try{
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`import React from '/node_modules/.vite/deps/react.js';export const LanguageContext=React.createContext({languageCode:'${lang}'});export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={showNotification(message,severity){window.notices=[...(window.notices||[]),{message,severity}];},setUnsavedChangesGuard(){},clearUnsavedChangesGuard(){},markTabChanged(){},clearTabChanged(){},navigateToPath(){}};export const useAppActions=()=>a;'}));
   await page.route('**/text-acronyms',r=>r.fulfill({json:{revision:0,entries:[{acronym:'MBL'},{acronym:'HBL'},{acronym:'AR'},{acronym:'AP'}]}}));
-  const customer={id:11,name:'CUSTOMER'},job={id:'job1',number:'JOB-000001',orgId:7,mode:['FCL','LCL'].includes(mode)?'SEA':'AIR',service:mode==='EXPRESS'?'EXPRESS':'GENERAL',receiptStatus:'ACCEPTED',status:'DRAFT',version:1,bills:[],documents:[],data:{customer,shipmentType:mode,shipper:'SENDER\nSender Address',consignee:'BUYER\nBuyer Address',notify:'NOTIFY',origin:'Origin Address',destination:'Destination Address',originPortCode:'VNHPH',destinationPortCode:'KRINC',cargo:'Garment',marks:'PRESERVE MARKS',placeOfReceipt:'PRESERVE RECEIPT',placeOfDelivery:'PRESERVE DELIVERY',incoterms:'CIF',freightTerms:'Prepaid',quantity:'99',cbm:'88',weightKg:'120',unit:'PKG',containers:mode==='FCL'?[{size:'20',type:'DC',count:'1'}]:[],packages:mode==='FCL'?[]:[{quantity:'3',lengthM:'0.1',widthM:'0.2',heightM:'0.3'}]}},original=structuredClone(job.data);
+  const customer={id:11,name:'CUSTOMER'},job={id:'job1',number:'JOB-000001',createdAt:'2026-11-25T04:00:00Z',orgId:7,mode:['FCL','LCL'].includes(mode)?'SEA':'AIR',service:mode==='EXPRESS'?'EXPRESS':'GENERAL',receiptStatus:'ACCEPTED',status:'DRAFT',version:1,bills:[],documents:[],data:{customer,shipmentType:mode,shipper:'SENDER\nSender Address',consignee:'BUYER\nBuyer Address',notify:'NOTIFY',origin:'Origin Address',destination:'Destination Address',originPortCode:'VNHPH',destinationPortCode:'KRINC',cargo:'Garment',marks:'PRESERVE MARKS',placeOfReceipt:'PRESERVE RECEIPT',placeOfDelivery:'PRESERVE DELIVERY',incoterms:'CIF',freightTerms:'Prepaid',quantity:'99',cbm:'88',weightKg:'120',unit:'PKG',containers:mode==='FCL'?[{size:'20',type:'DC',count:'1'}]:[],packages:mode==='FCL'?[]:[{quantity:'3',lengthM:'0.1',widthM:'0.2',heightM:'0.3'}]}},original=structuredClone(job.data);
   if(process.argv.includes('--shared-sr-only')){job.customerId=11;job.requestCreatedByOrgId=7;job.requestSnapshot={mode:job.mode,status:'DRAFT',data:structuredClone(job.data)};}
   if(mode==='FCL')job.data.workScope={start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'};
   if(mode==='LCL')job.data.workScope={start:'ORIGIN_TERMINAL',end:'DESTINATION_TERMINAL'};
@@ -48,7 +49,7 @@ try{
   await page.route('**/shipping-requests/**',async route=>{const req=route.request();if(req.method()==='OPTIONS')return route.fulfill({headers});const key=new URL(req.url()).pathname.split('/shipping-requests/')[1];let json;
    if(key==='job1/charges'&&req.method()==='POST'){const body=req.postDataJSON();chargeWrites.push(body);if(chargeWrites.length===1)return route.fulfill({headers,status:503,json:{error:'UNCONFIRMED'}});json={...body,version:1};charges.push(json);}
    else if(key==='job1/charges')json={rows:charges,currencies:[{code:'USD'}],parties:[customer]};else json=[];return route.fulfill({headers,json});});
-  await page.goto(`http://127.0.0.1:${port}/shipping-work-layout-test.html?theme=${width===390?'standard':'compact'}`);
+  await page.goto(`http://127.0.0.1:${port}/shipping-work-layout-test.html?theme=${width===390?'standard':'compact'}`,{waitUntil:'domcontentloaded',timeout:60000});
   if(process.argv.includes('--shared-sr-only')){
    await page.getByRole('button',{name:opView(),exact:true}).click();
    function opView(){return t.viewSr+' \u00b7 '+job.number;}
@@ -59,7 +60,15 @@ try{
    assert.equal(writes.length,1);assert.deepEqual(writes[0].fields,{cargo:'SR Changed Cargo',containers:[{size:'20',type:'DC',count:'3'}]});assert.equal(job.requestSnapshot.data.cargo,'SR Changed Cargo');
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert.deepEqual(errors,[]);await dialog.getByRole('button',{name:t.close,exact:true}).click();console.log('PASS current SR shared cargo/containers edit and save',lang,width);await page.close();continue;
   }
-  const form=page.getByTestId('shipping-operations-form');await form.waitFor();
+  const form=page.getByTestId('shipping-operations-form');await form.waitFor({timeout:60000});
+  if(process.argv.includes('--info-layout-only')){
+   const summary=form.locator('[data-shipping-work-summary]'),customer=summary.locator('.MuiOutlinedInput-root').nth(0),date=summary.locator('.MuiOutlinedInput-root').nth(1),assignee=form.locator('[data-shipping-work-assignee] .MuiOutlinedInput-root');
+   const a=await customer.boundingBox(),b=await date.boundingBox(),c=await assignee.boundingBox();
+   assert.ok(Math.abs(a.y-b.y)<=1);assert.ok(Math.abs(a.height-b.height)<=1);assert.ok(Math.abs(a.height-c.height)<=1);assert.ok(Math.abs(a.x-c.x)<=1);
+   const input=date.locator('input');assert.equal(await input.inputValue(),'2026-11-25');assert.equal(await input.getAttribute('readonly'),'');assert.equal(await input.evaluate(n=>n.scrollWidth<=n.clientWidth+1),true);assert.equal(writes.length,0);assert.deepEqual(errors,[]);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+   if(lang==='ko'&&width===1440)await form.locator('[data-shipping-work-side] > *').first().screenshot({path:'logs/shipping-info-layout-preview.png'});
+   console.log('PASS aligned outlined customer/date/assignee',lang,width);await page.close();continue;
+  }
   if(process.argv.includes('--customer-only')){
    const input=form.getByRole('textbox',{name:t.customer,exact:true});await input.fill('NEW');await input.press('Enter');assert.equal(writes.length,0);
    assert.equal(await form.locator('[name=shipper]').inputValue(),original.shipper);

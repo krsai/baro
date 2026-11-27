@@ -9,7 +9,7 @@
 
 - 운송 JOB의 AR/AP는 `ShippingJobCharges`의 `ListDetailDialog`에서 AR(청구)/AP(비용신청) 탭으로 구분한다. `DialogRecordList`·`DialogDetailPanel`·`DialogRecordActions`와 공통 추가 버튼을 사용하고 B/L 선택·반복 부제목·운송 상세 복귀 버튼은 두지 않는다. 저장 후 청구서/비용신청 작성으로 이동하며 원래 JOB/항목 FK를 유지한다. 과거 B/L 금액은 조회로 보존하고 새 문서 연결 대상으로 재분류하지 않는다.
 
-- 운송 업무의 구간 날짜 힌트는 CARGO READY / ETD/ATD / ETA/ATA / DELIVERY다. 별도 ETD·ETA 입력을 중복 배치하지 않고 선박명·항차는 같은 행에서 컨테이너 규격과 함께 둔다. 컨테이너는 대수 → 길이 → 타입 순서다. 업무 담당자는 공통 검색 선택의 standard 입력으로 표시하고 운임 조건·비고 입력은 업무 화면에서 제외하되 저장된 값은 보존한다. 거부는 업무 화면 맨 아래 전체 너비의 outlined 버튼이며 운송번호를 포함한 공통 확인창을 거친다.
+- 운송 업무의 구간 날짜 힌트는 CARGO READY / ETD/ATD / ETA/ATA / DELIVERY다. 별도 ETD·ETA 입력을 중복 배치하지 않고 선박명·항차는 같은 행에서 컨테이너 규격과 함께 둔다. 컨테이너는 대수 → 길이 → 타입 순서다. 업무 정보의 고객·담당자는 공통 검색 선택의 outlined 입력으로, SR 일자는 같은 높이·라벨 위치의 읽기 전용 outlined 필드로 표시한다. BL 탭의 제목과 +는 같은 테두리 안에서 전체 내부 높이를 채우고 아이콘을 수직 중앙에 둔다. 운임 조건·비고 입력은 업무 화면에서 제외하되 저장된 값은 보존한다. 거부는 업무 화면 맨 아래 전체 너비의 outlined 버튼이며 운송번호를 포함한 공통 확인창을 거친다.
 
 일반 업무 목록의 클릭 계약은 새 화면을 포함해 공통으로 적용한다. `components/RecordInteraction.jsx`의 `RecordInteractionScope`로 목록별 선택 상태를 격리하고 `RecordRow`에 실제 `recordKey`, `onOpen`, 권한·로딩에 따른 `disabled`를 전달한다. 원클릭은 선택/강조만 하고 더블클릭·Enter는 열기, Space는 선택이다. 포커스·선택은 저장·초안 수정·화면 이동을 실행하지 않는다. PC와 모바일의 동일한 열기 동작을 번호·코드·이름·날짜 등의 `RecordOpenButton`으로 제공한다. 명시적 버튼은 원클릭·터치·키보드로 실행하며 더블클릭 시 중복 실행하지 않는다. 자식 버튼·링크·체크박스·입력의 클릭/더블클릭/키보드는 행 열기로 전파하지 않는다. 일반 행에 개별 `onClick`/`onDoubleClick`/열기 키 처리를 추가하지 않는다.
 
