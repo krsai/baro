@@ -11,6 +11,7 @@ export function paymentAccountsFields(accounts){
 export const paymentAccountText=(fields,languageCode='en')=>paymentAccountSelections(fields).length?paymentAccountSelections(fields).map(account=>paymentAccountRows(account.snapshot,languageCode).map(row=>row.label+': '+row.value).join('\n')).join('\n\n'):Array.isArray(fields?.bankAccounts)?'':fields?.bank||'';
 export function paymentAccountsHtml(fields,languageCode,escape){
  const accounts=paymentAccountSelections(fields);
+ if(!accounts.length&&!paymentAccountText(fields,languageCode))return '<dl class="invoice-bank-card">'+paymentAccountRows(null,languageCode).map(row=>'<dt>'+escape(row.label)+'</dt><dd>\u2014</dd>').join('')+'</dl>';
  if(!accounts.length)return `<div class="invoice-bank-lines">${String(paymentAccountText(fields,languageCode)||'—').split(/\r?\n/).map(line=>`<p class="invoice-bank-line">${escape(line)}</p>`).join('')}</div>`;
  return `<div class="invoice-bank-grid" style="--invoice-bank-count:${accounts.length};--invoice-bank-tablet-count:${Math.min(2,accounts.length)}">${accounts.map(account=>`<dl class="invoice-bank-card">${paymentAccountRows(account.snapshot,languageCode).map(row=>`<dt>${escape(row.label)}</dt><dd>${escape(row.key==='bankName'?String(row.value).toUpperCase():row.value)}</dd>`).join('')}</dl>`).join('')}</div>`;
 }

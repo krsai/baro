@@ -1,6 +1,6 @@
 import {invoiceCurrencyAmount} from './invoiceCurrencies';
 import {orderInvoiceAccounting} from './invoiceAccounting';
-import {assertInvoiceDeletable} from './invoiceDeletion';
+import {assertInvoiceDeletable,assertInvoicePaymentUnlinked} from './invoiceDeletion';
 import {resolveInvoicePaymentAccount,invoiceBankLinks} from './invoicePaymentAccount';
 import { createHttpError } from "../utils/http";
 import {issueGeneralInvoice} from './generalInvoice';
@@ -170,6 +170,7 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
       fail("INVOICE_REVISION_SOURCE_INVALID");
     }
     if (revisedFrom) {
+      await assertInvoicePaymentUnlinked(tx,revisedFrom.id);
       if (await tx.invoiceCredit.count({ where: { invoiceId: revisedFrom.id, voidedAt: null } })) fail('INVOICE_CREDIT_VOID_BEFORE_REVISION');
       const originalIds = revisedFrom.orders.map((row: any) => row.sourceOrderId).sort();
       const requestedIds = content.orders.map((row: any) => row.orderId).sort();
@@ -303,6 +304,7 @@ export async function deleteIssuedInvoice(db: any, sellerOrgId: number, actor: s
     await tx.invoiceLine.deleteMany({where:{invoiceId}});
     await tx.invoiceOrder.deleteMany({where:{invoiceId}});
     await tx.invoiceGeneralLine.deleteMany({where:{invoiceId,sellerOrgId}});
+    await tx.$executeRawUnsafe('UPDATE "InvoiceEditEvent" SET "invoiceId"=NULL WHERE "invoiceId"=$1 AND "orgId"=$2',invoiceId,sellerOrgId);
     await tx.invoice.delete({where:{id:invoiceId}});
     return {id:invoiceId,deleted:true};
   };
@@ -429,6 +431,7 @@ export async function createInvoiceRevisionDraft(db: any, sellerOrgId: number, a
     if (!invoice) throw createHttpError(404, "INVOICE_NOT_FOUND");
     if (invoice.openingAdjustments?.length) throw createHttpError(409,"OPENING_SOURCE_LOCKED");
     if (invoice.status !== "ISSUED") fail("INVOICE_REVISION_SOURCE_INVALID");
+    await assertInvoicePaymentUnlinked(tx,invoice.id);
     if (invoice.orders.some((row: any) => row.workOrderId == null)
       || invoice.lines.some((row: any) => row.workOrderItemId == null)) {
       fail("INVOICE_REVISION_SOURCE_REMOVED");

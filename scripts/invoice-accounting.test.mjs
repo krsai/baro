@@ -7,6 +7,7 @@ const require=createRequire(import.meta.url);
 const {orderInvoiceAccounting,invoiceEvidenceAccounting}=require('../backend/dist/services/invoiceAccounting');
 const {requestChangeApproval,decideChangeApproval,previewChangeApproval}=require('../backend/dist/services/changeApprovals');
 const {searchLedgerEvidence}=require('../backend/dist/services/bankLedger');
+const {invoiceEditLock,invoiceReceivedTotals}=require('../backend/dist/services/invoiceEdit');
 const {assertInvoiceDeletable}=require('../backend/dist/services/invoiceDeletion');
 const {accountingCodeUsage}=require('../backend/dist/services/accountingCodeUsage');
 
@@ -27,6 +28,8 @@ test('CMT uses a company code FK and frozen VAT in partial receipts, waits for a
  const entry=await db.bankLedgerEntry.findFirstOrThrow({where:{clientKey:body.clientKey}});
  assert.equal(entry.accountingCodeId,s.code.id);assert.equal(String(entry.amount),'40');assert.equal(String(entry.subtotal),'40');assert.equal(String(entry.vatRate),'0');
  const allocation=await db.bankLedgerEvidenceAllocation.findFirstOrThrow({where:{entryId:entry.id}});assert.equal(allocation.invoiceId,invoice.id);assert.equal(String(allocation.amount),'40');
+ assert.equal(await invoiceEditLock(db,invoice),'INVOICE_DELETE_PAYMENT_LINKED');
+ assert.equal(Number((await invoiceReceivedTotals(db,org,invoice.id))[0].amount),40);
  const results=await searchLedgerEvidence(db,org,{type:'INVOICE',currencyCode:'USD',search:'CMT-TEST'});
  assert.equal(results.documents[0].remaining,'60.00');assert.equal(results.documents[0].accountingCodeId,s.code.id);assert.equal(results.documents[0].vatRate,'0');
  await assert.rejects(assertInvoiceDeletable(db,org,invoice.id),/INVOICE_DELETE_PAYMENT_LINKED/);

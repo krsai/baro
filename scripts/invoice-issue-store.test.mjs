@@ -193,17 +193,19 @@ test('multi-order payments use explicit replaceable allocations and preserve voi
 });
 
 test('revision draft copies immutable snapshot inputs and links the original invoice', async () => {
-  let draft;
+  let draft,linked=false;
   const invoice = { id: 'i1', sellerOrgId: 1, buyerOrgId: 2, status: 'ISSUED', pricingBasis: 'MANUFACTURING_SERVICE_PRICE',
     currencyCode: 'USD', snapshot: { fields: { number: 'INV-1', date: '2026-09-22' } },
     orders: [{ id: 4, workOrderId: 3, sourceOrderId: 'o1', sourceUpdatedAt: new Date('2026-09-22'), billingPercentage: '100', appliedDeductionAmount: '0', deductionReason: '' }],
     lines: [{ workOrderItemId: 11, sourceItemId: 11, lineKey: 'line', quantity: 3, remark: '', adjustmentReason: '', hsCode: '', origin: '' }] };
   const db = { $transaction: async run => run(db), invoice: { findFirst: async ({ where }) => where.revisionOfInvoiceId ? null : invoice },
     invoiceDraft: { findFirst: async () => null, create: async ({ data }) => (draft = { id: 'd1', ...data }) },
+    invoicePayment:{findFirst:async()=>linked?{id:'payment'}:null},bankLedgerEvidenceAllocation:{findFirst:async()=>null},
     invoiceDraftOrder: { createMany: async () => ({ count: 1 }) }, invoiceDraftLine: { createMany: async () => ({ count: 1 }) } };
   const result = await createInvoiceRevisionDraft(db, 1, 'actor', 'i1', { clientKey: 'revision_draft_0001', reason: 'correct address' });
   assert.equal(result.revisionOfInvoiceId, 'i1'); assert.equal(result.revisionReason, 'correct address');
   assert.equal(draft.content.orders[0].orderId, 'o1'); assert.equal(draft.content.lines[0].key, 'line');
+  linked=true;await assert.rejects(createInvoiceRevisionDraft(db,1,'actor','i1',{clientKey:'revision_draft_0002',reason:'blocked payment edit'}),/INVOICE_DELETE_PAYMENT_LINKED/);
 });
 
 test('issued list preserves frozen buyer names and exposes remaining locks only on their owning invoice', async () => {

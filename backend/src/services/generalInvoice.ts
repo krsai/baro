@@ -1,3 +1,4 @@
+import {assertInvoicePaymentUnlinked} from './invoiceDeletion';
 import {invoiceCurrencyTotals,totalGeneralInvoiceCurrencies} from './invoiceCurrencies';
 import {companyInvoiceParty} from './companyDocumentContact';
 import {prepareMaterialSelection} from './materialItems';
@@ -83,6 +84,7 @@ export async function issueGeneralInvoice(tx:any,sellerOrgId:number,actor:string
   await tx.$queryRawUnsafe('SELECT id FROM "Invoice" WHERE id=$1 AND "sellerOrgId"=$2 FOR UPDATE',draft.revisionOfInvoiceId,sellerOrgId);
   original=await tx.invoice.findFirst({where:{id:draft.revisionOfInvoiceId,sellerOrgId}});
   if(!original||original.documentKind!=='GENERAL'||original.status!=='ISSUED'||original.buyerOrgId!==draft.buyerOrgId||(original.currencyCode!=='MIX'&&original.currencyCode!==content.currency)||!revisionReason)throw createHttpError(409,'INVOICE_REVISION_SCOPE_CHANGED');
+  await assertInvoicePaymentUnlinked(tx,original.id);
   if(await tx.invoiceCredit.count({where:{invoiceId:original.id,voidedAt:null}}))throw createHttpError(409,'INVOICE_CREDIT_VOID_BEFORE_REVISION');
  }
  await resolveInvoicePaymentAccount(tx,sellerOrgId,content.fields);

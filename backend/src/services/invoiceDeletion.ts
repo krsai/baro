@@ -1,4 +1,8 @@
 import {createHttpError} from '../utils/http';
+// Call after resolving the invoice under the active company. Voided history also locks the document.
+export async function assertInvoicePaymentUnlinked(db:any,id:string){
+ if(await db.invoicePayment.findFirst({where:{invoiceId:id},select:{id:true}})||await db.bankLedgerEvidenceAllocation.findFirst({where:{invoiceId:id},select:{id:true}}))throw createHttpError(409,'INVOICE_DELETE_PAYMENT_LINKED');
+}
 // Only reversed, unallocated AR document-balancing rows may be purged with an approved invoice deletion.
 export async function assertInvoiceDeletable(db:any,orgId:number,id:string){
  const rows=await db.$queryRawUnsafe(`SELECT

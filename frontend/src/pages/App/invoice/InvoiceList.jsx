@@ -1,3 +1,4 @@
+import {invoiceEditText} from '../../../constants/invoiceEdit';
 import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
 import ListPagination from '../../../components/ListPagination';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -51,13 +52,13 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
   const [issued, setIssued] = useState({ rows: [], hasMore: false });
   const [page, setPage] = useState(0), [reload, setReload] = useState(0);
   const [loading, setLoading] = useState(false), [error, setError] = useState('');
-  const [revising,setRevising]=useState(false);
-  useWorkspaceRefreshOnEvent({ orgId, isBlocked:revising||requesting||Boolean(invoiceId&&detail?.documentKind==='GENERAL'&&detail.status==='ISSUED'), topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES],
+
+  useWorkspaceRefreshOnEvent({ orgId, isBlocked:requesting||Boolean(invoiceId&&detail?.status==='ISSUED'), topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES],
      onRefresh: () => setReload(value => value + 1) });
   useEffect(() => {
     if (!orgId) return;
     let cancelled = false;
-    setLoading(true); setError(''); setIssued({rows:[],hasMore:false}); setDetail(null); setRevising(false);
+    setLoading(true); setError(''); setIssued({rows:[],hasMore:false}); setDetail(null);
     const timer=setTimeout(()=>requestJSON(`/invoices/issued${invoiceId?'/'+encodeURIComponent(invoiceId):''}${buildQueryString({ orgId, ...(!invoiceId?{page, search, status,start:start.format('YYYY-MM-DD'),end:end.format('YYYY-MM-DD')}:{}) })}`, { skipCache:true })
       .then(invoices=>{if(!cancelled){if(invoiceId)setDetail({...invoices,isFinalLocked:invoices.orders?.some(order=>order.workOrder?.invoiceFinalLockedAt&&order.workOrder.invoiceFinalLockInvoiceId===invoices.id)});else setIssued(invoices);}})
       .catch(()=>{if(!cancelled)setError(ui.failed);})
@@ -104,11 +105,9 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
     {invoiceId&&<>
       {error&&<Alert severity="error" action={<Button onClick={()=>setReload(v=>v+1)}>{common.retry}</Button>}>{error}</Alert>}
       {loading?<CircularProgress size={22}/>:detail&&<>
-        {detail.documentKind==='GENERAL'&&detail.status==='ISSUED'
-          ? <GeneralInvoiceEditor orgId={orgId} revisionInvoice={detail} languageCode={languageCode} inlineRevision pageTitle={d.title} onIssued={()=>navigateToPath('/invoices')}/>
-          : detail.status==='ISSUED'&&revising
-          ? React.createElement(detail.documentKind==='GENERAL'?GeneralInvoiceEditor:InvoiceEditor,{orgId,revisionInvoice:detail,languageCode,onClose:()=>setRevising(false),onIssued:()=>navigateToPath('/invoices')})
-          : <AppPageContainer title={d.title} titleActions={detail.status==='ISSUED'?<Button variant="outlined" onClick={()=>setRevising(true)}>{labels.revise}</Button>:undefined}><InvoiceIssuedForm invoice={detail} languageCode={languageCode}/></AppPageContainer>}
+        {detail.status==='ISSUED'&&!detail.editLockedReason
+          ? React.createElement(detail.documentKind==='GENERAL'?GeneralInvoiceEditor:InvoiceEditor,{key:detail.editRevision||detail.id,orgId,revisionInvoice:detail,editInvoice:true,languageCode,pageTitle:d.title,onIssued:()=>setReload(n=>n+1)})
+          : <AppPageContainer title={d.title} titleActions={detail.editLockedReason?<Typography variant="body2" color="text.secondary">{(invoiceEditText[languageCode]||invoiceEditText.en).locked}</Typography>:undefined}><InvoiceIssuedForm invoice={detail} languageCode={languageCode}/></AppPageContainer>}
       </>}
     </>}
   <ChangeApprovalDialog ref={approval} orgId={orgId} languageCode={languageCode}/>

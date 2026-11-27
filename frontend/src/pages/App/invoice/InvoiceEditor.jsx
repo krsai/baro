@@ -1,3 +1,4 @@
+import {invoiceEditText} from '../../../constants/invoiceEdit';
 import {paymentAccountError} from '../../../utils/invoicePaymentAccount.mjs';
 import {invoiceAccountingText} from '../../../constants/invoiceAccounting';
 import {managementTargetText} from '../../../constants/managementTargets';
@@ -108,7 +109,8 @@ const messages = {
   }
 };
 
-export default function InvoiceEditor({ open = true, onClose, onIssued, orderId, orderIds, orgId, buyerOrgId, draftId, revisionInvoice, renderSelection, languageCode = 'ko' }) {
+export default function InvoiceEditor({ open = true, onClose, onIssued, orderId, orderIds, orgId, buyerOrgId, draftId, revisionInvoice, renderSelection, languageCode = 'ko', editInvoice=false }) {
+  const editText=invoiceEditText[languageCode]||invoiceEditText.en;
   const pageDialogs = usePageDialogs();
   const {showNotification}=useAppActions();
   const productionText = invoiceProductionMessages[languageCode] || invoiceProductionMessages.en;
@@ -158,7 +160,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
       const stored = resumeId ? await requestJSON(`/invoices/drafts/${encodeURIComponent(resumeId)}${buildQueryString({ orgId })}`, { skipCache: true }) : null;
       const restored = stored || (revisionInvoice ? {buyerOrgId:revisionInvoice.buyerOrgId,revisionOfInvoiceId:revisionInvoice.id,content:{
         version:2,buyerOrgId:revisionInvoice.buyerOrgId,basis:revisionInvoice.pricingBasis,currency:revisionInvoice.currencyCode,
-        fields:{...revisionInvoice.snapshot.fields,number:revisionInvoice.invoiceNumber+'-R'+(Number(revisionInvoice.revisionNumber||1)+1)},
+        fields:{...revisionInvoice.snapshot.fields,number:editInvoice?revisionInvoice.invoiceNumber:revisionInvoice.invoiceNumber+'-R'+(Number(revisionInvoice.revisionNumber||1)+1)},
         orders:revisionInvoice.orders.map(row=>({orderId:row.sourceOrderId,sourceUpdatedAt:row.sourceUpdatedAt})),
         percentages:Object.fromEntries(revisionInvoice.orders.map(row=>[row.sourceOrderId,String(row.billingPercentage)])),
         settlements:Object.fromEntries(revisionInvoice.orders.map(row=>[row.sourceOrderId,{deduction:String(row.appliedDeductionAmount),reason:revisionInvoice.snapshot.fields.notes||row.deductionReason||'',adjustment:String(revisionInvoice.snapshot.orders?.find(order=>order.sourceOrderId===row.sourceOrderId)?.adjustmentAmount||'')}])),
@@ -217,6 +219,10 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     const issue = async (options={}) => {
     if (!source || saving || calculation?.issues.length || !fields?.date) return;
     const issueFields={...fields};
+    if(editInvoice){
+      setSaving(true);setError('');
+      try{await requestJSON('/invoices/issued/'+encodeURIComponent(revisionInvoice.id)+buildQueryString({orgId}),{method:'PUT',body:JSON.stringify({clientKey:clientKey.current,editRevision:revisionInvoice.editRevision,buyerOrgId:source.buyerOrgId,orders:source.orders,lines,basis,currency,fields:issueFields,percentages,settlements})});setDirty(false);setUncertain(false);showNotification(editText.saved,'success');emitWorkspaceDataChanged({orgId,topics:[WORKSPACE_DATA_TOPICS.ISSUED_INVOICES]});onIssued?.();}catch(e){setUncertain(!e.status||e.status>=500);setError(e.message?.startsWith('INVOICE_DELETE_')?editText.locked:ui.failed);}finally{setSaving(false);}return;
+    }
     if (!uncertain && !await pageDialogs.confirm(storageText.confirmIssue)) return;
     if (revisionInvoice && !draftRef.current && !revisionRequest.current) {
       const reason = await pageDialogs.prompt(languageCode==='ko'?'개정 사유를 입력하세요.':languageCode==='vi'?'Nhập lý do sửa đổi.':'Enter a revision reason.');
@@ -251,7 +257,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     } finally { setSaving(false); }
   };
   return <AppPageContainer keyboardEntry title={revisionInvoice ? (languageCode==='ko'?'청구서 상세':languageCode==='vi'?'Chi tiết hóa đơn':'Invoice detail') : draftId ? ui.edit : ui.create} titleActions={<Stack direction="row" spacing={1}>
-    <Button variant="contained" onClick={issue} disabled={loading || saving || !source || !!calculation?.issues.length || !fields?.date}>{saving ? <CircularProgress size={18}/> : ui.issue}</Button>
+    <Button variant="contained" onClick={issue} disabled={(editInvoice&&!dirty) || loading || saving || !source || !!calculation?.issues.length || !fields?.date}>{saving ? <CircularProgress size={18}/> : editInvoice?editText.save:ui.issue}</Button>
   </Stack>}>
     <InvoiceSheet>
       <Stack spacing={0} sx={{minWidth:0}}>
@@ -259,7 +265,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
         {loading && <CircularProgress />}
         {error && <Alert severity="error" action={<Button disabled={saving || uncertain} onClick={async () => { if (!dirty || await pageDialogs.confirm(storageText.discard,{purpose:'discard'})) setReload((v) => v + 1); }}>{t.retry}</Button>}>{error}</Alert>}
         {source && fields && <Box component="fieldset" disabled={saving || uncertain} sx={{ border: 0, m: 0, p: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0 }}>
-          <InvoiceFormHeader fields={fields} languageCode={languageCode} onChange={changeField}/>
+          <InvoiceFormHeader numberReadOnly={editInvoice} fields={fields} languageCode={languageCode} onChange={changeField}/>
           <Typography className="invoice-section-title">{ui.details} · {invoiceNumber(styleRows.length)}</Typography>
           <Box sx={{overflowX:'auto'}}><Table data-table-layout="document" className="invoice-lines" size="small" sx={{minWidth:basis==='MANUFACTURING_SERVICE_PRICE'?1180:820,'& td':{verticalAlign:'middle'},'& th':{whiteSpace:'nowrap'}}}><colgroup>{[40,110,null,100,120,130,...(basis==='MANUFACTURING_SERVICE_PRICE'?[130,110]:[]),150].map((width,index)=><col key={index} style={width?{width}:undefined}/>)}</colgroup><TableHead><TableRow>
             {[sheetText.row,sheetText.orderNumber,sheetText.style,sheetText.orderedQuantity,t.quantity,t.price,...(basis==='MANUFACTURING_SERVICE_PRICE'?[(languageCode==='ko'?'\uD68C\uACC4 \uCF54\uB4DC':languageCode==='vi'?'M\u00e3 k\u1ebf to\u00e1n':'Accounting code'),'VAT (%)']:[]),t.amount].map((label,index)=><TableCell key={label} align={index===0||index>=3?'right':'left'}>{label}</TableCell>)}
@@ -275,7 +281,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
             <TableCell align="right" sx={{whiteSpace:'nowrap'}}>{formatInvoiceMoney(group.amount,currency)}</TableCell>
 
           </TableRow></React.Fragment>;})}</TableBody></Table></Box>
-          <InvoiceFormSummary orderControls={<Stack spacing={2}>{source.orders.map(order=><Stack key={order.orderId} data-invoice-order-controls={order.orderId} spacing={1.5}><Typography fontWeight={700}>{order.orderNumber}</Typography><DecimalAmountField size="small" currencyCode={currency} allowNegative allowPositiveSign label={languageCode==='ko'?'\uAE08\uC561 \uC870\uC815 (+/-)':languageCode==='vi'?'Điều chỉnh (+/-)':'Amount adjustment (+/-)'} value={settlements[order.orderId]?.adjustment??''} onValueChange={value=>changeBilling(setSettlements,{...settlements,[order.orderId]:{...settlements[order.orderId],adjustment:value,reason:fields.notes||''}})} placeholder="0" fullWidth/><TextField fullWidth size="small" label={billingText.percentage} inputProps={{inputMode:'decimal',maxLength:6,'aria-label':billingText.percentage+' '+order.orderNumber}} placeholder="100" value={percentages[order.orderId]??''} onChange={event=>changeBilling(setPercentages,{...percentages,[order.orderId]:event.target.value})}/></Stack>)}</Stack>} orgId={orgId} fields={fields} total={calculation.total} orders={calculation.orders} currencyCode={currency} languageCode={languageCode} onRemark={changeRemark} bankAccounts={source.sellerBankAccounts} disabled={saving||uncertain} onBankChange={patch=>{if(!saving&&!uncertain)changeBilling(setFields,{...fields,...patch});}}/>
+          <InvoiceFormSummary orderControls={<Stack spacing={2}>{source.orders.map(order=><Stack key={order.orderId} data-invoice-order-controls={order.orderId} spacing={1.5}>{source.orders.length>1&&<Typography fontWeight={700}>{order.orderNumber}</Typography>}<DecimalAmountField size="small" currencyCode={currency} allowNegative allowPositiveSign label={languageCode==='ko'?'\uAE08\uC561 \uC870\uC815 (+/-)':languageCode==='vi'?'Điều chỉnh (+/-)':'Amount adjustment (+/-)'} value={settlements[order.orderId]?.adjustment??''} onValueChange={value=>changeBilling(setSettlements,{...settlements,[order.orderId]:{...settlements[order.orderId],adjustment:value,reason:fields.notes||''}})} placeholder="0" fullWidth/><TextField fullWidth size="small" label={billingText.percentage} inputProps={{inputMode:'decimal',maxLength:6,'aria-label':billingText.percentage+' '+order.orderNumber}} placeholder="100" value={percentages[order.orderId]??''} onChange={event=>changeBilling(setPercentages,{...percentages,[order.orderId]:event.target.value})}/></Stack>)}</Stack>} orgId={orgId} fields={fields} total={calculation.total} orders={calculation.orders} currencyCode={currency} languageCode={languageCode} onRemark={changeRemark} bankAccounts={source.sellerBankAccounts} disabled={saving||uncertain} onBankChange={patch=>{if(!saving&&!uncertain)changeBilling(setFields,{...fields,...patch});}}/>
           {calculation.issues.map((issue) => <Alert severity="warning" key={issue}>{billingText.errors[issue] || t.issues[issue] || adjustmentErrors[issue] || (issue==='VAT'?(invoiceAccountingText[languageCode]||invoiceAccountingText.en).invalid:'')}</Alert>)}
           {calculation.warnings.filter(issue=>issue!=='PRODUCTION').map((issue) => <Alert severity="warning" key={issue}>{t.issues[issue]}</Alert>)}
         </Box>}

@@ -38,8 +38,8 @@ test('print explains the final billing percentage and deduction using frozen amo
  invoice.snapshot.orders[0]={...invoice.snapshot.orders[0],basisAmount:'200',billingPercentage:'50',billedAmount:'100',appliedDeductionAmount:'20',netAmount:'80'};
  invoice.snapshot.fields.bank='Bank A / 123 / Holder / USD\nBank B / 456 / Holder / VND';
  const before=structuredClone(invoice),html=buildIssuedInvoicePrintHtml(invoice);
- assert.ok(html.includes('$200.00 × 50% = $100.00'));
- assert.ok(html.includes('$100.00 − $20.00 = $80.00'));
+ assert.ok(html.includes('Full amount: $200.00'));assert.ok(html.includes('Billing: 50%'));
+ assert.ok(html.includes('Deduction: $20.00'));assert.ok(html.includes('Previously received: $0.00'));
  assert.equal((html.match(/<p class="invoice-bank-line">/g)||[]).length,2);
  assert.deepEqual(invoice,before);
 });

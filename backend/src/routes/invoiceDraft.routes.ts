@@ -1,3 +1,4 @@
+import {invoiceReceivedTotals,invoiceEditRevision,invoiceEditLock,updateIssuedInvoice} from '../services/invoiceEdit';
 import { saveInvoiceDraft, deleteInvoiceDraft } from "../services/invoiceDraftStore";
 import { createInvoiceRevisionDraft, issueInvoiceDraft, recordInvoicePayment, replaceInvoicePaymentAllocations, voidInvoicePayment } from "../services/invoiceIssueStore";
 import { approveInvoiceFinalLock, unlockInvoiceFinalLock, unlockInvoiceFinalLocksForInvoice } from "../services/invoiceFinalLock";
@@ -167,7 +168,12 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
       credits: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
       finalLockEvents: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] } } });
     if (!row) return res.status(404).json({ error: "INVOICE_NOT_FOUND" });
-    res.setHeader("Cache-Control", "no-store"); return res.json({ ...row, currencyTotals:(row.snapshot as any)?.currencyTotals,subtotal:row.currencyCode==='MIX'?null:String(row.subtotal),total:row.currencyCode==='MIX'?null:String(row.total) });
+    res.setHeader("Cache-Control", "no-store"); return res.json({ ...row, receivedTotals:await invoiceReceivedTotals(db,access.organization.id,row.id),editRevision:invoiceEditRevision(row),editLockedReason:await invoiceEditLock(db,row),currencyTotals:(row.snapshot as any)?.currencyTotals,subtotal:row.currencyCode==='MIX'?null:String(row.subtotal),total:row.currencyCode==='MIX'?null:String(row.total) });
+  });
+  app.put('/invoices/issued/:id',async(req:any,res:any)=>{
+    const access=await requireAccess(req,res);if(!access)return;
+    const result=await updateIssuedInvoice(db,access.organization.id,access.employee?.id,actor(req)||'unknown',req.params.id,req.body);
+    res.setHeader('Cache-Control','no-store');return res.json(result);
   });
   app.post("/invoices/issued/:id/cancel", async (req: any, res: any) => {
     const access = await requireAccess(req, res); if (!access) return;

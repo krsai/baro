@@ -6,7 +6,7 @@ import {invoiceUi} from '../constants/invoiceUi';
 import {invoiceDocumentText} from '../constants/invoiceDocument';
 import {invoicePartyLabels,invoicePartyRows} from '../utils/invoicePartyLayout.mjs';
 
-export default function InvoiceFormHeader({fields,languageCode,onChange,readOnly=false,hideIdentifiers=false,currencyControl=null,title,disabled=false,numberLabel,dateLabel,numberPlaceholder}){
+export default function InvoiceFormHeader({fields,languageCode,onChange,readOnly=false,hideIdentifiers=false,currencyControl=null,title,disabled=false,numberLabel,dateLabel,numberPlaceholder,numberReadOnly=false}){
   const ui=invoiceUi[languageCode]||invoiceUi.en,text=invoiceDocumentText[languageCode]||invoiceDocumentText.en;
   const labels={ko:{code:'회사 코드',automatic:'발행 시 자동 채번'},en:{code:'Company code',automatic:'Assigned on issue'},vi:{code:'Mã công ty',automatic:'Cấp khi phát hành'}}[languageCode]||{code:'Company code',automatic:'Assigned on issue'};
   const appearance='document',partyLabels=invoicePartyLabels(languageCode);
@@ -15,7 +15,7 @@ export default function InvoiceFormHeader({fields,languageCode,onChange,readOnly
     <Box className="invoice-document-top">
       <Typography component="h2" className="invoice-heading">{title||text.title}</Typography>
       {!hideIdentifiers&&<Box className="invoice-document-identifiers">
-        <InvoiceDocumentField name="number" appearance={appearance} label={numberLabel||text.number} value={fields.number} placeholder={numberPlaceholder??labels.automatic} readOnly={readOnly} disabled={disabled} onChange={e=>onChange('number',e.target.value)} maxLength={200}/>
+        <InvoiceDocumentField name="number" appearance={appearance} label={numberLabel||text.number} value={fields.number} placeholder={numberPlaceholder??labels.automatic} readOnly={readOnly||numberReadOnly} disabled={disabled} onChange={e=>onChange('number',e.target.value)} maxLength={200}/>
         <InvoiceDocumentField appearance={appearance} label={dateLabel||ui.date} type="date" value={fields.date} readOnly={readOnly} disabled={disabled} onChange={e=>onChange('date',e.target.value)}/>
         {currencyControl}
       </Box>}

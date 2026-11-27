@@ -61,7 +61,7 @@ try{
   });
   await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html${failure==='revision'?'?draft=revision':''}`);
   await page.getByTestId('invoice-payment-account').waitFor();
-  if(adjustmentOnly){assert.equal(await page.locator('[data-invoice-bank-card]').count(),1);const heights=await page.locator('.invoice-form-summary').evaluate(el=>[el.querySelector('.invoice-remark').getBoundingClientRect().height,el.querySelector('.invoice-summary-details').getBoundingClientRect().height]);assert.ok(Math.abs(heights[0]-heights[1])<2,'Remark matches the complete right column');}
+  if(adjustmentOnly){assert.equal(await page.locator('[data-invoice-bank-card]').count(),1);const heights=await page.locator('.invoice-form-summary').evaluate(el=>[el.querySelector('.invoice-bank-section').getBoundingClientRect().height,el.querySelector('.invoice-summary-details').getBoundingClientRect().height]);assert.ok(Math.abs(heights[0]-heights[1])<2,'Totals and bank panels have equal height');}
   assert.equal(await page.getByRole('checkbox').count(),0);
   await page.getByTestId('invoice-payment-account').getByRole('button').click();const bankPicker=page.getByRole('dialog');await bankPicker.getByRole('row').filter({hasText:bankReviewOnly?'USD-999':summaryOnly?'01234567890123456789':'USD-001'}).first().getByRole('checkbox').check();await bankPicker.getByRole('button',{name:invoicePaymentAccountText[lang].apply,exact:true}).click();await bankPicker.waitFor({state:'hidden'});
   const orderControls=page.locator('[data-invoice-order-controls]');
@@ -90,7 +90,7 @@ try{
    assert.match(await page.locator('.invoice-total').innerText(),/31\.01/);
    const rate=page.locator('[data-invoice-order-controls] input[placeholder="100"]');await rate.fill('50');assert.match(await page.locator('.invoice-total').innerText(),/16\.01/);await rate.fill('100');
    await adjustment.fill('-0.005');assert.match(await page.locator('.invoice-total').innerText(),/29\.99/);
-   assert.match(await page.locator('.invoice-amount-formula').innerText(),/0\.01/);
+   assert.equal(await page.locator('.invoice-amount-formula').count(),0);
    for(const width of [390,1366]){await page.setViewportSize({width,height:1000});assert.ok(await adjustment.isVisible());}
    assert.equal(saves.length,0);assert.deepEqual(errors,[]);await page.close();continue;
   }
@@ -117,18 +117,18 @@ try{
   assert.equal(await grid.locator('td').first().evaluate(el=>getComputedStyle(el).borderRightStyle),'none');
   if(summaryOnly){
    const summary=page.locator('.invoice-summary');await page.locator('input[inputmode="decimal"][aria-label$=" PO-1"]').fill('50');
-   assert.match(await summary.locator('.invoice-amount-formula').innerText(),/\$30\.00 \u00d7 50% = \$15\.00/);
+   assert.match(await summary.locator('.invoice-settlement').innerText(),/30\.00/);assert.match(await summary.locator('.invoice-total').innerText(),/15\.00/);
    assert.equal(await summary.locator('[data-testid=invoice-payment-account] dd').count(),5);
    const treatment=page.getByRole('combobox').filter({hasText:'CMTE'});
    await treatment.click();await page.getByRole('option',{name:/CMTV/}).click();
-   await page.getByLabel('VAT (%)',{exact:true}).fill('10');
+   await page.locator('[data-invoice-vat-rate] input').fill('10');
    assert.match(await summary.locator('.invoice-total').innerText(),/16\.50/);
-   assert.match(await summary.locator('.invoice-amount-formula').innerText(),/VAT.*1\.50/);
+   assert.match(await summary.innerText(),/VAT.*1\.50/);
    for(const width of [1920,1720,1366,768,390]){
     await page.setViewportSize({width,height:1000});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
     assert.equal(await summary.locator('[data-testid=invoice-payment-account] dd').first().evaluate(el=>getComputedStyle(el).overflowWrap),'anywhere');
-    if(width>=1366){const boxes=await summary.evaluate(el=>{const note=el.querySelector('.invoice-remark').getBoundingClientRect(),details=el.querySelector('.invoice-summary-details').getBoundingClientRect();return {note:note.bottom,details:details.bottom,right:details.width,total:el.getBoundingClientRect().width};});assert.ok(Math.abs(boxes.note-boxes.details)<3,JSON.stringify(boxes));assert.ok(boxes.right>boxes.total*.5,JSON.stringify(boxes));}
+    if(width>=1366){const boxes=await summary.evaluate(el=>{const note=el.querySelector('.invoice-remark').getBoundingClientRect(),details=el.querySelector('.invoice-summary-details').getBoundingClientRect();const bank=el.querySelector('.invoice-bank-section').getBoundingClientRect();return {note:note.bottom,top:details.top,details:details.bottom,bank:bank.bottom,right:details.width,total:el.getBoundingClientRect().width};});assert.ok(boxes.note<boxes.top,JSON.stringify(boxes));assert.ok(Math.abs(boxes.bank-boxes.details)<3,JSON.stringify(boxes));}
    }
    await issue.click();await page.waitForTimeout(300);
    assert.equal(saves.at(-1).fields.vatTreatment,'V');assert.equal(saves.at(-1).fields.vatRate,'10');assert.equal(issues.length,1);
