@@ -208,7 +208,8 @@ import {registerTextAcronymRoutes} from './services/textAcronyms';
 import {titleCaseWords} from './utils/humanTextCase';
 
 const app = express();
-app.use(compression());
+// Keep authenticated event streams uncompressed through the HTTP/2 proxy.
+app.use(compression({filter:(req,res)=>req.path==='/workspace-events'||req.path==='/system-setting-events'?false:compression.filter(req,res)}));
 app.use(cors());
 const JSON_BODY_LIMIT =
   String(process.env.JSON_BODY_LIMIT || "10mb").trim() || "10mb";

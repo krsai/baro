@@ -38,6 +38,10 @@ export const invoiceDocumentCss = `
 .invoice-sheet .invoice-summary>*,.invoice-sheet .invoice-total>*{min-width:0;max-width:100%}
 .invoice-sheet .invoice-remark{align-self:start;min-height:92px}
 .invoice-sheet .invoice-remark .MuiInputBase-root{align-items:flex-start}
+.invoice-sheet .invoice-form-summary .invoice-remark{align-self:stretch;display:flex}
+.invoice-sheet .invoice-form-summary .invoice-remark .MuiInputBase-root{flex:1}
+.invoice-sheet .invoice-form-summary .invoice-remark textarea{height:100%!important;box-sizing:border-box;overflow:auto!important}
+@media(max-width:600px){.invoice-sheet .invoice-form-summary .invoice-remark{min-height:160px}}
 .invoice-sheet .invoice-bank-section{grid-column:1/-1;min-width:0}
 .invoice-sheet .invoice-bank-grid{display:grid;grid-template-columns:repeat(var(--invoice-bank-count,3),minmax(0,1fr));gap:16px;align-items:stretch}
 .invoice-sheet .invoice-bank-card{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 12px;align-content:start;min-width:0;margin:0;padding:12px;border:1px solid #e7ecf2;border-radius:6px}

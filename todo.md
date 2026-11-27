@@ -2398,3 +2398,5 @@ BOM에는 단순한 “한 벌당 숫자”만 저장하지 않는다. 기준 �
 - 주문/일반 청구 양식 구분: 주문은 주문번호·스타일·주문/청구 수량을 유지하고 수량→단가 순서, 청구율은 품목 뒤 주문 정산 행의 맨 오른쪽으로 옮겼다. 일반 청구는 항목·수량·단위·통화·단가·VAT·세액·합계로 정리하며 기존 기능/계산을 유지한다. 상세·PDF에도 표시 순서를 반영하고 기존 snapshot은 재작성하지 않았다. 관련 단위/출력·주문 한영베 PC/모바일·프런트 빌드·UI/번역/인코딩 통과 / 일반 청구 한영베 PC/모바일 항목·VAT·계좌·발행/재시도 통과 / 운영 배포·실계정 인수 미확인.
 
 - 주문 청구 부가세 입력 위치: 별도 상단의 부가세 구분·세율을 품목 행의 단가와 금액 사이로 이동. 기존 청구서 공통 세금 값·CMT 코드·반올림 및 일반 청구 기능 유지. 한영베 PC/모바일 행 입력·세액 계산·면세 0% 초기화·발행 저장값·프런트 빌드·UI/번역/인코딩 통과 / 운영 배포·인수 미확인.
+
+- Order invoice editor: removed automatic production toast; retained row review. CMTE default with code-only options; adjustment/percentage below total (blank = 0/100%); Remark stretches beside totals/account; empty account card retained; uppercase bank display. ko/en/vi adjustment browser checks, frontend/backend builds and encoding/i18n passed. SSE compression excluded; production deployment and HTTP/2 recovery unverified.

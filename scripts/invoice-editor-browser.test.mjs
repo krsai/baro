@@ -60,10 +60,12 @@ try{
    throw Error(`Unexpected request: ${request.method()} ${url.pathname}`);
   });
   await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html${failure==='revision'?'?draft=revision':''}`);
-  await page.getByTestId('invoice-payment-account').waitFor();assert.equal(await page.getByRole('checkbox').count(),0);
+  await page.getByTestId('invoice-payment-account').waitFor();
+  if(adjustmentOnly){assert.equal(await page.locator('[data-invoice-bank-card]').count(),1);const heights=await page.locator('.invoice-form-summary').evaluate(el=>[el.querySelector('.invoice-remark').getBoundingClientRect().height,el.querySelector('.invoice-summary-details').getBoundingClientRect().height]);assert.ok(Math.abs(heights[0]-heights[1])<2,'Remark matches the complete right column');}
+  assert.equal(await page.getByRole('checkbox').count(),0);
   await page.getByTestId('invoice-payment-account').getByRole('button').click();const bankPicker=page.getByRole('dialog');await bankPicker.getByRole('row').filter({hasText:bankReviewOnly?'USD-999':summaryOnly?'01234567890123456789':'USD-001'}).first().getByRole('checkbox').check();await bankPicker.getByRole('button',{name:invoicePaymentAccountText[lang].apply,exact:true}).click();await bankPicker.waitFor({state:'hidden'});
   const orderControls=page.locator('[data-invoice-order-controls]');
-  assert.equal(await orderControls.locator('td:last-child input').count(),1,'Billing percentage is the last cell');
+  assert.equal(await orderControls.locator('input[placeholder="100"]').count(),1,'Billing percentage follows the adjustment');
   assert.equal(await orderControls.evaluate(row=>!!(document.querySelector('[data-invoice-line]').compareDocumentPosition(row)&Node.DOCUMENT_POSITION_FOLLOWING)),true,'Order billing controls follow the items');
   if(vatRowOnly){
    const line=page.locator('[data-invoice-line]').first(),treatment=line.locator('[data-invoice-vat-treatment]').getByRole('combobox'),rate=line.locator('[data-invoice-vat-rate] input');
@@ -81,12 +83,12 @@ try{
    assert.equal(await page.getByRole('button',{name:invoiceUi[lang].cancel,exact:true}).count(),0);
    const adjustment=page.getByLabel(/\(\+\/-\)/);await adjustment.waitFor();
    assert.equal(await page.locator('[data-invoice-order-controls] input').count(),2);
-   assert.ok(await adjustment.evaluate(el=>!!(document.querySelector('[data-invoice-line]').compareDocumentPosition(el.closest('tr'))&Node.DOCUMENT_POSITION_FOLLOWING)));
+   assert.ok(await adjustment.evaluate(el=>!!(document.querySelector('[data-invoice-line]').compareDocumentPosition(el.closest('[data-invoice-order-controls]'))&Node.DOCUMENT_POSITION_FOLLOWING)));
    await adjustment.fill('+1.005');
    const issue=page.getByRole('button',{name:invoiceUi[lang].issue,exact:true});assert.equal(await issue.isDisabled(),true);
    await page.getByRole('textbox',{name:new RegExp('^'+RegExp.escape(invoiceUi[lang].notes)+'$','i')}).fill('Agreed rounding');assert.equal(await issue.isDisabled(),false);
    assert.match(await page.locator('.invoice-total').innerText(),/31\.01/);
-   const rate=page.locator('[data-invoice-order-controls] td:last-child input');await rate.fill('50');assert.match(await page.locator('.invoice-total').innerText(),/16\.01/);await rate.fill('100');
+   const rate=page.locator('[data-invoice-order-controls] input[placeholder="100"]');await rate.fill('50');assert.match(await page.locator('.invoice-total').innerText(),/16\.01/);await rate.fill('100');
    await adjustment.fill('-0.005');assert.match(await page.locator('.invoice-total').innerText(),/29\.99/);
    assert.match(await page.locator('.invoice-amount-formula').innerText(),/0\.01/);
    for(const width of [390,1366]){await page.setViewportSize({width,height:1000});assert.ok(await adjustment.isVisible());}
