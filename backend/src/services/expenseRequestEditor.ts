@@ -1,3 +1,4 @@
+import {normalizeDocumentEvidence,storedDocumentEvidence} from './documentEvidence';
 import {effectiveApprovalDefault,localApprovalMode} from './approvalDefaults';
 import {paidExpenseEntries} from './paidExpenseCorrection';
 import {attachLinkedCompanies} from './companyConnections';
@@ -57,7 +58,7 @@ export async function loadExpenseEditorSource(db: any, orgId: number, kind: stri
 
 export function expenseEditorRevision(source: any) {
   return hash(snapshot({ kind: source.kind, id: source.id, document: source.document && {
-    id: source.document.id, version: source.document.version,...(source.document.paymentSchedule?.length?{paymentSchedule:source.document.paymentSchedule}:{}), ...(source.document.scheduledPaymentDate?{scheduledPaymentDate:source.document.scheduledPaymentDate}:{}), remark: source.document.remark, requestDate: source.document.requestDate, partnerOrgId: source.document.partnerOrgId,payeeEmployeeId:source.document.payeeEmployeeId,
+    ...(source.document.evidenceFiles==null?{}:{evidenceFiles:source.document.evidenceFiles}), id: source.document.id, version: source.document.version,...(source.document.paymentSchedule?.length?{paymentSchedule:source.document.paymentSchedule}:{}), ...(source.document.scheduledPaymentDate?{scheduledPaymentDate:source.document.scheduledPaymentDate}:{}), remark: source.document.remark, requestDate: source.document.requestDate, partnerOrgId: source.document.partnerOrgId,payeeEmployeeId:source.document.payeeEmployeeId,
   }, costs: source.costs.map((cost: any) => ({...cost,...(!cost.materialItemId?{materialItemId:undefined,materialItemSnapshot:undefined}:{}),partner:undefined,serviceType:undefined,transactionCode:undefined,workOrder:undefined,style:undefined,styleProcess:undefined,createdByEmployee:undefined})), record: source.record }));
 }
 
@@ -85,7 +86,7 @@ function editorLine(cost: any, record: any) {
 
 export function expenseEditorForm(source: any) {
   const first = source.costs[0], record = source.record || first?.outsourcedWorkRecord;
-  return { managementNumber:source.document?(source.document.managementNumber||legacyExpenseNumber(source.document.id)):'', approverEmployeeIds:(source.document?.approvalSteps || []).map((step:any)=>step.employeeId), approvalSteps:source.document?.approvalSteps || [], version: source.document?.version ?? null, updatedAt: source.document?.updatedAt ?? null, updatedByEmployee: source.document?.updatedByEmployee ?? null, remark: source.document?.remark || '',
+  return { evidenceFiles:storedDocumentEvidence(source.document,source.costs), managementNumber:source.document?(source.document.managementNumber||legacyExpenseNumber(source.document.id)):'', approverEmployeeIds:(source.document?.approvalSteps || []).map((step:any)=>step.employeeId), approvalSteps:source.document?.approvalSteps || [], version: source.document?.version ?? null, updatedAt: source.document?.updatedAt ?? null, updatedByEmployee: source.document?.updatedByEmployee ?? null, remark: source.document?.remark || '',
     scheduledPaymentDate:source.document?.scheduledPaymentDate??'',
     paymentSchedule:source.document?.paymentSchedule||[],
     requestDate: source.document?.requestDate || first?.transactionDate || record?.workLog.displayDate,
@@ -126,6 +127,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   // check that the matching audit event was saved before commit.
   await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${key},true),set_config('baro.expense_editor_timezone',${timeZone},true)`;
   const before = snapshot(source);
+  const evidenceFiles=body.evidenceFiles===undefined?undefined:normalizeDocumentEvidence(body.evidenceFiles,storedDocumentEvidence(source.document,source.costs));
   if(source.document&&body.requestDate!==undefined&&body.requestDate!==source.document.requestDate)return fail(409,'EXPENSE_REQUEST_DATE_LOCKED');
   const requestDate = validateCostDate(source.document?.requestDate||source.costs[0]?.transactionDate||(body.automaticRequestDate?expenseApplicationDate():body.requestDate??expenseApplicationDate())), remark = typeof body.remark==='string' ? body.remark.trim() : '';
   // Paid code-only corrections cannot edit the original header.
@@ -157,7 +159,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   const paymentSchedule:any[]=[];
   const lineSchedules=body.items.map((item:any)=>normalizeExpensePaymentSchedule(item.paymentSchedule===undefined?(source.document?.paymentSchedule||[]).filter((row:any)=>row.expenseItemId===item.itemId).map((row:any)=>({...row,amount:String(row.amount)})):item.paymentSchedule));
   const scheduledPaymentDate=cashScheduleDate(body.scheduledPaymentDate===undefined?source.document?.scheduledPaymentDate:body.scheduledPaymentDate);
-  const header = { remark, requestDate, scheduledPaymentDate, ...payeeIds,payeeEmployeeId:payeeIds.payeeEmployeeId??null, updatedAt: new Date(), updatedByEmployeeId: actorId,
+  const header = { ...(evidenceFiles===undefined?{}:{evidenceFiles}), remark, requestDate, scheduledPaymentDate, ...payeeIds,payeeEmployeeId:payeeIds.payeeEmployeeId??null, updatedAt: new Date(), updatedByEmployeeId: actorId,
     currency: body.items.every((item: any)=>item.currency===body.items[0].currency) ? body.items[0].currency : null };
   const document = source.document ? await tx.expenseRequest.update({ where: { id: source.document.id }, data: { ...header, version: { increment: 1 } } }) :
     await tx.expenseRequest.create({ data: { ...header, orgId, managementNumber, createdByEmployeeId: drafterId, clientKey: body.clientKey, submissionHash: inputHash } });
@@ -168,7 +170,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
     const record = cost?.outsourcedWorkRecord || (source.record && item.sourceRecordId===source.record.id ? source.record : null);
     const input = { ...item, transactionDate: requestDate, ...payeeIds, clientKey: `${body.clientKey}-${index+1}` };
     let saved;
-    try { saved = await registerTransactionRequest(tx,orgId,actorId,input,appendQuantityRemark,true,{cost,record,request:{id:document.id,line:index+1}},orgType); }
+    try { saved = await registerTransactionRequest(tx,orgId,actorId,input,appendQuantityRemark,true,{cost,record,request:{id:document.id,line:index+1,...(evidenceFiles===undefined?{}:{evidenceFiles})}},orgType); }
     catch(error: any){error.expenseLine=index+1;error.message=`EXPENSE_LINE:${index+1}:${error.message}`;throw error;}
     paymentSchedule.push(...lineSchedules[index].map((row:any)=>({...row,expenseItemId:saved.id})));
     if (saved.outsourcedWorkRecord) assignmentPlanIds.push(saved.outsourcedWorkRecord.assignmentPlanId);

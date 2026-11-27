@@ -45,7 +45,8 @@ export async function paidExpenseEntries(tx:any,orgId:number,source:any){
  const entries=allocations.length?await tx.bankLedgerEntry.findMany({where:{orgId,id:{in:[...new Set(allocations.map((a:any)=>a.entryId))]}},include:{allocations:true,settlementLines:true,bankFeeLinks:true}}):[];
  for(const entry of entries){
   if(entry.evidenceType!=='EXPENSE'||entry.direction!=='OUT'||entry.internalTransferSourceId||entry.bankFeeLinks.length||entry.settlementLines.length||!new Prisma.Decimal(entry.bankFee).isZero()||!new Prisma.Decimal(entry.writeOffAmount).isZero())fail('PAID_EXPENSE_CORRECTION_COMPLEX');
-  if(await tx.changeApprovalRequest.findFirst({where:{orgId,menu:'BANK_LEDGER',status:'PENDING',ledgerEntryId:entry.id}}))fail('CHANGE_UPDATE_PENDING');
+  const related=entry.documentId?await tx.bankLedgerEntry.findMany({where:{orgId,documentId:entry.documentId,voidedAt:null},select:{id:true}}):[entry];
+  if(await tx.changeApprovalRequest.findFirst({where:{orgId,menu:'BANK_LEDGER',status:'PENDING',ledgerEntryId:{in:related.map((row:any)=>row.id)}}}))fail('CHANGE_UPDATE_PENDING');
  }
  return entries;
 }

@@ -1,3 +1,4 @@
+import {documentEvidence,documentEvidenceText} from '../utils/documentEvidence.mjs';
 import React from 'react';
 import {Box,Paper,Typography,Tooltip} from '@mui/material';
 import {accountingCodeDescription} from '../utils/accountingCode.mjs';
@@ -28,6 +29,20 @@ export default function ApprovalChanges({detail,languageCode}){
  const add=(key,label,before,after,beforeKey=before,afterKey=after,help)=>rows.push({key,label,before:before??'—',after:after??'—',changed:String(beforeKey??'')!==String(afterKey??''),help});
  if(detail.menu==='BANK_LEDGER'){
   const before=detail.before?.entry||{},after=detail.after?.rows?.find(row=>row.entryKind==='BANK')||{},account=detail.before?.account||{},proposed=detail.before?.proposedAccount||account;
+  const evidenceLabel=(documentEvidenceText[languageCode]||documentEvidenceText.en).title;
+  const showEvidence=items=>items.map(item=>[item.reference,item.path].filter(Boolean).join(' ? ')).join('\n');
+  add('document-evidence',evidenceLabel,showEvidence(documentEvidence(before.ledgerDocument,before.evidenceType==='FILE'?[before]:[])),showEvidence(documentEvidence(detail.after||{},[])));
+  const documentRows=before.documentEntries?.filter(item=>item.documentPosition!=null&&!item.bankFeeParent)||[];
+  const nextRows=(detail.after?.rows?.filter(item=>item.entryKind==='BANK')||[]).map(item=>({...item,...detail.before?.proposedRows?.find(row=>row.clientKey===item.clientKey),accountingCode:item.accountingCode}));
+  if(documentRows.length||detail.after?.documentVersion===1){
+   for(let index=0;index<Math.max(documentRows.length,nextRows.length);index++){
+    const old=documentRows[index],next=nextRows[index];
+    const party=row=>row?.counterparty?row.counterparty.kind+':'+row.counterparty.id:row?.counterpartyOrgId?'PARTNER:'+row.counterpartyOrgId:row?.counterpartyEmployeeId?'EMPLOYEE:'+row.counterpartyEmployeeId:row?.counterpartyAccountId?'ACCOUNT:'+row.counterpartyAccountId:'';
+    const comparable=row=>row&&JSON.stringify([row.accountId,row.direction,canonical(row.amount),row.accountingCodeId,party(row),row.evidenceType,row.payrollItemId||row.openingItemId||row.evidenceNumber,row.remark||row.purpose,...['subtotal','vatRate','vatAmount','transferAmount','transferCurrencyCode'].map(key=>row[key]??null),(row.expenseItems||row.allocations?.filter(item=>item.expenseItemId)||[]).map(item=>[item.itemId||item.expenseItemId,canonical(item.amount),item.subtotal??null,item.vatRate??null,item.vatAmount??null,item.paymentScheduleId||''])]);
+    const show=(row,currency)=>row?[row.account?.bankName||detail.before?.proposedAccounts?.find(item=>item.accountId===row.accountId)?.name,t[row.direction]||row.direction,row.counterpartyName||row.counterparty?.name,formatInvoiceMoney(String(row.amount),currency),codeText(row.accountingCode,languageCode),row.vatRate!=null?String(row.vatRate)+'%':null,row.remark||row.purpose,row.evidenceType==='FILE'?null:row.evidenceNumber,(row.expenseItems||row.allocations?.filter(item=>item.expenseItemId)||[]).map(item=>[item.label||item.expenseItem?.description,formatInvoiceMoney(String(item.amount),currency),item.vatRate!=null?String(item.vatRate)+'%':null].filter(Boolean).join(' / ')).join('; ')].filter(Boolean).join(' ? '):'';
+    add('document-row-'+index,(languageCode==='ko'?'\uAC70\uB798':languageCode==='vi'?'Giao D\u1ECBch':'Transaction')+' '+(index+1),show(old,old?.account?.currencyCode||account.currencyCode),show(next,detail.before?.proposedAccounts?.find(item=>item.accountId===next?.accountId)?.currency||old?.account?.currencyCode||account.currencyCode),comparable(old),comparable(next));
+   }
+  }
   const currency=account.currencyCode,afterCurrency=proposed.currencyCode||currency;
   add('date',t.dateTransaction,before.transactionDate,after.transactionDate);
   add('account',t.account,[account.name,currency].filter(Boolean).join(' / '),[proposed.name,afterCurrency].filter(Boolean).join(' / '),before.accountId??account.id,after.accountId??account.id);
@@ -60,6 +75,8 @@ export default function ApprovalChanges({detail,languageCode}){
  }else if(detail.menu==='EXPENSE'){
   const before=detail.before?.document||{},after=detail.after?.document||{},oldItems=detail.before?.costs||before.items||[],newItems=detail.after?.costs||after.items||[];
   add('date',t.dateTransaction,before.requestDate,after.requestDate);add('party',t.party,before.partner?.name||before.payeeEmployee?.name,after.partner?.name||after.payeeEmployee?.name,before.payeeEmployeeId?'E:'+before.payeeEmployeeId:before.partnerOrgId,after.payeeEmployeeId?'E:'+after.payeeEmployeeId:after.partnerOrgId);add('remark',t.purpose,before.remark,after.remark);
+  const showEvidence=items=>items.map(item=>[item.reference,item.path].filter(Boolean).join(' ? ')).join('\n');
+  add('document-evidence',(documentEvidenceText[languageCode]||documentEvidenceText.en).title,showEvidence(documentEvidence(before,oldItems)),showEvidence(documentEvidence(after,newItems)));
   const summary=expenseSummary[languageCode]||expenseSummary.en;
   const totals=document=>[...(document.currencyTotals||[])].sort((a,b)=>a.currency.localeCompare(b.currency));
   const [beforeTotals,afterTotals]=[totals(before),totals(after)];

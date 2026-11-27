@@ -1,3 +1,4 @@
+import {ledgerDocumentEntries,ledgerDocumentRoot} from './ledgerDocument';
 import {ledgerReferenceDetails} from './ledgerReferences';
 import {invoiceCurrencyAmount,mixedInvoiceRemaining} from './invoiceCurrencies';
 import {payrollPayableRemaining} from './payrollPayables';
@@ -6,8 +7,8 @@ import {expensePaymentScheduleStatus} from './expensePaymentSchedule';
 import {entryCounterparty} from './ledgerCounterparty';
 import {Prisma} from '@prisma/client';
 import {createHash} from 'node:crypto';
-const scalarLedgerEntryRevision=(row:any)=>createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.keys(Prisma.BankLedgerEntryScalarFieldEnum).filter(key=>!['expenseComparison','materialItemId','materialItemSnapshot','internalTransferSourceId','internalTransferAmount','subtotal','vatRate','vatAmount'].includes(key)||row[key]!=null).map(key=>[key,row[key]??null])))).digest('hex');
-export const ledgerEntryRevision=(row:any)=>row.bankFeeLinks?.length?createHash('sha256').update(JSON.stringify({entry:scalarLedgerEntryRevision(row),fees:row.bankFeeLinks.map((link:any)=>({id:link.feeEntryId,revision:scalarLedgerEntryRevision(link.fee)})).sort((a:any,b:any)=>a.id.localeCompare(b.id))})).digest('hex'):scalarLedgerEntryRevision(row);
+const scalarLedgerEntryRevision=(row:any)=>createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.keys(Prisma.BankLedgerEntryScalarFieldEnum).filter(key=>!['documentId','documentPosition','expenseComparison','materialItemId','materialItemSnapshot','internalTransferSourceId','internalTransferAmount','subtotal','vatRate','vatAmount'].includes(key)||row[key]!=null).map(key=>[key,row[key]??null])))).digest('hex');
+export const ledgerEntryRevision=(row:any)=>row.documentEntries?createHash('sha256').update(JSON.stringify(row.documentEntries.map((entry:any)=>({id:entry.id,revision:scalarLedgerEntryRevision(entry)})).sort((a:any,b:any)=>a.id.localeCompare(b.id)))).digest('hex'):row.bankFeeLinks?.length?createHash('sha256').update(JSON.stringify({entry:scalarLedgerEntryRevision(row),fees:row.bankFeeLinks.map((link:any)=>({id:link.feeEntryId,revision:scalarLedgerEntryRevision(link.fee)})).sort((a:any,b:any)=>a.id.localeCompare(b.id))})).digest('hex'):scalarLedgerEntryRevision(row);
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {postLedgerSettlementBatch,ledgerScale4,ledgerMoney} from './bankLedger';
@@ -18,6 +19,14 @@ export async function assertNoPendingLedgerUpdate(tx:any,orgId:number,entryIds:s
  if(pending)fail('CHANGE_UPDATE_PENDING');
 }
 export async function voidLedgerPairApproved(tx:any,orgId:number,actor:string,row:any,reason:string){
+ if(row.documentId){
+  await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
+  const entries=await ledgerDocumentEntries(tx,orgId,row.documentId);
+  await assertNoPendingLedgerUpdate(tx,orgId,entries.map((item:any)=>item.id));
+  const voidedAt=new Date();
+  for(const entry of entries)if(!entry.voidedAt)await tx.bankLedgerEntry.update({where:{id:entry.id},data:{voidedAt,voidedBy:actor,voidReason:reason}});
+  return {...row,voidedAt,voidedBy:actor,voidReason:reason};
+ }
  // The organization lock also serializes requests opened from opposite legs.
  await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
  const feeParent=await tx.bankLedgerFeeLink.findFirst({where:{orgId,feeEntryId:row.id},include:{parent:true}});
@@ -32,10 +41,21 @@ export async function voidLedgerPairApproved(tx:any,orgId:number,actor:string,ro
  for(const entry of [row,peer,...fees.map((link:any)=>link.fee)].filter(Boolean))if(!entry.voidedAt)await tx.bankLedgerEntry.update({where:{id:entry.id},data:{voidedAt,voidedBy:actor,voidReason:reason}});
  return {...row,voidedAt,voidedBy:actor,voidReason:reason};
 }
-export async function readLedgerEdit(db:any,orgId:number,id:string){
+export async function readLedgerEdit(db:any,orgId:number,id:string,single=false):Promise<any>{
+ if(!single){
+  const identity=await db.bankLedgerEntry.findFirst({where:{id,orgId},select:{documentId:true}});
+  if(identity?.documentId){
+   const entries=await ledgerDocumentEntries(db,orgId,identity.documentId);if(!entries.length)return readLedgerEdit(db,orgId,id,true);const root=ledgerDocumentRoot(entries);
+   const sources=entries.filter((item:any)=>item.documentPosition!=null&&!item.bankFeeParent);
+   const documentRows=await Promise.all(sources.map((item:any)=>readLedgerEdit(db,orgId,item.id,true)));
+   const primary=documentRows.find((item:any)=>item.id===root.id);
+   return {...primary,documentRows,documentId:identity.documentId,evidenceFiles:root.ledgerDocument.evidenceFiles,managementNumber:root.ledgerDocument.managementNumber,revision:ledgerEntryRevision({...root,documentEntries:entries})};
+  }
+ }
+
  const parentLink=await db.bankLedgerFeeLink.findFirst({where:{orgId,feeEntryId:id}});if(parentLink)return readLedgerEdit(db,orgId,parentLink.parentEntryId);
  const codeInclude={taxTreatment:true,base:{include:{expenseType:true}}} satisfies Prisma.TransactionCodeInclude;
- const include={managementIdentity:{select:{managementNumber:true}},bankFeeLinks:{include:{fee:{include:{accountingCode:{include:codeInclude}}}}},payrollAllocations:{include:{item:{include:{document:true,employee:{select:{name:true}}}}}},openingAllocations:{include:{openingItem:{include:{party:{select:{name:true}},employee:{select:{name:true}}}}}},account:true,accountingCode:{include:codeInclude},settlementLines:{include:{accountingCode:{include:codeInclude}}},allocations:true} satisfies Prisma.BankLedgerEntryInclude;
+ const include={ledgerDocument:true,managementIdentity:{select:{managementNumber:true}},bankFeeLinks:{include:{fee:{include:{accountingCode:{include:codeInclude}}}}},payrollAllocations:{include:{item:{include:{document:true,employee:{select:{name:true}}}}}},openingAllocations:{include:{openingItem:{include:{party:{select:{name:true}},employee:{select:{name:true}}}}}},account:true,accountingCode:{include:codeInclude},settlementLines:{include:{accountingCode:{include:codeInclude}}},allocations:true} satisfies Prisma.BankLedgerEntryInclude;
  const entry=await db.bankLedgerEntry.findFirst({where:{id,orgId},include});
  if(entry?.internalTransferSourceId&&await db.bankLedgerFeeLink.findFirst({where:{orgId,parentEntryId:entry.internalTransferSourceId}}))return readLedgerEdit(db,orgId,entry.internalTransferSourceId);
  if(!entry)return fail('LEDGER_ENTRY_NOT_FOUND',404);if(entry.voidedAt)return fail('LEDGER_ENTRY_CHANGED');

@@ -1,3 +1,5 @@
+import {documentEvidenceText} from '../frontend/src/utils/documentEvidence.mjs';
+const evidenceOnly=process.argv.includes('--evidence-only');
 import {accountingRemarkText} from '../frontend/src/constants/accountingRemark.js';
 import {accountingCompactText} from '../frontend/src/constants/accountingCompact.js';
 import {expensePaymentText} from '../frontend/src/constants/expensePaymentSchedule.js';
@@ -29,7 +31,7 @@ const port=43209,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try {
   for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/expense-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
   browser=await chromium.launch({executablePath,headless:true});
-  for(const mode of (layoutOnly?['GENERAL']:lookupOnly?['GENERAL','PROCESS']:((scheduleOnly?['SAVED']:process.env.EXPENSE_EDITOR_MODES?.split(','))||['GENERAL','PROCESS','SAVED','BACKGROUND','BANKLESS'])))for(const lang of mode==='BACKGROUND'?['ko']:['ko','en','vi'])for(const locked of layoutOnly||['SAVED','BACKGROUND','BANKLESS'].includes(mode)?[false]:[false,true]) {
+  for(const mode of (evidenceOnly?['SAVED']:layoutOnly?['GENERAL']:lookupOnly?['GENERAL','PROCESS']:((scheduleOnly?['SAVED']:process.env.EXPENSE_EDITOR_MODES?.split(','))||['GENERAL','PROCESS','SAVED','BACKGROUND','BANKLESS'])))for(const lang of mode==='BACKGROUND'?['ko']:['ko','en','vi'])for(const locked of layoutOnly||['SAVED','BACKGROUND','BANKLESS'].includes(mode)?[false]:[false,true]) {
     console.log('Checking expense editor',mode,lang,locked);
     const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[],requests=[],attempts=[];let submitted,releaseSave,registeredBanks=[];const saveGate=new Promise(resolve=>{releaseSave=resolve;});
     let releaseDocument,releaseCatalog,settingsReads=0;
@@ -37,7 +39,7 @@ try {
     page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
     page.on('request',r=>{if(r.url().includes('/work-logs'))requests.push(r.url());});
     await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1,activeOrgRole:"ADMIN",accessProfile:{orgName:"BARO",employeeName:"Current editor"}});'}));
-    await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
+    await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`import React from '/node_modules/.vite/deps/react.js';export const LanguageContext=React.createContext({languageCode:'${lang}'});export const useLanguage=()=>({languageCode:'${lang}'});`}));
     await page.route('**/src/context/ManagementPeriodContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useManagementPeriod=()=>({startDate:"2026-04-01",loading:false});'}));
     await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({navigateToPath:(path,options)=>{document.documentElement.dataset.saved="true";window.expenseNavigations=(window.expenseNavigations||[]).concat([{path,options}]);},showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
     await page.route('**/src/context/RequestScopeContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useRequestScopeContext=()=>({active:!window.expenseBackground,scopeId:"/outsourcing-record/edit/legacy/78"});'}));
@@ -63,7 +65,7 @@ try {
       if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
       if(r.request().method()==='PUT'){if(mode==='SAVED'){submitted=r.request().postDataJSON();return r.fulfill({headers,status:409,json:{error:'EXPENSE_REQUEST_CHANGED'}});}submitted=r.request().postDataJSON();attempts.push(submitted);if(mode==='BACKGROUND')await saveGate;if(mode==='PROCESS'&&lang==='ko'&&attempts.length===1)return r.fulfill({headers,status:500,json:{error:'internal server error'}});return r.fulfill({headers,json:{requestId:1}});}
       if(mode==='SAVED')await documentGate;
-      return r.fulfill({headers,json:{scheduledPaymentDate:scheduleOnly?'2026-12-10':null,managementNumber:mode==='SAVED'?'EXP-2026-000008':'',remark:'',approvalSelection:mode==='SAVED'?{seniorEmployeeId:21}:null,approverEmployeeIds:[],canonicalSource:mode==='SAVED'?{kind:'request',id:'18'}:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',version:mode==='SAVED'?3:null,updatedAt:mode==='SAVED'?'2026-10-19T09:00:00Z':null,updatedByEmployee:mode==='SAVED'?{id:20,name:'Latest editor'}:null,readOnly:locked,
+      return r.fulfill({headers,json:{evidenceFiles:[{path:'/evidence/original.pdf',reference:'INV-1'}],scheduledPaymentDate:scheduleOnly?'2026-12-10':null,managementNumber:mode==='SAVED'?'EXP-2026-000008':'',remark:'',approvalSelection:mode==='SAVED'?{seniorEmployeeId:21}:null,approverEmployeeIds:[],canonicalSource:mode==='SAVED'?{kind:'request',id:'18'}:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',version:mode==='SAVED'?3:null,updatedAt:mode==='SAVED'?'2026-10-19T09:00:00Z':null,updatedByEmployee:mode==='SAVED'?{id:20,name:'Latest editor'}:null,readOnly:locked,
         items:[{sourceRecordId:78,itemId:null,transactionCodeId:mode==='SAVED'?7:'',currency:'VND',quantity:'170',unitPrice:'3000',vatRate:'0',description:'Original buttonhole expense',details:{reference:'REF-001'},workOrderId:30,styleId:40,styleProcessId:50,assignmentPlanId:60,productionLinked:true,productionLocked:mode==='PROCESS',enabled:{order:true,style:true,process:true},
           preservedReferences:{order:{id:30,orderNumber:'L17-1'},style:{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:50,processName:'Buttonhole',processCode:'BH'}]},plan:{id:60,styleId:40,processIds:[50]}}}]}});
     });
@@ -83,6 +85,11 @@ try {
       assert.equal(await number.inputValue(),'EXP-2026-000008');
       assert.equal(await number.evaluate(el=>el.readOnly),true);
       for(const width of [1440,390]){await page.setViewportSize({width,height:1000});assert.equal(await number.isVisible(),true);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
+      if(evidenceOnly){
+       releaseCatalog();const e=documentEvidenceText[lang],files=page.locator('[data-document-evidence]');await files.waitFor();
+       for(const width of [1600,390]){await page.setViewportSize({width,height:1000});await files.getByRole('button',{name:e.add,exact:true}).click();const paths=files.getByRole('textbox',{name:e.path,exact:true});await paths.last().fill('X');assert.equal(await paths.last().getAttribute('aria-invalid'),'true');await paths.last().fill('/evidence/extra.pdf');assert.equal(await paths.last().getAttribute('aria-invalid'),'false');await files.getByRole('button',{name:e.remove,exact:true}).last().click();assert.equal(await paths.count(),1);assert.equal(await paths.first().inputValue(),'/evidence/original.pdf');}
+       assert.deepEqual(errors,[]);await page.close();continue;
+      }
       if(numberOnly){assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);await page.close();continue;}
       await page.setViewportSize({width:1600,height:1000});
       await page.waitForFunction(()=>document.querySelectorAll('[data-testid="expense-approval-stages"] [data-approval-state="approved"]').length===1);
@@ -272,5 +279,5 @@ try {
     }
     assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);await page.close();
   }
-  console.log(lookupOnly?'Expense lookup UI passed: ko/en/vi, general/process and disabled states.':'Expense edit form passed: ko/en/vi, selected source values, immutable production FKs, PUT edits, automatic payee information, one-time save navigation, inactive-save completion and final-lock read-only.');
+  console.log(evidenceOnly?'Expense document evidence passed: ko/en/vi desktop/mobile, multiple paths, invalid path detection, add/remove and original case preservation.':lookupOnly?'Expense lookup UI passed: ko/en/vi, general/process and disabled states.':'Expense edit form passed: ko/en/vi, selected source values, immutable production FKs, PUT edits, automatic payee information, one-time save navigation, inactive-save completion and final-lock read-only.');
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}

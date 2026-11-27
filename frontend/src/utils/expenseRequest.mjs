@@ -49,7 +49,7 @@ export function validExpenseLine(line, code, currency) {
   if(['customer','type','owner'].some(key=>code.base?.attributeInputs?.[key]==='REQUIRED'&&!line[key==='owner'?'itemOwnerOrgId':key==='customer'?'itemCustomerId':'itemTypeId']))return false;
   if(['length','width','height'].some(key=>line.details[key])&&(!line.details.length||!line.details.width||!line.details.height)&&!(line.itemId&&['length','width','height'].every(key=>(line.details[key]||'')===(line.originalDetails?.[key]||''))))return false;
   if(['length','width','height'].some(key=>line.details[key]&&(!/^\d{1,12}(\.\d{1,4})?$/.test(line.details[key])||Number(line.details[key])<=0)))return false;
-  if(!line.productionLinked&&code.base?.entryMode!=='PROCESS'&&!line.details.evidenceFile?.trim())return false;
+
   if (!code.vatEnabled && Number(line.vatRate) !== 0) return false;
   if(line.styleProcessIds?.length&&(!line.workOrderId||!line.styleId||line.styleProcessIds.some(id=>!Number.isSafeInteger(id)||id<=0)||new Set(line.styleProcessIds).size!==line.styleProcessIds.length))return false;
   if (code.base?.entryMode === 'PROCESS' && (currency !== 'VND' || !Number.isInteger(Number(line.quantity)) || Number(line.quantity) > 2147483647 || !line.assignmentPlanId)) return false;

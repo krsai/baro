@@ -1,3 +1,4 @@
+import {normalizeDocumentEvidence,storedDocumentEvidence} from './documentEvidence';
 import {validEvidencePath} from '../utils/evidencePath';
 import {expensePaymentComparison} from './expensePaymentComparison';
 import {invoiceEvidenceAccounting} from './invoiceAccounting';
@@ -42,11 +43,15 @@ export async function ledgerRegistrationSource(db:any,orgId:number,input:any,pre
  if(!parents?.length||payload.rows.length>50||parents.some((r:any)=>r.transactionDate!==parents[0].transactionDate||r.evidenceType==='ADJUSTMENT'))fail('LEDGER_SINGLE_ACCOUNT_REQUIRED');
  if(parents.some((fee:any)=>fee.feeForClientKey&&(fee.evidenceType!=='BANK_FEE'||!parents.some((parent:any)=>parent.clientKey===fee.feeForClientKey&&!['BANK_FEE','ADJUSTMENT'].includes(parent.evidenceType)&&parent.accountId===fee.accountId&&parent.transactionDate===fee.transactionDate))))fail('LEDGER_INVALID_SETTLEMENT');
  if(!payload.clientKey||input.sourceId!==payload.clientKey)fail('INVALID_TRANSACTION_KEY');
+ if(previousEntry?.documentId&&payload.documentVersion!==1)fail('LEDGER_INVALID_BATCH');
+ const priorDocument=previousEntry?.documentId?await db.bankLedgerDocument.findFirst({where:{id:previousEntry.documentId,orgId}}):null;
+ const evidenceFiles=payload.documentVersion===1?normalizeDocumentEvidence(payload.evidenceFiles,storedDocumentEvidence(priorDocument,previousEntry?.evidenceType==='FILE'?[previousEntry]:[])):undefined;
+ if(payload.documentVersion!==undefined&&payload.documentVersion!==1)fail('LEDGER_INVALID_BATCH');
  const rows=[],items=[],transferTargets=[],accountSources=[];
  for(const [parentIndex,suppliedRow] of parents.entries()){
  let row=suppliedRow.evidenceType==='BANK_FEE'?{...suppliedRow,accountingCodeId:(await bankFeeAccountingCode(db,orgId)).id}:suppliedRow;
  if(!input.allowIncomplete&&row.evidenceType!=='BANK_FEE'&&(typeof (row.remark??row.purpose)!=='string'||!(row.remark??row.purpose).trim()||(row.remark??row.purpose).length>1000))fail('LEDGER_REMARK_REQUIRED');
- if(!input.allowIncomplete&&(row.evidenceType||'FILE')==='FILE'&&row.counterparty?.kind!=='ACCOUNT'&&!validEvidencePath(row.evidenceNumber))fail('LEDGER_FILE_REQUIRED');
+ if(!input.allowIncomplete&&(row.evidenceType||'FILE')==='FILE'&&row.counterparty?.kind!=='ACCOUNT'&&(evidenceFiles===undefined?!validEvidencePath(row.evidenceNumber):!evidenceFiles.length))fail('LEDGER_FILE_REQUIRED');
  const accountId=row.accountId;
  const ledger=await db.bankLedgerAccount.findFirst({where:{id:accountId,orgId}});
  const masterId=ledger?.entityAccountId||String(accountId).replace(/^entity:/,'');
@@ -83,10 +88,11 @@ export async function ledgerRegistrationSource(db:any,orgId:number,input:any,pre
   }
   items.push({currency:account.currencyCode,unitPrice:/^\d+(\.\d{1,4})?$/.test(row.amount)?row.amount:'0',quantity:'1',vatRate:'0'});
   const material=input.allowIncomplete&&!row.materialItemId?{}:await prepareLedgerMaterial(db,orgId,row,parentIndex===0?previousEntry:undefined);
-  rows.push({...row,...material,...transfer,counterparty:entryCounterparty(party)});
+  const evidenceItems=row.evidenceType==='EXPENSE'&&row.expenseItems?.length?await db.partnerTransactionCost.findMany({where:{orgId,id:{in:row.expenseItems.map((item:any)=>item.itemId)}},select:{id:true,description:true,expenseRequestLine:true}}):[];
+  rows.push({...row,...material,...transfer,counterparty:entryCounterparty(party),...(evidenceItems.length?{expenseItems:row.expenseItems.map((item:any)=>({...item,label:evidenceItems.find((cost:any)=>cost.id===item.itemId)?.description}))}:{})});
  }
  const first=accountSources[0]!,account={id:first.accountId,entityAccountId:first.masterId,currencyCode:first.currency};
- const snapshot={account:{name:first.name,currencyCode:first.currency},accounts:accountSources,rows};
+ const snapshot={...(evidenceFiles===undefined?{}:{documentVersion:1,evidenceFiles}),account:{name:first.name,currencyCode:first.currency},accounts:accountSources,rows};
  const revisionAccounts=new Set(accountSources.map(a=>a.accountId)).size===1?{accountId:first.accountId,masterId:first.masterId,currency:first.currency}:{accounts:accountSources.map(({accountId,masterId,currency})=>({accountId,masterId,currency}))};
  const revision=createHash('sha256').update(JSON.stringify({...revisionAccounts,...(transferTargets.length?{transferTargets}:{})})).digest('hex');
  return {menu:'BANK_LEDGER',operation:'CREATE',kind:'batch',id:input.sourceId,version:null,revision,snapshot,entry:{account,evidenceType:'FILE'},items};

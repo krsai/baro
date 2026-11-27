@@ -110,7 +110,7 @@ export async function approveExpense(db:any,orgId:number,actorId:number,requestI
   return approvalState(tx,orgId,requestId,actorId);
  });
 }
-export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
+export async function resolveEvidence(tx:any,orgId:number,account:any,body:any,validatedDocumentEvidence=false){
  const type=body.evidenceType||'FILE',code=account.currencyCode;
  if(!['FILE','INVOICE','EXPENSE','ADJUSTMENT','BANK_FEE','OPENING','PAYROLL'].includes(type))return fail('LEDGER_INVALID_EVIDENCE');
  const fee=validateLedgerMoney(body.bankFee||'0',code,true),writeOff=validateLedgerMoney(body.writeOffAmount||'0',code,true);
@@ -128,7 +128,7 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
   return {evidenceType:type,evidenceNumber:item.id,bankFee:fee,writeOffAmount:writeOff,allocations:[],openingItemId:item.id};
  }else if(type==='FILE'){
   if(!reference||reference.length>500||/[\r\n]/.test(reference))return fail('LEDGER_FILE_REQUIRED');
-  if(body.counterparty?.kind!=='ACCOUNT'&&!validEvidencePath(reference))return fail('LEDGER_FILE_REQUIRED');
+  if(!validatedDocumentEvidence&&body.counterparty?.kind!=='ACCOUNT'&&!validEvidencePath(reference))return fail('LEDGER_FILE_REQUIRED');
   if(bankFee)return fail('LEDGER_INVALID_EVIDENCE');
  }else if(type==='BANK_FEE'){
   if(body.direction!=='OUT'||bankFee||loss||reference||body.counterparty||body.expenseItems?.length)return fail('LEDGER_INVALID_EVIDENCE');reference='';

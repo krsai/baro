@@ -1,3 +1,4 @@
+import {normalizeDocumentEvidence,storedDocumentEvidence} from './documentEvidence';
 import {normalizeExpensePaymentSchedule,replaceExpensePaymentSchedule} from './expensePaymentSchedule';
 import {cashScheduleDate} from './cashSchedule';
 import {companyBusinessTimeZone} from './serviceCompany';
@@ -50,6 +51,7 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   const requestDate = validateCostDate(body?.automaticRequestDate ? previous?.requestDate||expenseApplicationDate() : body?.requestDate??previous?.requestDate??expenseApplicationDate());
   const period = await loadManagementPeriod(tx, orgId);
   assertManagedDate(requestDate, period.startDate);
+  const evidenceFiles=body.evidenceFiles===undefined?undefined:normalizeDocumentEvidence(body.evidenceFiles,previous?storedDocumentEvidence(previous,previous.items):[]);
   const paymentSchedule:any[]=[];
   const scheduledPaymentDate=cashScheduleDate(body?.scheduledPaymentDate);
   const remark = typeof body?.remark === 'string' ? body.remark.trim() : '';
@@ -81,7 +83,7 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   const approval=previous ? {ids:(previous.approvalSteps || []).map((step:any)=>step.employeeId),policy:null} : await resolveExpenseApproval(tx,orgId,actorId,items,body.approvalSelection);
   const approverEmployeeIds=approval.ids;
   const requestedNumber=normalizeDocumentNumber(body.managementNumber);
-  const submissionHash = createHash('sha256').update(JSON.stringify(canonical({ requestDate, remark,...(lineSchedules.some((rows:any[])=>rows.length)?{lineSchedules}:{}),...(scheduledPaymentDate?{scheduledPaymentDate}:{}), approverEmployeeIds, items,...(body.approvalSelection===undefined?{}:{approvalSelection:body.approvalSelection}),...(body.managementNumber===undefined?{}:{managementNumber:requestedNumber}) }))).digest('hex');
+  const submissionHash = createHash('sha256').update(JSON.stringify(canonical({ requestDate, remark,...(evidenceFiles===undefined?{}:{evidenceFiles}),...(lineSchedules.some((rows:any[])=>rows.length)?{lineSchedules}:{}),...(scheduledPaymentDate?{scheduledPaymentDate}:{}), approverEmployeeIds, items,...(body.approvalSelection===undefined?{}:{approvalSelection:body.approvalSelection}),...(body.managementNumber===undefined?{}:{managementNumber:requestedNumber}) }))).digest('hex');
   if (previous) {
     if (previous.createdByEmployeeId !== actorId || previous.submissionHash !== submissionHash) throw createHttpError(409, 'EXPENSE_REQUEST_RETRY_MISMATCH');
     return { ...previous, ...expenseRequestTotals(previous.items) };
@@ -92,12 +94,12 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${auditKey},true),set_config('baro.expense_editor_timezone',${timeZone},true)`;
   const managementNumber=await allocateDocumentNumber(tx,orgId,'EXP',requestDate,requestedNumber);
   const document = await tx.expenseRequest.create({ data: { orgId, managementNumber, ...payeeIds, createdByEmployeeId: actorId, updatedByEmployeeId: actorId, updatedAt: new Date(),
-    requestDate, remark, scheduledPaymentDate, currency: items.every((item: any) => item.currency === items[0].currency) ? items[0].currency : null, clientKey: body.clientKey, submissionHash } });
+    requestDate, remark,...(evidenceFiles===undefined?{}:{evidenceFiles}), scheduledPaymentDate, currency: items.every((item: any) => item.currency === items[0].currency) ? items[0].currency : null, clientKey: body.clientKey, submissionHash } });
   await replaceExpenseApprovers(tx,orgId,document.id,approverEmployeeIds);
   // Caller owns the Serializable transaction: every cost and production write rolls back together.
   for (const [index, item] of items.entries()) {
     try {
-      const cost=await registerTransactionRequest(tx, orgId, actorId, item, appendQuantityRemark, true, {request:{id:document.id,line:index+1}},orgType);
+      const cost=await registerTransactionRequest(tx, orgId, actorId, item, appendQuantityRemark, true, {request:{id:document.id,line:index+1,...(evidenceFiles===undefined?{}:{evidenceFiles})}},orgType);
       paymentSchedule.push(...lineSchedules[index].map((row:any)=>({...row,expenseItemId:cost.id})));
     } catch(error: any) {
       error.expenseLine=index+1;

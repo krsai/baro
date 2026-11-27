@@ -46,7 +46,7 @@ export function calculateRequestAmounts(unitPrice: unknown, quantity: unknown, c
   if (subtotal.lte(0) || amount.gte('10000000000000000')) return invalid('INVALID_TRANSACTION_AMOUNT');
   return { unitPrice: price, quantity: qty, subtotal, vatRate: rate, vatAmount, amount };
 }
-export async function registerTransactionRequest(tx: any, orgId: number, actorId: number, body: any, appendQuantityRemark?: (args: any) => Promise<string | null>, useSystemMaster = false, edit?: { cost?: any; record?: any; request?: { id: number; line: number } }, orgType?: string) {
+export async function registerTransactionRequest(tx: any, orgId: number, actorId: number, body: any, appendQuantityRemark?: (args: any) => Promise<string | null>, useSystemMaster = false, edit?: { cost?: any; record?: any; request?: { id: number; line: number; evidenceFiles?: any[] } }, orgType?: string) {
   const id = (value: unknown, optional = false): number | null => optional && (value == null || value === '') ? null : typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : invalid('INVALID_REQUEST_REFERENCE');
   const payeeIds=expensePayeeIds(body),partnerOrgId=payeeIds.partnerOrgId,transactionCodeId=id(body?.transactionCodeId)!;
   const workOrderId = id(body?.workOrderId, true), styleId = id(body?.styleId, true), styleProcessId = id(body?.styleProcessId, true);
@@ -142,7 +142,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   if (styleProcessId && !await tx.styleProcess.findFirst({ where: { id: styleProcessId, styleId, orgId, ...(!edit?.record && !retainedProcess ? { isActive: true } : {}) }, select: { id: true } })) return invalid('INVALID_REQUEST_PROCESS');
   await validateExpenseProcessLinks(tx,orgId,body,code,edit,processIds);
   for (const field of service.requiredFields.filter((field:string)=>field!=='reference')) if (!details[field]) return invalid(`REQUIRED_TRANSACTION_FIELD:${field}`);
-  if(!process&&!edit?.record&&!details.evidenceFile)return invalid('REQUIRED_TRANSACTION_FIELD:evidenceFile');
+  if(!process&&!edit?.record&&(edit?.request?.evidenceFiles===undefined?!details.evidenceFile:!edit.request.evidenceFiles.length))return invalid('REQUIRED_TRANSACTION_FIELD:evidenceFile');
   const settings = await loadAppSettings(tx, orgId);
   const rate = code.vatEnabled ? body.vatRate ?? settings.defaultVatRate : '0';
   if (!code.vatEnabled && body.vatRate != null && !validateVatRate(body.vatRate).isZero()) return invalid('VAT_NOT_ENABLED');

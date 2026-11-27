@@ -1,3 +1,5 @@
+import {bankLedgerMessages} from '../frontend/src/constants/bankLedgerMessages.js';
+import {documentEvidenceText} from '../frontend/src/utils/documentEvidence.mjs';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {writeFileSync,unlinkSync,existsSync} from 'node:fs';
@@ -14,11 +16,12 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/ledger-fee-submit.html`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const lang of ['ko','en','vi'])for(const width of [1440,430]){
-  const page=await browser.newPage({viewport:{width,height:1000}}),requests=[],errors=[];page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));
+  const page=await browser.newPage({viewport:{width,height:1000}}),requests=[],errors=[];page.setDefaultTimeout(15000);page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
   const module=(name,body)=>page.route(`**/src/context/${name}.jsx*`,r=>r.fulfill({contentType:'application/javascript',body}));
+  await page.route('**/src/components/AppNotice.jsx*',r=>r.fulfill({contentType:'application/javascript',body:"import React from '/node_modules/.vite/deps/react.js';export default function Notice({children}){return React.createElement('div',{role:'alert'},children);}"}));
   await module('AuthContext','export const useAuth=()=>({activeOrgId:1});');
   await module('AppContext','export const useAppActions=()=>({navigateToPath:()=>{},showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});');
-  await module('LanguageContext',`export function useLanguage(){const React=window.React;const [languageCode,set]=React.useState('${lang}');window.switchLanguage=set;return {languageCode};}`);
+  await module('LanguageContext',`import React from '/node_modules/.vite/deps/react.js';export const LanguageContext=React.createContext({languageCode:'${lang}'});export function useLanguage(){const React=window.React;const [languageCode,set]=React.useState('${lang}');window.switchLanguage=set;return {languageCode};}`);
   await module('RequestScopeContext',"export const useRequestScopeContext=()=>({active:true,scopeId:'/bank-ledger/source'});");
   await module('ManagementPeriodContext',"export const useManagementPeriod=()=>({startDate:'2026-04-01',loading:false});");
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
@@ -26,27 +29,34 @@ try{
   await reply('**/bank-ledger/accounts?*',{accounts:[{id:'bank',entityAccountId:'master',displayName:'MB (USD)',currencyCode:'USD'}]});
   await reply('**/bank-ledger/counterparties?*',[{kind:'PARTNER',id:11,name:'THE SAN',code:'THES'},{kind:'ACCOUNT',id:'master',name:'MB (USD)',currencyCode:'USD'}]);
   await reply('**/transaction-codes?*',[{id:7,code:'CMTE',nameEn:'Garment Processing Fee',isActive:true},{id:9,code:'BNFE',nameEn:'Bank fee',isActive:true}]);
+  await reply('**/text-acronyms',{revision:1,entries:[]});
   await reply('**/app-settings?*',{defaultVatRate:8});
-  await reply('**/bank-ledger/entries/source?*',{id:'source',revision:'r1',accountId:'bank',transactionDate:'2026-11-10',direction:'IN',amount:'16100.75',purpose:'Garment Processing Fee',accountingCodeId:7,evidenceType:'FILE',evidenceNumber:'receipt.pdf',expenseItems:[],settlementLines:[],bankFees:[],counterparty:{kind:'PARTNER',id:11,name:'THE SAN'},drafter:{name:'Original'}});
+  const source={managementNumber:'BNK-2026-000001',id:'source',revision:'r1',accountId:'bank',transactionDate:'2026-11-10',direction:'IN',amount:'16100.75',purpose:'Garment Processing Fee',accountingCodeId:7,evidenceType:'FILE',evidenceNumber:'receipt.pdf',expenseItems:[],settlementLines:[],bankFees:[],counterparty:{kind:'PARTNER',id:11,name:'THE SAN'},drafter:{name:'Original'}};
+  await reply('**/bank-ledger/entries/source?*',{...source,documentId:'document',managementNumber:'BNK-2026-000001',evidenceFiles:[{path:'/proof/original.pdf',reference:'INV-1'}],documentRows:[source,{...source,id:'second',amount:'20'}]});
   await reply('**/approval-action-settings?*',{drafter:{id:1,name:'Editor'},grades:[],settings:{registrationStages:[]}});
   await reply('**/change-approval-preview?*',{complete:true,stages:[],drafter:{id:1,name:'Editor'},policy:{totals:[{currency:'USD',amount:'16109.61'}]}});
   await page.route('**/change-approval-requests?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});requests.push(r.request().postDataJSON());return r.fulfill({headers,json:{id:'pending'}});});
   await page.goto(`http://127.0.0.1:${port}/ledger-fee-submit.html`);
-  const l=ledgerEntryText[lang],c=changeApprovalText[lang];
-  await page.getByRole('button',{name:l.bankFeeLabel,exact:true}).click().catch(async error=>{throw Error(error.message+' PAGE '+errors.join(';')+' TEXT '+(await page.locator('body').innerText()));});
-  assert.equal(await page.locator('[data-ledger-entry-row]').count(),1);
-  await page.getByRole('button',{name:c.requestUpdate,exact:true}).click();
+  const l=ledgerEntryText[lang],c=changeApprovalText[lang],e=documentEvidenceText[lang];
+  const evidence=page.locator('[data-document-evidence]');await evidence.waitFor().catch(async error=>{throw Error(error.message+' PAGE '+errors.join(';')+' TEXT '+await page.locator('body').innerText());});assert.equal(await evidence.count(),1);
+  await evidence.getByRole('button',{name:e.add,exact:true}).click();
+  await evidence.getByRole('textbox',{name:e.path,exact:true}).nth(1).fill('/proof/extra.pdf');
+  await evidence.getByRole('textbox',{name:e.reference,exact:true}).nth(1).fill('INV-2');
+  await page.getByRole('button',{name:l.bankFeeLabel,exact:true}).first().click().catch(async error=>{throw Error(error.message+' PAGE '+errors.join(';')+' TEXT '+(await page.locator('body').innerText()));});
+  assert.equal(await page.locator('[data-ledger-entry-row]').count(),2);
+  await page.getByRole('button',{name:bankLedgerMessages[lang].save,exact:true}).click();
   const alert=page.getByRole('alert').first();assert.ok((await alert.textContent()).includes(ledgerWorkspaceText[lang].inputIssues.amount));
   assert.equal(await page.getByRole('dialog').count(),0);
   const other=lang==='en'?'ko':'en';await page.evaluate(code=>window.switchLanguage(code),other);await page.waitForFunction(text=>document.querySelector('[role="alert"]')?.textContent.includes(text),ledgerWorkspaceText[other].inputIssues.amount);
   await page.evaluate(code=>window.switchLanguage(code),lang);
   await page.locator('[data-ledger-inline-fee]').getByRole('textbox').fill('8.86');
-  await page.getByRole('button',{name:c.requestUpdate,exact:true}).click();
+  await page.getByRole('button',{name:bankLedgerMessages[lang].save,exact:true}).click();
   const dialog=page.getByRole('dialog');await dialog.waitFor();await dialog.getByRole('textbox',{name:c.reason,exact:false}).fill('Add missing bank fee');
-  await dialog.getByRole('button',{name:c.request,exact:true}).click();await dialog.waitFor({state:'hidden'});
+  await dialog.getByRole('button',{name:c.request,exact:true}).click().catch(async error=>{throw Error(error.message+' DIALOG '+await dialog.innerText());});await dialog.waitFor({state:'hidden'});
   assert.equal(requests.length,1);assert.equal(requests[0].operation,'UPDATE');assert.equal(requests[0].sourceId,'source');
+  assert.equal(requests[0].payload.documentVersion,1);assert.deepEqual(requests[0].payload.evidenceFiles,[{path:'/proof/original.pdf',reference:'INV-1'},{path:'/proof/extra.pdf',reference:'INV-2'}]);assert.equal(requests[0].payload.rows.filter(row=>row.entryKind==='BANK'&&row.evidenceType!=='BANK_FEE').length,2);
   const [main,fee]=requests[0].payload.rows;assert.equal(main.amount,'16100.75');assert.equal(main.direction,'IN');assert.equal(fee.amount,'8.86');assert.equal(fee.accountingCodeId,9);assert.equal(fee.evidenceType,'BANK_FEE');assert.equal(fee.direction,'OUT');assert.equal(fee.accountId,main.accountId);assert.equal(fee.transactionDate,main.transactionDate);assert.equal(fee.feeForClientKey,main.clientKey);assert.equal(fee.counterparty,undefined);assert.equal(fee.evidenceNumber,'');assert.deepEqual(errors,[]);
   await page.close();
  }
- console.log('PASS actual ledger edit: incoming USD 16,100.75 + inline BNFE USD 8.86, request reason and payload; missing fee amount stays editable, errors follow language; ko/en/vi desktop/mobile.');
+ console.log('PASS grouped ledger document edit: two transaction rows + two document evidence files + inline BNFE USD 8.86, request reason and payload; missing fee amount stays editable, errors follow language; ko/en/vi desktop/mobile.');
 }finally{await browser?.close();server.kill();unlinkSync(file);unlinkSync(entry);}

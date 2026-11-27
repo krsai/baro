@@ -506,6 +506,7 @@ model PartnerContact {
 }
 
 model Organization {
+  ledgerDocuments BankLedgerDocument[]
   materialItemOwnerCosts PartnerTransactionCost[] @relation("MaterialItemOwner")
   handledPolicies PartnerHandledPolicy[] @relation("HandledOwner")
   handledEntityPolicies PartnerHandledPolicy[] @relation("HandledEntity")
@@ -763,6 +764,10 @@ model BankLedgerAccount {
 }
 
 model BankLedgerEntry {
+  documentId String?
+  documentPosition Int?
+  ledgerDocument BankLedgerDocument? @relation(fields:[documentId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"Ledger_document_scope_fkey")
+  @@index([documentId,documentPosition],map:"Ledger_document_position_idx")
   managementIdentity BankLedgerManagementNumber?
   expenseComparison Json?
   materialItemId String?
@@ -818,6 +823,23 @@ model BankLedgerEntry {
   @@index([orgId, accountId, transactionDate, createdAt, id], map: "BankLedgerEntry_account_date_idx")
   @@unique([id,orgId])
   @@index([orgId,transactionDate,createdAt,id],map:"BankLedgerEntry_org_date_idx")
+}
+
+model BankLedgerDocument {
+  organization Organization @relation(fields:[orgId],references:[id],onDelete:Restrict,onUpdate:Restrict,map:"LedgerDocument_org_fkey")
+  changeRequest ChangeApprovalRequest @relation(fields:[changeRequestId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"LedgerDocument_approval_fkey")
+  changeRequestId String @default("")
+  id String @id @default(uuid())
+  orgId Int
+  managementNumber String
+  transactionDate String
+  remark String
+  evidenceFiles Json
+  createdBy String
+  createdAt DateTime @default(now())
+  entries BankLedgerEntry[]
+  @@unique([id,orgId],map:"LedgerDocument_scope_key")
+  @@unique([orgId,managementNumber],map:"LedgerDocument_number_key")
 }
 
 model BankLedgerManagementNumber {
@@ -2331,6 +2353,7 @@ model ExpenseCostProcess {
 }
 
 model ExpenseRequest {
+  evidenceFiles Json?
   paymentSchedule ExpensePaymentSchedule[]
  changeApprovalRequests ChangeApprovalRequest[] @relation("ExpenseChangeSource")
  deletedChangeRequest ChangeApprovalRequest? @relation("ExpenseChangeDeletion",fields:[deletedChangeRequestId,orgId],references:[id,orgId],onDelete:Restrict,map:"ExpenseRequest_deleted_change_fkey")
@@ -3637,6 +3660,7 @@ model ExpenseItemReference {
 
 // The immutable SQL migration enforces company/source/employee FKs and lifecycle guards.
 model ChangeApprovalRequest {
+  ledgerDocuments BankLedgerDocument[]
  invoice Invoice? @relation("InvoiceChangeSource",fields:[invoiceId,orgId],references:[id,sellerOrgId],onDelete:Restrict,map:"ChangeApprovalRequest_invoice_fkey")
  invoiceId String?
  company Organization @relation("ChangeCompany",fields:[orgId],references:[id],onDelete:Restrict,map:"ChangeApprovalRequest_org_fkey")

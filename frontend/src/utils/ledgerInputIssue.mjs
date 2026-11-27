@@ -1,9 +1,11 @@
+import {validDocumentEvidence} from './documentEvidence.mjs';
 import {validEvidencePath} from './evidenceReference.mjs';
 import {ledgerTransferCurrency} from './ledgerFlow.mjs';
 
 // BANK_FEE deliberately has no recipient or evidence document. The server
 // resolves its company-owned BNFE code again before creating the ledger entry.
-export function ledgerInputIssue(rows,accounts,parties){
+export function ledgerInputIssue(rows,accounts,parties,evidenceFiles,previousEvidence=[]){
+ if(evidenceFiles!==undefined&&!validDocumentEvidence(evidenceFiles,previousEvidence))return {field:'evidence',index:0,rowNumber:1,fee:false};
  for(const [index,row] of rows.entries()){
   let field;
   if(!String(row.amount??'').trim())field='amount';
@@ -14,7 +16,7 @@ export function ledgerInputIssue(rows,accounts,parties){
    if(!account)field='account';
    else if(row.counterparty?.kind==='ACCOUNT'&&ledgerTransferCurrency(row,accounts,parties)!==account.currencyCode&&!row.transferAmount?.trim())field='transferAmount';
    else if(row.evidenceType==='FILE'&&!row.counterparty)field='counterparty';
-   else if(row.evidenceType==='FILE'&&row.counterparty?.kind!=='ACCOUNT'&&!validEvidencePath(row.evidenceNumber))field='evidence';
+   else if(row.evidenceType==='FILE'&&row.counterparty?.kind!=='ACCOUNT'&&(evidenceFiles===undefined?!validEvidencePath(row.evidenceNumber):!evidenceFiles.length||!validDocumentEvidence(evidenceFiles,previousEvidence)))field='evidence';
    else if(['INVOICE','EXPENSE','OPENING','PAYROLL'].includes(row.evidenceType)&&!row.document?.id)field='document';
    else if(row.evidenceType==='EXPENSE'&&!row.expenseItems?.length)field='allocation';
    else if(row.evidenceType==='EXPENSE'&&row.document?.paymentSchedule?.some(schedule=>row.expenseItems.some(item=>item.itemId===schedule.expenseItemId))&&!row.paymentScheduleId)field='schedule';

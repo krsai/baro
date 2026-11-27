@@ -1,3 +1,5 @@
+import DocumentEvidenceFiles from '../../components/DocumentEvidenceFiles';
+import {validDocumentEvidence,documentEvidenceText} from '../../utils/documentEvidence.mjs';
 import LocalizedDateField from '../../components/LocalizedDateField';
 import {accountingRemarkText} from '../../constants/accountingRemark';
 import {materialItemText} from '../../constants/materialItems';
@@ -51,8 +53,8 @@ const FORM_TEXT={ko:{auto:'등록 시 자동 부여',required:'필수 입력 항
 
 export const REQUEST_FORM_TEXT = EXPENSE_REQUEST_TEXT;
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
-const newDocument = () => { const date = today(); return { managementNumber:'', scheduledPaymentDate:'', remark: '', approverEmployeeIds: [], approvalSelection:null, requestDate: date, partnerOrgId: '', clientKey: crypto.randomUUID(), items: [newExpenseLine()] }; };
-const documentSnapshot = form => JSON.stringify({managementNumber:form.managementNumber,scheduledPaymentDate:form.scheduledPaymentDate,remark:form.remark,approverEmployeeIds:form.approverEmployeeIds,approvalSelection:form.approvalSelection,requestDate:form.requestDate,partnerOrgId:form.partnerOrgId,payeeEmployeeId:form.payeeEmployeeId,items:form.items.map(expenseLinePayload)});
+const newDocument = () => { const date = today(); return { evidenceFiles:[], originalEvidenceFiles:[], managementNumber:'', scheduledPaymentDate:'', remark: '', approverEmployeeIds: [], approvalSelection:null, requestDate: date, partnerOrgId: '', clientKey: crypto.randomUUID(), items: [newExpenseLine()] }; };
+const documentSnapshot = form => JSON.stringify({evidenceFiles:form.evidenceFiles,managementNumber:form.managementNumber,scheduledPaymentDate:form.scheduledPaymentDate,remark:form.remark,approverEmployeeIds:form.approverEmployeeIds,approvalSelection:form.approvalSelection,requestDate:form.requestDate,partnerOrgId:form.partnerOrgId,payeeEmployeeId:form.payeeEmployeeId,items:form.items.map(expenseLinePayload)});
 
 export default function TransactionRequestEntry() {
   const { sourceKind, sourceId } = useParams();
@@ -100,7 +102,7 @@ export default function TransactionRequestEntry() {
       ...['expense-payees','transaction-codes','app-settings','orders','expense-units'].map(path => isServiceCompany && path==='orders' ? Promise.resolve([]) : requestJSON(`/${path}${path === 'transaction-codes' ? buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'}) : query}`, { skipCache: true })),
       editing ? requestJSON(`${editorPath}${query}`,{skipCache:true}).then(loaded=>{
         if(alive){
-          const draft={...loaded,approvalSelection:loaded.approvalSelection||null,clientKey:crypto.randomUUID(),items:loaded.items.map(item=>({...newExpenseLine(),...item,key:crypto.randomUUID()}))};
+          const draft={...loaded,originalEvidenceFiles:loaded.evidenceFiles||[],approvalSelection:loaded.approvalSelection||null,clientKey:crypto.randomUUID(),items:loaded.items.map(item=>({...newExpenseLine(),...item,key:crypto.randomUUID()}))};
           setForm(draft);setInitialSnapshot(documentSnapshot(draft));setLoadedDocumentScope(documentScope);
         }
         return loaded;
@@ -145,7 +147,9 @@ export default function TransactionRequestEntry() {
   const hasPayeeBank = bankAccounts.length>0;
   const disabled = loading || loadError || saving || Boolean(submission) || Boolean(form.readOnly);
   const remarkValid=Boolean(form.remark?.trim())&&(form.remark||'').length<=500;
-  const valid = hasPayeeBank && !period.loading && !period.error && (form.paidCorrectionOnly||remarkValid) && partner?.isActive &&
+  const evidenceRequired=form.items.some(line=>!line.productionLinked&&data.codes.find(code=>code.id===line.transactionCodeId)?.base?.entryMode!=='PROCESS');
+  const evidenceValid=validDocumentEvidence(form.evidenceFiles||[],form.originalEvidenceFiles||[])&&(!evidenceRequired||form.evidenceFiles?.length>0);
+  const valid = evidenceValid && hasPayeeBank && !period.loading && !period.error && (form.paidCorrectionOnly||remarkValid) && partner?.isActive &&
     form.requestDate && (!period.startDate || form.requestDate >= period.startDate) && form.items.every(line => statuses[line.key]);
   const money = (value, currency) => formatCurrency(value, { currencyCode: currency, languageCode });
   const close = () => navigateToPath('/outsourcing-record', { label: labels.document, closeTabId: formPath });
@@ -175,6 +179,7 @@ export default function TransactionRequestEntry() {
       if(!partner?.isActive)missing.push(labels.payee);
       if(!hasPayeeBank)missing.push(bankText.required);
       const detailLabels={...(TRANSACTION_TEXT[languageCode]||TRANSACTION_TEXT.en),reference:(ledgerEvidenceText[languageCode]||ledgerEvidenceText.en).supplierReference,evidenceFile:(ledgerEvidenceText[languageCode]||ledgerEvidenceText.en).reference};
+      if(!evidenceValid)missing.push((documentEvidenceText[languageCode]||documentEvidenceText.en).required);
       form.items.forEach((line,index)=>{
         if(statuses[line.key])return;
         const code=expenseCodeForLine(line,data.codes.find(code=>code.id===line.transactionCodeId)),fields=[];
@@ -183,7 +188,7 @@ export default function TransactionRequestEntry() {
         if(!Number(line.quantity)||Number(line.quantity)<0)fields.push(labels.quantity);
         if(!Number(line.unitPrice)||Number(line.unitPrice)<0)fields.push(labels.price);
         for(const key of ['order','style','process'])if(inputMode(code,key)==='REQUIRED'&&!line[{order:'workOrderId',style:'styleId',process:'styleProcessId'}[key]]&&!(key==='process'&&line.styleProcessIds?.length))fields.push(labels[key]);
-        if(!line.productionLinked&&code?.base?.entryMode!=='PROCESS'&&!line.details?.evidenceFile?.trim())fields.push((ledgerEvidenceText[languageCode]||ledgerEvidenceText.en).reference);
+
         for(const key of (code?.base?.requiredFields||[]).filter(key=>key!=='reference'))if(!line.details?.[key]?.trim())fields.push(detailLabels[key]||key);
         if(code?.base?.requiredFields?.includes('length')&&!line.details?.height&&!(line.itemId&&['length','width','height'].every(key=>(line.details?.[key]||'')===(line.originalDetails?.[key]||''))))fields.push(detailLabels.height);
         if(code?.base?.entryMode==='PROCESS'&&!line.assignmentPlanId)fields.push(labels.assignment);
@@ -201,7 +206,7 @@ export default function TransactionRequestEntry() {
     try {
     const selection=submission?submission.approvalSelection:editing?(form.approvalSelection||{}):await approvalRef.current?.prepare();
     if(selection==null||organizationRef.current!==activeOrgId||!mountedRef.current)return;
-    const body = submission || { scheduledPaymentDate:form.scheduledPaymentDate||null, remark: form.remark, approverEmployeeIds: form.approverEmployeeIds, approvalSelection:selection, automaticRequestDate:true, partnerOrgId:form.partnerOrgId||null,...(form.payeeEmployeeId?{payeeEmployeeId:form.payeeEmployeeId}:{}), clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
+    const body = submission || { evidenceFiles:form.evidenceFiles||[], scheduledPaymentDate:form.scheduledPaymentDate||null, remark: form.remark, approverEmployeeIds: form.approverEmployeeIds, approvalSelection:selection, automaticRequestDate:true, partnerOrgId:form.partnerOrgId||null,...(form.payeeEmployeeId?{payeeEmployeeId:form.payeeEmployeeId}:{}), clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
     setSubmission(body); setSaving(true); setError('');
     try {
       if(editing){const request=await changeRef.current.prepare({menu:'EXPENSE',operation:'UPDATE',sourceKind,sourceId,revision:form.revision,version:form.version,payload:body});if(!request){setSubmission(null);return;}}else await requestJSON(`${editorPath}${buildQueryString({orgId:activeOrgId})}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -265,13 +270,14 @@ export default function TransactionRequestEntry() {
           </Stack>
         </DocumentEntryHeader>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}><Typography variant="subtitle2">{lookup.details} · {form.items.length} {labels.count}</Typography>{loading && <CircularProgress size={20} />}</Stack>
+        <DocumentEvidenceFiles value={form.evidenceFiles||[]} previous={form.originalEvidenceFiles||[]} onChange={evidenceFiles=>update({evidenceFiles})} disabled={disabled} languageCode={languageCode} managementNumber={form.managementNumber}/>
         <DragDropContext onBeforeCapture={() => {
           dragColumnWidths.current = Array.from(tableContainerRef.current?.querySelector('[data-testid="expense-line"]')?.cells || []).map(cell => cell.getBoundingClientRect().width);
         }} onDragEnd={reorderLines}>
           <Droppable droppableId="expense-items" isDropDisabled={disabled}>{provided => (
             <TableContainer ref={tableContainerRef}><Table data-testid="expense-entry-table" data-table-layout="wide" ref={provided.innerRef} {...provided.droppableProps} size="small" sx={{ minWidth: 1784, tableLayout: 'fixed', '& th':{px:.75,whiteSpace:'nowrap'} }}>
               <colgroup>{[56,128,220,104,84,116,152,88,136,128,144,196,132,100].map((width,index)=><col key={index} style={width ? {width} : undefined} />)}</colgroup>
-              <TableHead><TableRow>{['#',labels.code,labels.description,labels.currency,labels.quantity,labels.unit,labels.price,labels.vat,labels.subtotal,labels.tax,labels.total,(accountingCompactText[languageCode]||accountingCompactText.en).payment,(accountingCompactText[languageCode]||accountingCompactText.en).evidence,''].map((label,index) => <TableCell key={index} align={index >= 8 && index <= 10 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
+              <TableHead><TableRow>{['#',labels.code,labels.description,labels.currency,labels.quantity,labels.unit,labels.price,labels.vat,labels.subtotal,labels.tax,labels.total,(accountingCompactText[languageCode]||accountingCompactText.en).payment,(accountingCompactText[languageCode]||accountingCompactText.en).link,''].map((label,index) => <TableCell key={index} align={index >= 8 && index <= 10 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
               {form.items.map((line,index) => <Draggable key={line.key} draggableId={line.key} index={index} disableInteractiveElementBlocking isDragDisabled={disabled||form.paidCorrectionOnly}>{(drag,state) => (
                 <TableBody ref={drag.innerRef} {...drag.draggableProps} style={{...drag.draggableProps.style,...(state.isDragging ? {display:'table',tableLayout:'fixed'} : {})}} sx={{ bgcolor:'background.paper', boxShadow:state.isDragging ? 3 : 'none', ...(state.isDragging ? Object.fromEntries(dragColumnWidths.current.map((width,column)=>['& tr:first-of-type > td:nth-of-type('+(column+1)+')',{width}])) : {}) }}>
                   <ExpenseRequestLine line={line} index={index} {...data} validationAttempt={validationAttempt} dragHandleProps={drag.dragHandleProps} partner={partner} orgId={activeOrgId} labels={labels} languageCode={languageCode} paidCorrectionOnly={form.paidCorrectionOnly} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} onAdd={addLine} onAddProcess={addProcess} canAddProcess={!disabled} />
