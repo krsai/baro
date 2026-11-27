@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:bill-workflow": "npm --prefix backend run build && node --test scripts/bill-workflow.test.mjs scripts/shipping-bill-hierarchy.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/bill-workflow-browser.test.mjs && node scripts/bill-form-print-browser.test.mjs",
     "test:workspace-refresh-recovery": "npm --prefix backend run build && node --test scripts/api-cache-races.test.mjs scripts/tab-editing-regression.test.mjs scripts/refresh-loaders.test.mjs scripts/workspace-live-events.test.mjs && node scripts/workspace-refresh-recovery-browser.test.mjs && node scripts/payroll-refresh-recovery-browser.test.mjs && node scripts/reference-settings-refresh-browser.test.mjs && node scripts/workspace-live-refresh-browser.test.mjs",
     "test:assignment-progress-retry": "npm --prefix backend run build && node --test scripts/assignment-progress-retry.test.mjs scripts/production-progress.test.mjs scripts/production-progress-combinations.test.mjs scripts/railway-schema-preflight.test.mjs",
     "test:record-interaction": "node --test scripts/record-interaction-policy.test.mjs && node scripts/record-interaction-browser.test.mjs",

@@ -1,7 +1,9 @@
 import {transportFormHtml} from './transportForms.mjs';
 import {shippingTradeHtml} from './shippingTradePrint.mjs';
+import {billFormHtml} from './billFormPrint.mjs';
 const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function freightDocumentHtml(document,t){
+ if(document.snapshot.layout==='bill-form-v2')return billFormHtml(document);
  if(document.snapshot.layout==='trade-v1')return shippingTradeHtml(document,t?.languageCode||'en');
  if(document.snapshot.layout==='transport-v1')return transportFormHtml(document);
  const {issuer,source}=document.snapshot,d=source.data,cell=value=>`<td>${escape(value)}</td>`,line=(label,value)=>`<tr><th>${escape(label)}</th>${cell(value)}</tr>`;

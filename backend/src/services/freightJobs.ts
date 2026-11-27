@@ -6,6 +6,7 @@ import {freightActor,freightForwarder,listFreight,saveFreight} from './freightOp
 import {saveJobProgress,createJobDocument,saveJobOperationDetails} from './freightJobWorkflow';
 import {saveShippingTradeDocument} from './shippingTradeDocuments';
 import {billData} from './freightBillData';
+import {billBranding,saveBillBranding,houseBillNumber} from './freightBillSettings';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const text=(v:any,max=120)=>typeof v==='string'&&v.trim().length<=max?v.trim():fail('FREIGHT_INVALID_INPUT');
 async function job(db:any,orgId:number,id:string,lock=false){
@@ -20,8 +21,9 @@ export async function jobDetail(db:any,orgId:number,actorId:number,id:string){
  return {...row,bills,documents,assignee};
 }
 export async function jobOptions(db:any,orgId:number,actorId:number){
- await freightForwarder(db,orgId,actorId);
- return {forwarder:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true,address:true,representative:true,phone:true,email:true}}),employees:await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:'OPERATOR'},select:{id:true,name:true,employeeNo:true},orderBy:{name:'asc'}}),currencies:await db.currency.findMany({select:{code:true,name:true},orderBy:{code:'asc'}})};
+ const actor=await freightForwarder(db,orgId,actorId);
+ const branding=await billBranding(db,orgId);
+ return {billBranding:{...branding,canEdit:actor.orgRole==='ADMIN'},forwarder:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true,address:true,representative:true,phone:true,email:true}}),employees:await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:'OPERATOR'},select:{id:true,name:true,employeeNo:true},orderBy:{name:'asc'}}),currencies:await db.currency.findMany({select:{code:true,name:true},orderBy:{code:'asc'}})};
 }
 export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:string,input:any,id?:string,remove=false){
  await freightForwarder(db,orgId,actorId);
@@ -33,11 +35,23 @@ export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:strin
   const before=id?(await tx.$queryRawUnsafe('SELECT b.* FROM "FreightBill" b WHERE id=$1 AND "orgId"=$2 AND ("jobId"=$3 OR kind=\'MASTER\' AND EXISTS(SELECT 1 FROM "FreightJobMaster" l WHERE l."jobId"=$3 AND l."orgId"=$2 AND l."masterBillId"=b.id AND l."deletedAt" IS NULL)) AND "deletedAt" IS NULL',id,orgId,jobId))[0]:null;
   if(id&&!before)fail('FREIGHT_NOT_FOUND',404);
   const kind=before?.kind||input.kind;if(!['MASTER','HOUSE'].includes(kind)||before&&input.kind&&input.kind!==kind||input.masterIds!==undefined)fail('FREIGHT_INVALID_INPUT');
-  const number=remove?before.number:text(input.number),issuer=remove?before.issuer:text(input.issuer??'',200);
-  if(!number)fail('FREIGHT_REQUIRED');
+  let number=remove?before.number:text(input.number??'');const issuer=remove?before.issuer:text(input.issuer??'',200);
+  if(!number&&(kind==='MASTER'||current.mode!=='SEA'))fail('FREIGHT_REQUIRED');
+  if(before?.houseNumberManaged&&!remove&&number&&number!==before.number)fail('FREIGHT_HBL_NUMBER_IMMUTABLE',409);
+  if(before?.houseNumberManaged&&!number)number=before.number;
   const masterId=remove?before.masterId:input.masterId==null||input.masterId===''?null:text(input.masterId,100);
 
   const data=remove?before.data:input.data===undefined?before?.data||{}:billData(input.data);
+  if(!remove){
+   const status=data.surrenderStatus||'NONE',oldStatus=before?.data?.surrenderStatus||'NONE';
+   if(status!=='NONE'&&(current.mode!=='SEA'||data.releaseType==='SEA_WAYBILL'))fail('FREIGHT_SURRENDER_SCOPE');
+   if(status==='REQUESTED'&&!data.surrenderRequestedAt||status==='CONFIRMED'&&(!data.surrenderConfirmedAt||!data.surrenderReference))fail('FREIGHT_SURRENDER_CONFIRMATION_REQUIRED');
+   if(oldStatus==='CONFIRMED'&&status!=='CONFIRMED'&&!data.surrenderReason)fail('FREIGHT_SURRENDER_REASON_REQUIRED');
+   if(data.surrenderRequestedAt&&data.surrenderConfirmedAt&&data.surrenderConfirmedAt<data.surrenderRequestedAt)fail('FREIGHT_INVALID_INPUT');
+   for(const key of ['surrenderRecordedBy','surrenderRecordedAt']){delete data[key];if(before?.data?.[key])data[key]=before.data[key];}
+   const changed=['surrenderStatus','surrenderRequestedAt','surrenderConfirmedAt','surrenderReference','surrenderReason'].some(key=>(data[key]||'')!==(before?.data?.[key]||''));
+   if(changed&&status!=='NONE'||oldStatus==='CONFIRMED'&&status!==oldStatus){data.surrenderRecordedBy=String(actorId);data.surrenderRecordedAt=new Date().toISOString();}
+  }
   if(before&&!remove&&before.number===number&&before.issuer===issuer&&before.masterId===masterId&&JSON.stringify(billData(before.data||{}))===JSON.stringify(data)){
    if(before.version===input.version||before.version===input.version+1)return before;
   }
@@ -53,11 +67,13 @@ export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:strin
   // A client-generated ID makes creation safely retryable, without number merging.
   const billId=id||text(input.id,80);if(!billId)fail('FREIGHT_REQUIRED');
   let rows;
+  if(before&&!remove&&kind==='HOUSE')await houseBillNumber(tx,orgId,number,before.id);
   if(before)rows=await tx.$queryRawUnsafe('UPDATE "FreightBill" SET number=$1,issuer=$2,"masterId"=$3,"deletedAt"=$4,version=version+1,"updatedByEmployeeId"=$5,"updatedAt"=CURRENT_TIMESTAMP,data=$8::jsonb WHERE id=$6 AND "orgId"=$7 RETURNING *',number,issuer,masterId,remove?new Date():null,actorId,billId,orgId,JSON.stringify(data));
   else{
    const previous=(await tx.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE id=$1',billId))[0];
-   if(previous){if(previous.orgId!==orgId||previous.jobId!==jobId||previous.kind!==kind||previous.number!==number||previous.issuer!==issuer||previous.masterId!==masterId||JSON.stringify(billData(previous.data||{}))!==JSON.stringify(data)||previous.deletedAt)fail('FREIGHT_CHANGED',409);return previous;}
-   rows=await tx.$queryRawUnsafe('INSERT INTO "FreightBill"(id,"orgId","jobId",kind,number,issuer,"masterId",data,"createdByEmployeeId","updatedByEmployeeId") VALUES($1,$2,$3,$4,$5,$6,$7,$9::jsonb,$8,$8) RETURNING *',billId,orgId,jobId,kind,number,issuer,masterId,actorId,JSON.stringify(data));
+   if(previous){const sameData=(value:any)=>JSON.stringify(billData(Object.fromEntries(Object.entries(value).filter(([key])=>!['surrenderRecordedBy','surrenderRecordedAt'].includes(key)))));if(previous.orgId!==orgId||previous.jobId!==jobId||previous.kind!==kind||number&&previous.number!==number||previous.issuer!==issuer||previous.masterId!==masterId||sameData(previous.data||{})!==sameData(data)||previous.deletedAt)fail('FREIGHT_CHANGED',409);return previous;}
+   if(kind==='HOUSE')number=await houseBillNumber(tx,orgId,number);
+   rows=await tx.$queryRawUnsafe('INSERT INTO "FreightBill"(id,"orgId","jobId",kind,number,issuer,"masterId",data,"createdByEmployeeId","updatedByEmployeeId","houseNumberManaged") VALUES($1,$2,$3,$4,$5,$6,$7,$9::jsonb,$8,$8,$10) RETURNING *',billId,orgId,jobId,kind,number,issuer,masterId,actorId,JSON.stringify(data),kind==='HOUSE');
   }
   await tx.$executeRawUnsafe('INSERT INTO "FreightAudit"(id,"orgId",entity,"sourceId",version,"actorId","before","after") VALUES($1,$2,\'bills\',$3,$4,$5,$6::jsonb,$7::jsonb)',randomUUID(),orgId,billId,rows[0].version,actorId,before?JSON.stringify(before):null,JSON.stringify(rows[0]));
   return rows[0];
@@ -88,6 +104,7 @@ export async function saveDocumentSetup(db:any,orgId:number,actorId:number,jobId
 export function registerJobRoutes(app:any,db:any,access:any){
  const route=(method:string,path:string,work:any)=>app[method]('/freight/transport-jobs'+path,async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await work(scope,req));});
  route('get','',({orgId,actorId}:any,req:any)=>listFreight(db,orgId,actorId,'jobs',req.query));
+ route('put','/bill-branding',({orgId,actorId}:any,req:any)=>saveBillBranding(db,orgId,actorId,req.body));
  route('get','/options',({orgId,actorId}:any)=>jobOptions(db,orgId,actorId));
  route('get','/:id/master-bills',({orgId,actorId}:any,req:any)=>searchJobMasters(db,orgId,actorId,req.params.id,req.query.q||''));
  route('post','/:id/master-links/:masterId',({orgId,actorId}:any,req:any)=>changeJobMasterLink(db,orgId,actorId,req.params.id,req.params.masterId,req.body));

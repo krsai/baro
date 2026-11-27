@@ -1,5 +1,5 @@
 import {shippingWorkData} from './shippingWorkData.mjs';
-export const billFields=['shipper','consignee','notify','deliveryAgent','vessel','voyage','origin','destination','placeOfReceipt','placeOfDelivery','etd','eta','issueDate','issuePlace','marks','cargo','quantity','unit','weightKg','cbm','cbmFormula','freightTerms'];
+export const billFields=['shipper','consignee','notify','deliveryAgent','vessel','voyage','origin','destination','placeOfReceipt','placeOfDelivery','etd','eta','issueDate','issuePlace','marks','cargo','quantity','unit','weightKg','cbm','cbmFormula','freightTerms','preCarriage','finalDestination','totalPackagesWords','revenueTons','rate','ratePer','prepaid','collect','freightPayableAt','originalCount','onBoardDate','releaseType','surrenderStatus','surrenderRequestedAt','surrenderConfirmedAt','surrenderReference','surrenderReason','logoDataUrl'];
 export const requiresBillHierarchy=job=>job?.service!=='EXPRESS'&&['SEA','AIR'].includes(job?.mode);
 const routeFields=['vessel','voyage','origin','destination','placeOfReceipt','placeOfDelivery','etd','eta'];
 export function initialBillData(job,bill,parent,forwarder){
@@ -23,6 +23,8 @@ export function initialBillData(job,bill,parent,forwarder){
   for(const role of ['shipper','consignee','notify'])result[role]=text;
  }
  if(Object.hasOwn(bill.data||{},'cbm')&&!Object.hasOwn(bill.data||{},'cbmFormula'))delete result.cbmFormula;
+ if(forwarder?.logoDataUrl)result.logoDataUrl=forwarder.logoDataUrl;
+ if(job.mode==='SEA'){result.releaseType='ORIGINAL';result.surrenderStatus='NONE';}
  return {...result,...bill.data};
 }
 export function billHierarchy(bills){

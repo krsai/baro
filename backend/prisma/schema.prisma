@@ -46,6 +46,7 @@ model TransportExchangeEvent {
 // Job BLs and transport objects/tasks use composite SQL FKs in
 // 20261105140000_job_bills, matching the existing freight persistence pattern.
 model FreightBill {
+ houseNumberManaged Boolean @default(false)
  id String @id
  orgId Int
  jobId String

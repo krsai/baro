@@ -108,13 +108,13 @@ export async function createJobDocument(db:any,orgId:number,actorId:number,id:st
   const allowed=['origin','destination','etd','eta','vessel','voyage','cargo','marks','quantity','unit','weightKg','cbm','freightTerms','incoterms','plannedDate','containers','packages','deliveryDate','recipient','hsCode'];
   const data:any=Object.fromEntries(allowed.filter(key=>work[key]!=null).map(key=>[key,work[key]]));
   // A saved bill is a separate document source; never overwrite the job.
-  if(bill?.data)for(const key of [...allowed,'shipper','consignee','notify','deliveryAgent','placeOfReceipt','placeOfDelivery','issueDate','issuePlace'])if(bill.data[key]!=null)data[key]=bill.data[key];
+  if(bill?.data)Object.assign(data,Object.fromEntries(Object.entries(bill.data).filter(([key])=>!['surrenderRecordedBy','surrenderRecordedAt'].includes(key))));
   Object.assign(data,fields);
   for(const role of ['shipper','consignee','notify']){const party=row.data[role+'Party'];if(data[role]===undefined)data[role]=work[role]||[party?.name,party?.address,party?.contactName,party?.phone,party?.email].filter(Boolean).join('\n');}
   if(!data.shipper||!data.consignee)fail('FREIGHT_DOCUMENT_REQUIRED');
   const issuer=await tx.organization.findUnique({where:{id:orgId},select:{name:true,address:true,representative:true,phone:true,email:true}}),documentId=randomUUID();
-  const source={id:row.id,number:row.number,mode:row.mode,service:row.service,version:row.version,data,bill:bill?{id:bill.id,number:bill.number,kind:bill.kind,issuer:bill.issuer,version:bill.version}:null,master:bill?.masterId?bills.filter((b:any)=>b.id===bill.masterId).map((b:any)=>({id:b.id,number:b.number,version:b.version}))[0]||null:null,documentType:row.data.documentSetup?.documentType||(row.mode==='SEA'?'BILL_OF_LADING':row.mode==='AIR'?'AIR_WAYBILL':'WAYBILL')};
-  const snapshot={layout:'transport-v1',requestHash,issuer,source,draft:true,deliveryConfirmed:false,createdByEmployeeId:actorId};
+  const source={id:row.id,number:row.number,mode:row.mode,service:row.service,version:row.version,data,bill:bill?{id:bill.id,number:bill.number,kind:bill.kind,issuer:bill.issuer,version:bill.version}:null,master:bill?.masterId?bills.filter((b:any)=>b.id===bill.masterId).map((b:any)=>({id:b.id,number:b.number,version:b.version}))[0]||null:null,documentType:bill?.data?.releaseType==='SEA_WAYBILL'?'SEA_WAYBILL':row.data.documentSetup?.documentType||(row.mode==='SEA'?'BILL_OF_LADING':row.mode==='AIR'?'AIR_WAYBILL':'WAYBILL')};
+  const snapshot={layout:['MASTER_DRAFT','HOUSE_DRAFT'].includes(input.kind)?'bill-form-v2':'transport-v1',requestHash,issuer,source,draft:true,deliveryConfirmed:false,createdByEmployeeId:actorId};
   return (await tx.$queryRawUnsafe('INSERT INTO "FreightDocument"(id,"orgId","jobId","clientKey",kind,number,"sourceVersion",snapshot,"createdByEmployeeId") VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9) RETURNING *',documentId,orgId,id,input.clientKey,input.kind,`${input.kind}-${documentId.slice(0,8).toUpperCase()}`,row.version,JSON.stringify(snapshot),actorId))[0];
  });
 }
