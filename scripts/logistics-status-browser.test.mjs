@@ -6,8 +6,8 @@ import {chromium} from 'playwright-core';
 const file=path.resolve('frontend/logistics-status-acceptance.html'),port=43562;
 assert.ok(!existsSync(file));
 writeFileSync(file,`<html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
-import '/src/styles/form.css';import '/src/styles/table.css';import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import {createAppTheme} from '/src/theme';import Page from '/src/pages/App/LogisticsStatusBoard.jsx';
-window.harnessReact=React;window.harnessCreateRoot=createRoot;const theme=createAppTheme(new URLSearchParams(location.search).get('theme')||'standard');createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,{initialEntries:['/customer-production-report']},React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Page))));</script></body></html>`);
+import '/src/styles/form.css';import '/src/styles/table.css';import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import {appThemes} from '/src/theme';import Page from '/src/pages/App/LogisticsStatusBoard.jsx';
+window.harnessReact=React;window.harnessCreateRoot=createRoot;const theme=appThemes[new URLSearchParams(location.search).get('theme')||'standard'];createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,{initialEntries:['/customer-production-report']},React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Page))));</script></body></html>`);
 const vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/logistics-status-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
@@ -22,19 +22,20 @@ try{
    const req=route.request(),headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};if(req.method()==='OPTIONS')return route.fulfill({headers});assert.equal(req.method(),'GET');
    const params=new URL(req.url()).searchParams;requests.push(Object.fromEntries(params));assert.equal(params.get('orgId'),'7');
    if(failed)return route.fulfill({status:503,headers,json:{error:'UNAVAILABLE'}});
-   const customer={id:20,name:'BARO - THE SAN'},second={id:21,name:'DAEWOO'},base={shipmentType:'FCL',mode:'SEA',service:'GENERAL',jobType:'IMPORT',status:'IN_TRANSIT',cargo:'Steel Coils',origin:'Hai Phong',destination:'Busan',schedules:[{id:'master-1',number:'MBL-1',etd:'2026-11-21',eta:'2026-11-26'},{id:'master-2',number:'MBL-2',etd:'2026-11-22',eta:'2026-11-27'}],quantity:'0',unit:'PKG',weightKg:'1234.5',cbm:'0',containers:[{count:'20',size:'40',type:'HQ'}],remark:'Make DN\nInspection 10 Containers',deliveryDate:null};
-   let rows=[{...base,id:'job-1',number:'SR-001',customerId:20,customer},{...base,id:'job-2',number:'SR-002',customerId:21,customer:second}];
+   const customer={id:20,name:'BARO - THE SAN'},second={id:21,name:'DAEWOO'},base={shipmentType:'FCL',mode:'SEA',service:'GENERAL',jobType:'IMPORT',status:'IN_TRANSIT',cargo:'Steel Coils',origin:'Hai Phong',destination:'Busan',schedules:[{id:'master-1',number:'MBL-1',etd:'2026-11-21',eta:'2026-11-26'},{id:'master-2',number:'MBL-2',etd:'2026-11-22',eta:'2026-11-27'}],quantity:'0',unit:'PKG',weightKg:'1234.5',cbm:'0',containers:[{count:'20',size:'40',type:'HQ'}],cargoReadyDate:'2026-11-19',remark:'Make DN\nInspection 10 Containers',deliveryDate:null};
+   let rows=[{...base,id:'job-1',number:'SR-001',customerId:20,customer},{...base,id:'job-2',number:'SR-002',cargoReadyDate:null,customerId:21,customer:second}];
    if(params.get('includeCompleted')==='true')rows.push({...base,id:'job-3',number:'SR-003',customerId:20,customer,status:'DELIVERED',deliveryDate:'2026-11-25'});
    if(params.get('customerId'))rows=rows.filter(row=>String(row.customerId)===params.get('customerId'));
    if(params.get('search')==='missing')rows=[];
    return route.fulfill({headers,json:{rows,total:rows.length,customers:[customer,second]}});
   });
-  await page.goto(`http://127.0.0.1:${port}/logistics-status-acceptance.html?theme=${theme}`);
-  await page.locator('[data-logistics-row="job-1"]').waitFor();await page.getByRole('progressbar').waitFor({state:'hidden'});
+  await page.goto(`http://127.0.0.1:${port}/logistics-status-acceptance.html?theme=${theme}`,{waitUntil:'domcontentloaded',timeout:60000});
+  await page.locator('[data-logistics-row="job-1"]').waitFor({timeout:60000});await page.getByRole('progressbar').waitFor({state:'hidden'});
   const labels=await page.evaluate(async language=>(await import('/src/pages/App/LogisticsStatusBoard.jsx')).logisticsBoardText[language],language);
   assert.deepEqual(await page.evaluate(async()=>{const {information:f}=await import('/src/pages/App/LogisticsStatusBoard.jsx');return [f({mode:'SEA',shipmentType:'LCL',cbm:'2.5'}),f({mode:'AIR',chargeableWeightKg:'100'}),f({service:'EXPRESS',chargeableWeightKg:'12'}),f({mode:'ROAD',vehicleCount:2,vehicleUnit:'Vehicles'}),f({mode:'AIR',weightKg:100})];}),['2.5 CBM','100 CWT','12 CWT','2 Vehicles','—']);
-  assert.equal(await page.locator('thead').first().getByRole('columnheader').count(),7);assert.ok(await page.locator('[data-logistics-row="job-1"]').innerText().then(text=>text.includes("20x40'HQ")&&text.includes('MBL-2')&&!text.includes('0 PKG')));
-  assert.ok(await page.locator('[data-logistics-row="job-1"] td').nth(4).innerText().then(text=>text==='—'));
+  assert.equal(await page.locator('thead').first().getByRole('columnheader').count(),8);assert.ok(await page.locator('[data-logistics-row="job-1"]').innerText().then(text=>text.includes("20x40'HQ")&&text.includes('MBL-2')&&!text.includes('0 PKG')));
+  assert.ok(await page.locator('[data-logistics-row="job-1"] td').nth(5).innerText().then(text=>text==='—'));
+  assert.equal(await page.getByRole('columnheader',{name:'CGO',exact:true}).count(),1);assert.equal(await page.locator('[data-logistics-row="job-1"] td').nth(2).innerText(),'2026-11-19');assert.equal(await page.locator('[data-logistics-row="job-2"] td').nth(2).innerText(),String.fromCharCode(8212));
   const completion=page.getByRole('combobox').first();await completion.click();await page.getByRole('option').last().click();await page.locator('[data-logistics-row="job-3"]').waitFor();
   const customer=page.getByRole('combobox').nth(1);await customer.click();await page.getByRole('option',{name:'DAEWOO',exact:true}).click();await page.locator('[data-logistics-row="job-1"]').waitFor({state:'hidden'});await page.locator('[data-logistics-row="job-2"]').waitFor();
   const search=page.getByPlaceholder(labels.search);await search.fill('missing');await page.getByText(labels.empty,{exact:true}).waitFor();await page.locator('[data-search-reset]').click();await page.locator('[data-logistics-row="job-1"]').waitFor();

@@ -28,7 +28,7 @@ export async function logisticsStatusReport(db:any,orgId:number,actorId:number,i
  return {total:result.total,offset,customers:result.customers,rows:result.rows.map((row:any)=>{
   const work=shippingWorkData(row.data||{}),customer=row.data?.customer||{};
   return {id:row.id,number:row.number,customerId:row.customerId,customer:{name:customer.name,nameKo:customer.nameKo,nameVi:customer.nameVi},mode:row.mode,service:row.service,status:row.status,
-   shipmentType:work.shipmentType||null,chargeableWeightKg:work.chargeableWeightKg??null,vehicleCount:work.vehicleCount??null,jobType:row.data?.jobType||row.data?.direction||'OTHER',schedules:row.schedules?.length?row.schedules:[{etd:work.etd||null,eta:work.eta||null}],deliveryDate:row.status==='DELIVERED'?row.data?.deliveryDate||null:null,
+   cargoReadyDate:work.plannedDate||null,shipmentType:work.shipmentType||null,chargeableWeightKg:work.chargeableWeightKg??null,vehicleCount:work.vehicleCount??null,jobType:row.data?.jobType||row.data?.direction||'OTHER',schedules:row.schedules?.length?row.schedules:[{etd:work.etd||null,eta:work.eta||null}],deliveryDate:row.status==='DELIVERED'?row.data?.deliveryDate||null:null,
    cargo:work.cargo||'',origin:work.origin||'',destination:work.destination||'',remark:work.remark||'',quantity:work.quantity??null,unit:work.unit||'',weightKg:work.weightKg??null,cbm:work.cbm??null,
    containers:Array.isArray(work.containers)?work.containers.map((c:any)=>({size:c.size,type:c.type,count:c.count})):[],containerType:work.containerType||'',containerCount:work.containerCount??null};
  })};
