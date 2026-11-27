@@ -16,7 +16,7 @@ import {usePageDialogs} from './PageDialogProvider';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {shippingOperationText} from '../constants/shippingOperations';
 
-export default function ShippingWorkDocuments({job,orgId,languageCode,forwarder,compact=false,toolbar=false,actions,onOpen,onCreate,onChanged,onDirtyChange,onReturnDetail,returnVersion=0,busy=false}){
+export default function ShippingWorkDocuments({job,orgId,languageCode,forwarder,compact=false,toolbar=false,actions,onOpen,onCreate,onChanged,onDirtyChange,onReturnDetail,onPanelChange,returnVersion=0,busy=false}){
  const flow=billWorkflowText[languageCode]||billWorkflowText.en;
  const labels=shippingOperationText[languageCode]||shippingOperationText.en,t=job.mode==='AIR'&&job.service!=='EXPRESS'?Object.fromEntries(Object.entries(labels).map(([key,value])=>[key,value.replaceAll('MBL','MAWB').replaceAll('HBL','HAWB').replaceAll('mBL','MAWB').replaceAll('hBL','HAWB').replaceAll('B/L','AWB')])):labels,dialogs=usePageDialogs();
  const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[rows,setRows]=useState([]),[selected,setSelected]=useState(null),[loading,setLoading]=useState(false),[loadError,setLoadError]=useState(false),[reload,setReload]=useState(0),[working,setWorking]=useState(false),[uncertain,setUncertain]=useState(false),[error,setError]=useState('');
@@ -25,7 +25,8 @@ export default function ShippingWorkDocuments({job,orgId,languageCode,forwarder,
  const [creating,setCreating]=useState(null),[houseAfterLink,setHouseAfterLink]=useState(false),[linkedHouseMaster,setLinkedHouseMaster]=useState(null);
  useEffect(()=>{if(linkedHouseMaster&&masters.some(row=>row.id===linkedHouseMaster)){setLinkedHouseMaster(null);onCreate('HOUSE',linkedHouseMaster);}},[job.bills,linkedHouseMaster]);
  const createMaster=mode=>{if(blocked||!canEdit)return;if(mode==='FORWARDER'&&!forwarder?.name){setError(t.forwarderUnavailable);return;}setCreating(null);onCreate('MASTER',null,{partyMode:mode,createHouse:mode==='FORWARDER'});};
- useEffect(()=>{setPanel(null);setCreating(null);setOpen(false);setLinkedHouseMaster(null);setHouseAfterLink(false);},[returnVersion]);
+ useEffect(()=>{setPanel(null);setCreating(null);setOpen(false);setLinkedHouseMaster(null);setHouseAfterLink(false);},[returnVersion,job.id]);
+ useEffect(()=>{onPanelChange?.(panel);},[panel,onPanelChange]);
  const returnDetail=async()=>{if(busy||working||uncertain)return;if(onReturnDetail&&await onReturnDetail()===false)return;setPanel(null);setOpen(false);};
  useEffect(()=>{onDirtyChange?.(working||uncertain);return()=>onDirtyChange?.(false);},[working,uncertain,onDirtyChange]);
  useEffect(()=>{if(!open)return;let live=true;setLoading(true);setLoadError(false);const timer=setTimeout(()=>{requestJSON('/freight/transport-jobs/'+job.id+'/master-bills'+buildQueryString({orgId,q:query}),{skipCache:true}).then(value=>{if(live)setRows(value.rows);}).catch(()=>live&&setLoadError(true)).finally(()=>live&&setLoading(false));},150);return()=>{live=false;clearTimeout(timer);};},[open,query,reload,job.id,orgId]);

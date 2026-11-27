@@ -18,7 +18,7 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/shipping-work-layout-test.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const lang of ['ko','en','vi'])for(const width of [1440,390])for(const mode of ['FCL','LCL','AIR','EXPRESS']){
-  if((process.argv.includes('--info-layout-only')||process.argv.includes('--numeric-only')||process.argv.includes('--close-ui-only'))&&mode!=='FCL')continue;
+  if((process.argv.includes('--info-layout-only')||process.argv.includes('--numeric-only')||process.argv.includes('--close-ui-only')||process.argv.includes('--empty-bl-only'))&&mode!=='FCL')continue;
   if(process.argv.includes('--shared-sr-only')&&mode!=='FCL')continue;
   if(process.argv.includes('--customer-only')&&mode!=='FCL')continue;
   if(process.argv.includes('--volume-formula-only')&&mode!=='EXPRESS')continue;
@@ -62,6 +62,15 @@ try{
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert.deepEqual(errors,[]);await dialog.getByRole('button',{name:t.close,exact:true}).click();console.log('PASS current SR shared cargo/containers edit and save',lang,width);await page.close();continue;
   }
   const form=page.getByTestId('shipping-operations-form');await form.waitFor({timeout:60000});
+  if(process.argv.includes('--empty-bl-only')){
+   await form.locator('[name=cargo]').fill('Preserved Draft');
+   for(const kind of ['MASTER','HOUSE']){
+    const tab=page.locator('[data-bl-tab='+kind+']');assert.match(await tab.innerText(),/\(0\)/);await tab.locator('button').first().click();assert.equal(await form.isVisible(),false);assert.equal(await page.locator('[data-shipping-bl-form]').count(),0);assert.equal(await page.getByText(kind==='MASTER'?t.noMaster:t.noHouse,{exact:true}).isVisible(),true);assert.equal(writes.length,0);assert.equal(billWrites.length,0);
+   }
+   await page.getByRole('button',{name:t.detail,exact:true}).click();assert.equal(await form.isVisible(),true);assert.equal(await form.locator('[name=cargo]').inputValue(),'Preserved Draft');
+   await page.locator('[data-bl-tab=MASTER] button').first().click();await page.getByRole('button',{name:billWorkflowText[lang].addMaster,exact:true}).click();assert.equal(await page.locator('[data-shipping-bl-form]').count(),0);await page.getByRole('button',{name:billWorkflowText[lang].direct,exact:true}).click();await page.locator('[data-shipping-bl-form]').waitFor();assert.equal(billWrites.length,0);assert.match(await page.locator('[data-bl-tab=MASTER]').innerText(),/\(0\)/);
+   await page.getByRole('dialog').getByRole('button',{name:t.close,exact:true}).click();assert.equal(await form.isVisible(),true);assert.equal(await form.locator('[name=cargo]').inputValue(),'Preserved Draft');assert.deepEqual(errors,[]);console.log('PASS empty BL tabs show no shipment or fabricated document and preserve drafts',lang,width);await page.close();continue;
+  }
   if(process.argv.includes('--close-ui-only')){
    const workflow=billWorkflowText[lang];await page.getByRole('button',{name:workflow.addMaster,exact:true}).click();await page.getByRole('button',{name:workflow.direct,exact:true}).click();
    const dialog=page.getByRole('dialog');await dialog.locator('[data-shipping-bills]').waitFor();assert.equal(await dialog.getByRole('button',{name:t.returnDetail,exact:true}).count(),0);assert.equal(await dialog.getByRole('button',{name:t.close,exact:true}).count(),1);
