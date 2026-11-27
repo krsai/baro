@@ -1,5 +1,6 @@
 import {invoiceEditText} from '../../../constants/invoiceEdit';
 import {orderInvoiceNavigationText,getRowActionsLabel} from '../../../constants/rowActions';
+import {invoiceListDescription,compactInvoiceList,invoiceListPresentationText} from '../../../utils/invoiceListPresentation.mjs';
 import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
 import ListPagination from '../../../components/ListPagination';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -10,7 +11,6 @@ import DeleteActionButton from '../../../components/DeleteActionButton';
 import {changeApprovalText} from '../../../constants/changeApprovals';
 import dayjs from 'dayjs';
 import DateRangeSelector from '../../../components/DateRangeSelector';
-import {ledgerFlowText} from '../../../constants/ledgerFlow';
 import {ledgerEntryText} from '../../../constants/ledgerEntry';
 import {ledgerWorkspaceText} from '../../../constants/ledgerWorkspace';
 import {bankLedgerMessages} from '../../../constants/bankLedgerMessages';
@@ -45,9 +45,10 @@ export default function InvoiceList({ orgId, languageCode, invoiceId,sourceOrder
   const deleteInvoice=async row=>{setRequesting(true);try{const result=await approval.current.prepare({menu:'INVOICE',operation:'DELETE',sourceKind:'invoice',sourceId:row.id});if(result){setReload(n=>n+1);showNotification(change.submitted);}}finally{setRequesting(false);}};
   const ui=invoiceUi[languageCode]||invoiceUi.en,d=invoiceDetailText[languageCode]||invoiceDetailText.en;
   const [start,setStart]=useState(()=>sourceOrderId?null:dayjs().startOf('month')),[end,setEnd]=useState(()=>sourceOrderId?null:dayjs());
-  const flow=ledgerFlowText[languageCode]||ledgerFlowText.en,entry=ledgerEntryText[languageCode]||ledgerEntryText.en,bank=bankLedgerMessages[languageCode]||bankLedgerMessages.en,workspace=ledgerWorkspaceText[languageCode]||ledgerWorkspaceText.en;
+  const entry=ledgerEntryText[languageCode]||ledgerEntryText.en,bank=bankLedgerMessages[languageCode]||bankLedgerMessages.en,workspace=ledgerWorkspaceText[languageCode]||ledgerWorkspaceText.en;
   const [search,setSearch]=useState(''),[status,setStatus]=useState(''),[detail,setDetail]=useState(null),[pdfBusy,setPdfBusy]=useState(false);
   const labels=invoiceListUi[languageCode]||invoiceListUi.en;
+  const presentation=invoiceListPresentationText[languageCode]||invoiceListPresentationText.en;
   const types=generalInvoiceText[languageCode]||generalInvoiceText.en;
   const common = invoiceMessages[languageCode] || invoiceMessages.en;
   const [issued, setIssued] = useState({ rows: [], hasMore: false });
@@ -86,18 +87,17 @@ export default function InvoiceList({ orgId, languageCode, invoiceId,sourceOrder
     <SearchPanel search={<SearchInput value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} placeholder={ui.search}/>} controls={sourceOrderId?<Chip label={(orderInvoiceNavigationText[languageCode]||orderInvoiceNavigationText.en).order+(issued.orderScope?.orderNumber?': '+issued.orderScope.orderNumber:'')} onDelete={()=>navigateToPath('/invoices')}/>:undefined} dates={<DateRangeSelector independentDateBounds languageCode={languageCode} startValue={start} endValue={end} onStartChange={date=>{if(date?.isValid()){setStart(date);setPage(0);}}} onEndChange={date=>{if(date?.isValid()){setEnd(date);setPage(0);}}}/>} onReset={()=>{setSearch('');setStatus('');setStart(sourceOrderId?null:dayjs().startOf('month'));setEnd(sourceOrderId?null:dayjs());setPage(0);}} />
     <Paper data-search-results variant="outlined" sx={{borderRadius:2,overflow:'hidden'}}>
     {error&&<Alert severity="error" action={<Button onClick={()=>setReload(v=>v+1)}>{common.retry}</Button>}>{error}</Alert>}
-    <Box sx={{overflowX:'auto'}}><Table size="small" sx={{minWidth:1100}}><TableHead><TableRow>
-      {[common.issuedDate,flow.to,(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,entry.codeDescription,workspace.currency,labels.statement,labels.received,labels.balance,bank.createdBy,common.invoiceStatus,'PDF',getRowActionsLabel(languageCode)].map((label,index)=><TableCell key={index} align={index>=5&&index<=7?'right':'left'}>{label}</TableCell>)}
+    <Box sx={{overflowX:'auto'}}><Table data-table-layout="wide" size="small" sx={{minWidth:1340}}><TableHead><TableRow>
+      {[common.issuedDate,presentation.billTo,entry.codeDescription,(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,workspace.currency,labels.statement,labels.received,labels.balance,bank.createdBy,common.invoiceStatus,getRowActionsLabel(languageCode)].map((label,index)=><TableCell key={index} data-table-actions={index===10?'':undefined} align={index>=5&&index<=7?'right':'left'} sx={{whiteSpace:'nowrap',...(index===0?{minWidth:110}:{})}}>{label}</TableCell>)}
     </TableRow></TableHead><RecordInteractionScope>
-      {loading?<TableStatusRow colSpan={12} languageCode={languageCode} state="loading"/>:!issued.rows.length?<TableStatusRow colSpan={12} languageCode={languageCode} error={Boolean(error)} onRetry={()=>setReload(v=>v+1)}/>:issued.rows.map(row=><RecordRow key={row.id} data-cancelled={row.status==='CANCELLED'} hover  recordKey={row.id} onOpen={()=>navigateToPath('/invoices/'+encodeURIComponent(row.id))}  sx={{cursor:'pointer'}}>
+      {loading?<TableStatusRow colSpan={11} languageCode={languageCode} state="loading"/>:!issued.rows.length?<TableStatusRow colSpan={11} languageCode={languageCode} error={Boolean(error)} onRetry={()=>setReload(v=>v+1)}/>:issued.rows.map(row=><RecordRow key={row.id} data-cancelled={row.status==='CANCELLED'} hover  recordKey={row.id} onOpen={()=>navigateToPath('/invoices/'+encodeURIComponent(row.id))}  sx={{cursor:'pointer'}}>
         <TableCell sx={{whiteSpace:'nowrap'}}>{new Date(row.issuedAt).toLocaleDateString({ko:'ko-KR',vi:'vi-VN',en:'en-GB'}[languageCode]||'en-GB')}</TableCell>
-        <TableCell>{row.buyerName}</TableCell><TableCell>{(row.accountingCodes||[]).join(', ')||'\u2014'}</TableCell><TableCell><RecordOpenButton onOpen={()=>navigateToPath('/invoices/'+encodeURIComponent(row.id))}><Typography noWrap sx={{maxWidth:240}} title={[row.invoiceNumber,...(row.descriptions||[]),...(row.orders||[]).map(order=>order.sourceOrderNumber)].filter(Boolean).join(' / ')}>{[row.invoiceNumber,...(row.descriptions||[])].filter(Boolean).join(' / ')}</Typography></RecordOpenButton></TableCell><TableCell>{(row.currencyTotals||[{currencyCode:row.currencyCode}]).map(total=><div key={total.currencyCode}>{total.currencyCode}</div>)}</TableCell>
+        <TableCell>{row.buyerName}</TableCell><TableCell><RecordOpenButton onOpen={()=>navigateToPath('/invoices/'+encodeURIComponent(row.id))}><Typography sx={{minWidth:240,maxWidth:360,textAlign:'left',whiteSpace:'normal',overflowWrap:'anywhere'}} title={[row.invoiceNumber,...(row.descriptions||[]),...(row.orders||[]).map(order=>order.sourceOrderNumber)].filter(Boolean).join(' / ')}>{invoiceListDescription(row,languageCode)}</Typography></RecordOpenButton></TableCell><TableCell title={(row.accountingCodes||[]).join(', ')} sx={{whiteSpace:'nowrap'}}>{compactInvoiceList(row.accountingCodes,languageCode)}</TableCell><TableCell>{(row.currencyTotals||[{currencyCode:row.currencyCode}]).map(total=><div key={total.currencyCode}>{total.currencyCode}</div>)}</TableCell>
         <TableCell align="right"><Typography variant="subtitle2">{row.currencyTotals?row.currencyTotals.map(total=><div key={total.currencyCode}>{amount(total.total,total.currencyCode)}</div>):amount(row.total,row.currencyCode)}</Typography></TableCell>
         <TableCell align="right">{row.currencyBalances?row.currencyBalances.map(total=><div key={total.currencyCode}>{amount(total.receivedAmount,total.currencyCode)}</div>):amount(row.receivedAmount,row.currencyCode)}</TableCell>
         <TableCell align="right" title={row.openingSettlementKind?`${(accountingOpeningText[languageCode]||accountingOpeningText.en)[row.openingSettlementKind]}: ${amount(row.openingSettlementAmount,row.currencyCode)}`:''}>{row.currencyBalances?row.currencyBalances.map(total=><div key={total.currencyCode}>{amount(total.balanceAmount,total.currencyCode)}</div>):amount(row.familyBalanceAmount,row.currencyCode)}</TableCell>
         <TableCell>{row.issuedByName||'\u2014'}</TableCell><TableCell><StatusLabel tone={row.status==='ISSUED'?'blue':'gray'} label={{ISSUED:ui.issued,CANCELLED:ui.cancelled,SUPERSEDED:ui.superseded}[row.status]||row.status}/></TableCell>
-        <TableCell><Button aria-label={d.pdf} disabled={pdfBusy} onDoubleClick={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();printIssued(row);}}><InvoicePdfIcon/></Button></TableCell>
-        <TableCell data-table-actions><DeleteActionButton aria-label={change.requestDelete} disabled={loading||requesting||!['ISSUED','CANCELLED'].includes(row.status)} onClick={event=>{event.stopPropagation();deleteInvoice(row);}}/></TableCell>
+        <TableCell data-table-actions sx={{whiteSpace:'nowrap'}}><DeleteActionButton aria-label={change.requestDelete} disabled={loading||requesting||!['ISSUED','CANCELLED'].includes(row.status)} onClick={event=>{event.stopPropagation();deleteInvoice(row);}}/><Button aria-label={d.pdf} disabled={pdfBusy} onDoubleClick={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();printIssued(row);}}><InvoicePdfIcon/></Button></TableCell>
       </RecordRow>)}
     </RecordInteractionScope></Table></Box>
     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{p:1.5}}><Typography variant="caption" color="text.secondary">{ui.count}: {issued.rows.length}</Typography><ListPagination languageCode={languageCode} onPrevious={()=>setPage(v=>v-1)} onNext={()=>setPage(v=>v+1)} previousDisabled={!page||loading} nextDisabled={!issued.hasMore||loading} previousLabel={common.previous} nextLabel={common.next}><Typography variant="caption">{page+1}</Typography></ListPagination></Stack>

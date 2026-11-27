@@ -1,3 +1,4 @@
+import {getRowActionsLabel} from '../constants/rowActions';
 import {ledgerEntryText} from '../constants/ledgerEntry';
 import React,{useEffect,useRef,useState} from 'react';
 import {Button,CircularProgress,MenuItem,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField} from '@mui/material';
@@ -30,7 +31,7 @@ export default function AccountingOpeningPanel({orgId,balanceDate,languageCode,l
  return <Stack spacing={2} data-accounting-opening>
   {error&&<Alert severity="error" action={<Button disabled={locked} onClick={()=>setRefresh(v=>v+1)}>{t.reload}</Button>}>{error}</Alert>}
   {busy&&<CircularProgress size={22}/>}
-  <TableContainer ref={manualSection}><Table size="small" sx={{minWidth:1080}}><TableHead><TableRow>{[t.party,t.side,t.code,t.currency,t.amount,t.billNumber,''].map((label,i)=><TableCell key={i}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{manual.map(row=><TableRow key={row.key} data-opening-input>
+  <TableContainer ref={manualSection}><Table size="small" sx={{minWidth:1080}}><TableHead><TableRow>{[t.party,t.side,t.code,t.currency,t.amount,t.billNumber,getRowActionsLabel(languageCode)].map((label,i)=><TableCell key={i}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{manual.map(row=><TableRow key={row.key} data-opening-input>
    <TableCell sx={{minWidth:210}}><LedgerCounterpartyField row={{entryKind:'BANK',counterparty:row.counterparty}} options={data?.parties||[]} languageCode={languageCode} disabled={locked||busy||!!error} onChange={counterparty=>edit(row.key,{counterparty})}/></TableCell>
    <TableCell><TextField select size="small" value={row.side} disabled={locked} onChange={e=>edit(row.key,{side:e.target.value})}>{['AR','AP'].map(side=><MenuItem key={side} value={side}>{t[side]}</MenuItem>)}</TextField></TableCell>
    <TableCell sx={{minWidth:150}}><AccountingCodeField codes={codes} value={row.accountingCodeId} onChange={accountingCodeId=>edit(row.key,{accountingCodeId})} languageCode={languageCode} disabled={locked||busy} direction={row.side==='AR'?'IN':'OUT'}/></TableCell>

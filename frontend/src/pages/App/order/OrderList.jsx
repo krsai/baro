@@ -3651,7 +3651,7 @@ const OrderList = () => {
                   ))}
                   <TableCell sx={{ fontWeight: 'bold', width: '8%', textAlign: 'right' }}>{orderPageText.total}</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: '8%', textAlign: 'right' }}>{orderPageText.styleSubtotal}</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: '4%', textAlign: 'center' }}>{getUiMessage('common.delete', 'Delete', languageCode)}</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '4%', textAlign: 'center' }}>{getRowActionsLabel(languageCode)}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -4067,7 +4067,7 @@ const OrderList = () => {
                         rowSpan={2}
                         sx={{ fontWeight: 'bold', width: 64, textAlign: 'center' }}
                       >
-                        {getUiMessage('common.delete', 'Delete', languageCode)}
+                        {getRowActionsLabel(languageCode)}
                       </TableCell>
                     </TableRow>
                     <TableRow>

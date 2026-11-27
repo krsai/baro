@@ -1,3 +1,4 @@
+import {getRowActionsLabel} from '../../../constants/rowActions';
 import TableStatusRow from '../../../components/TableStatusRow';
 import ListDetailLayout from '../../../components/ListDetailLayout';
 import GlobalNotice from "../../../components/AppNotice";
@@ -470,7 +471,7 @@ const ProcessMasterSection = ({
               <TableCell sx={{ width: '21%', fontWeight: 700 }}>베트남어</TableCell>
               <TableCell sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>스타일 공정 참조</TableCell>
               <TableCell sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>중복</TableCell>
-              <TableCell sx={{ width: '5%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
+              <TableCell sx={{ width: '5%', textAlign: 'center', fontWeight: 700 }}>{getRowActionsLabel(languageCode)}</TableCell>
             </TableRow>
           </TableHead>
           <TableBody onFocusCapture={handleFocusWithinTable} onBlurCapture={handleBlurWithinTable}>
@@ -1008,7 +1009,7 @@ const ProcessMasterLinkedSpecSection = ({
               <TableCell sx={{ width: '20%', fontWeight: 700 }}>베트남어</TableCell>
               <TableCell sx={{ width: '7%', textAlign: 'center', fontWeight: 700 }}>스타일 공정 참조</TableCell>
               <TableCell sx={{ width: '7%', textAlign: 'center', fontWeight: 700 }}>중복</TableCell>
-              <TableCell sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
+              <TableCell sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>{getRowActionsLabel(languageCode)}</TableCell>
             </TableRow>
           </TableHead>
           <TableBody onFocusCapture={handleFocusWithinTable} onBlurCapture={handleBlurWithinTable}>

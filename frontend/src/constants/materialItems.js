@@ -13,5 +13,5 @@ Object.assign(materialItemText.en,{registerMaster:'Register material item',add:'
 Object.assign(materialItemText.vi,{registerMaster:'Đăng ký mặt hàng vật tư',add:'Đăng ký mặt hàng vật tư',code:'Mã vật tư'});
 Object.assign(materialItemText.ko,{type:'타입',items:'자재 품목',viewItems:'상세 보기',actions:rowActionsText.ko,close:'닫기',noItems:'등록된 자재 품목이 없습니다.'});
 Object.assign(materialItemText.en,{type:'Type',items:'Material items',viewItems:'View details',actions:rowActionsText.en,close:'Close',noItems:'No registered material items.'});
-Object.assign(materialItemText.vi,{type:'Loại',items:'Mặt hàng vật tư',viewItems:'Xem chi tiết',actions:'Thao tác',close:'Đóng',noItems:'Chưa có mặt hàng vật tư được đăng ký.'});
+Object.assign(materialItemText.vi,{type:'Loại',items:'Mặt hàng vật tư',viewItems:'Xem chi tiết',actions:rowActionsText.vi,close:'Đóng',noItems:'Chưa có mặt hàng vật tư được đăng ký.'});
 export const materialItemSpec=item=>{const data=item?.data||item||{},d=data.details||{};return [data.itemAttributeSnapshot?.type?.nameEn,data.color?.code,[d.length,d.width,d.height].filter(Boolean).length?[d.length,d.width,d.height].filter(Boolean).join(' × ')+' mm':''].filter(Boolean).join(' / ');};

@@ -83,7 +83,7 @@ const TEXT = {
     deleteSuccess: 'Đã xóa ket qua phu cap san luong thang {month}.', deleteError: 'Không thể xoa ket qua phu cap san luong.',
     current: 'Đang tiến hành', confirmed: 'Đã xác nhận', empty: 'Chưa có ket qua phu cap san luong.', loading: 'Đang tải...',
     notCalculated: 'Chua tinh',
-    monthReady: 'Thang da chon san sang', monthIncomplete: 'Dữ liệu thang chua day du', actions: 'Quản lý', lock: 'Khoa', unlockBeforeDelete: 'Mở khóa thang nay truoc khi xoa.',
+    monthReady: 'Thang da chon san sang', monthIncomplete: 'Dữ liệu thang chua day du', actions: rowActionsText.vi, lock: 'Khoa', unlockBeforeDelete: 'Mở khóa thang nay truoc khi xoa.',
     factory: 'Nhà máy', workCoverage: 'Dữ liệu sản xuất', attendanceCoverage: 'Dữ liệu chấm công',
     averageProductionAllowance: 'Phụ cấp san luong trung binh',
     appliedRate: 'Đơn giá ap dung/giay',

@@ -1,3 +1,4 @@
+import {getRowActionsLabel} from '../constants/rowActions';
 import Dialog from './AppDialog';
 import TableStatusRow from './TableStatusRow';
 import {requiredAccountingInputs} from '../utils/requiredAccountingInputs.mjs';
@@ -49,7 +50,7 @@ export default function ExpenseCodeLinkSettings(){
   <Typography variant="h6">{text.title}</Typography>
   {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{text.retry}</Button>}>{text.error}</Alert>}
   {saved&&<ActionNotice severity="success">{text.saved}</ActionNotice>}
-  <TableContainer><Table size="small" sx={{minWidth:550}}><TableHead><TableRow>{[text.code,text.name,text.target,''].map((label,i)=><TableCell key={i}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
+  <TableContainer><Table size="small" sx={{minWidth:550}}><TableHead><TableRow>{[text.code,text.name,text.target,getRowActionsLabel(languageCode)].map((label,i)=><TableCell key={i}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
    {rows.map(row=><TableRow key={row.id}><TableCell>{row.code}</TableCell><TableCell>{serviceName(row,languageCode)}</TableCell><TableCell>
     {text[row.target==='NONE'?'none':row.target.toLowerCase()]}
     </TableCell><TableCell><Button disabled={saving} onClick={()=>setEditingId(row.id)}>{text.target}</Button></TableCell></TableRow>)}

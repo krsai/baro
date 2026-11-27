@@ -1,3 +1,4 @@
+import {invoiceListDescription,invoiceListPresentationText} from '../frontend/src/utils/invoiceListPresentation.mjs';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -85,7 +86,7 @@ async function configurePage(page, language, orgType, orgRole) {
       orderReads.push(workflowStatus);orderQueries.push(Object.fromEntries(url.searchParams));
       return route.fulfill({ headers, json: [{ id: 'order-001', dbId: 17, orderNumber: 'ORDER-001', sellerOrgId:1,issuedInvoiceCount:1,items: [], workflowStatus },{id:'empty-order',dbId:18,orderNumber:'EMPTY-ORDER',sellerOrgId:1,issuedInvoiceCount:0,items:[],workflowStatus:'RECEIVED'}].filter(row=>url.searchParams.get('excludeClosed')!=='true'||row.workflowStatus!=='COMPLETED') });
     }
-    if (url.pathname === '/invoices/issued') {invoiceReads.push(Object.fromEntries(url.searchParams));return route.fulfill({ headers, json: { rows: [{id:'scope-invoice',invoiceNumber:'INV-SCOPED',status:'ISSUED',buyerName:'Buyer',currencyCode:'USD',total:'30',receivedAmount:'0',familyBalanceAmount:'30',familyBalanceKind:'DUE',issuedAt:'2020-01-02',orders:[],accountingCodes:['CMTE'],descriptions:['Style']}], hasMore: false,orderScope:url.searchParams.has('orderId')?{orderId:url.searchParams.get('orderId'),orderNumber:'ORDER-001'}:null } });}
+    if (url.pathname === '/invoices/issued') {invoiceReads.push(Object.fromEntries(url.searchParams));return route.fulfill({ headers, json: { rows: [{id:'scope-invoice',invoiceNumber:'INV-SCOPED',status:'ISSUED',buyerName:'Buyer',currencyCode:'USD',total:'30',receivedAmount:'0',familyBalanceAmount:'30',familyBalanceKind:'DUE',issuedAt:'2020-01-02',orders:[{sourceOrderNumber:'26AW2'}],accountingCodes:['CMTE','PBGE'],descriptions:['TKD Crew Tee','Other'],itemSummary:{firstDescription:'TKD Crew Tee',additionalCount:2,quantities:[{unit:'GARMENT',quantity:'600.0000'}]}}], hasMore: false,orderScope:url.searchParams.has('orderId')?{orderId:url.searchParams.get('orderId'),orderNumber:'ORDER-001'}:null } });}
     if (url.pathname === '/orders/shipments') {
       const mode = url.searchParams.get('mode');
       const { excluded } = saved.SHIPPING;
@@ -207,7 +208,10 @@ try {
     ]);
     await page.getByRole('row',{name:/ORDER-001/}).getByRole('button',{name:orderInvoiceNavigationText[language].view,exact:true}).click();
     await page.getByText(orderInvoiceNavigationText[language].order+': ORDER-001',{exact:true}).waitFor();
-    await page.getByRole('button',{name:/INV-SCOPED/}).waitFor();
+    const summary=invoiceListDescription({orders:[{sourceOrderNumber:'26AW2'}],itemSummary:{firstDescription:'TKD Crew Tee',additionalCount:2,quantities:[{unit:'GARMENT',quantity:'600.0000'}]}},language);
+    await page.getByRole('button',{name:summary,exact:true}).waitFor();
+    const invoiceHeaders=await page.getByRole('columnheader').allTextContents();assert.equal(invoiceHeaders.length,11);assert.equal(invoiceHeaders[1],invoiceListPresentationText[language].billTo);assert.equal(invoiceHeaders.at(-1),rowActionsText[language]);assert.equal(invoiceHeaders.includes('PDF'),false);
+    const invoiceCells=page.getByRole('row',{name:new RegExp('26AW2')}).getByRole('cell');assert.equal(await invoiceCells.nth(2).innerText(),summary);assert.equal(await invoiceCells.last().getByRole('button').count(),2);
     assert.equal(invoiceReads.at(-1).orderId,'order-001');assert.equal(invoiceReads.at(-1).start,undefined);assert.equal(invoiceReads.at(-1).end,undefined);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
     saved.receiptClosed=true;

@@ -1,3 +1,5 @@
+import {useLanguage} from '../../../context/LanguageContext';
+import {getRowActionsLabel} from '../../../constants/rowActions';
 import Dialog from '../../../components/AppDialog';
 import TableStatusRow from '../../../components/TableStatusRow';
 import Autocomplete from '../../../components/SearchableSelect';
@@ -367,6 +369,7 @@ const AttributeSection = memo(function AttributeSection({
   onCodeFocusHandled,
   duplicateCodeSet = EMPTY_CODE_SET,
 }) {
+  const {languageCode}=useLanguage();
   return (
     <Paper
       variant="outlined"
@@ -447,7 +450,7 @@ const AttributeSection = memo(function AttributeSection({
                   {col.label}
                 </TableCell>
               ))}
-              <TableCell sx={{ width: '10%', textAlign: 'center' }}>삭제</TableCell>
+              <TableCell sx={{ width: '10%', textAlign: 'center' }}>{getRowActionsLabel(languageCode)}</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>

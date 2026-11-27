@@ -1,3 +1,4 @@
+import {getRowActionsLabel} from '../../constants/rowActions';
 import Dialog from '../../components/AppDialog';
 import TableStatusRow from '../../components/TableStatusRow';
 import {materialIndustryText} from '../../constants/materialIndustry';
@@ -107,7 +108,7 @@ export default function AccountingCodeSettings(){
   <PageContentStack>{error&&<Alert severity="error">{error}</Alert>}
    <HierarchyPanel label={text.category} items={items} selectedId={selected} onSelect={setSelected}>
     <Stack direction="row" alignItems="baseline" useFlexGap flexWrap="wrap" gap={1.5} sx={{mb:2}}><Typography variant="subtitle2">{items.find(item=>item.id===selected)?.label||text.all}</Typography></Stack>
-    <TableContainer><Table size="small"><TableHead><TableRow>{[text.code,text.name,text.industry,materialText.enabled,directionText.label,usageText.column,''].map((label,index)=><TableCell key={index}>{label}</TableCell>)}</TableRow></TableHead>
+    <TableContainer><Table size="small"><TableHead><TableRow>{[text.code,text.name,text.industry,materialText.enabled,directionText.label,usageText.column,getRowActionsLabel(languageCode)].map((label,index)=><TableCell key={index}>{label}</TableCell>)}</TableRow></TableHead>
      <TableBody>{visible.map(row=><TableRow key={row.id}>
       <TableCell><Typography fontWeight={700}>{row.code}</Typography></TableCell><TableCell>{name(row)}</TableCell>
       <TableCell>{(row.industries||[]).map(industry=>[name(industry.partnerRole),name(industry)].filter(Boolean).join(' > ')).join(', ')||'—'}</TableCell>

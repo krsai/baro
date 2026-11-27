@@ -1,4 +1,5 @@
 import {orderInvoiceListScope} from '../services/orderInvoiceList';
+import {invoiceListItemSummary} from '../services/invoiceListSummary';
 import {invoiceReceivedTotals,invoiceEditRevision,invoiceEditLock,updateIssuedInvoice} from '../services/invoiceEdit';
 import { saveInvoiceDraft, deleteInvoiceDraft } from "../services/invoiceDraftStore";
 import { createInvoiceRevisionDraft, issueInvoiceDraft, recordInvoicePayment, replaceInvoicePaymentAllocations, voidInvoicePayment } from "../services/invoiceIssueStore";
@@ -148,6 +149,7 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
       sellerName:(row.snapshot as any)?.fields?.seller?.name||access.organization.name,
       accountingCodes:[...new Set([(row.snapshot as any)?.accounting?.code,...((row.snapshot as any)?.lines||[]).map((line:any)=>line.code)].filter(Boolean))],
       descriptions:[...new Set(((row.snapshot as any)?.lines||[]).map((line:any)=>line.description||line.styleCode).filter(Boolean))],
+      itemSummary:invoiceListItemSummary(row.snapshot,row.documentKind||'ORDER'),
       revisionOfInvoiceId: row.revisionOfInvoiceId, revisionNumber: row.revisionNumber, revisionReason: row.revisionReason,
       // A partially unlocked document must still offer Unlock for its remaining
       // locks. Locks belonging to a later invoice are not this document's locks.

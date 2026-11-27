@@ -186,9 +186,9 @@ try{
    return r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{hasMore:true,rows:[{id:'i1',invoiceNumber:'INV-001',status:'ISSUED',buyerName:'Customer',currencyCode:'USD',total:'20',receivableAdded:'20',receivedAmount:'0',familyBalanceAmount:'20',familyBalanceKind:'DUE',isCurrentRevision:true,issuedAt:'2026-10-21',orders:[{sourceOrderNumber:'PO-1',installmentNumber:1}]}]}});
   });
   await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html?mode=list`);
-  try{await page.getByText('INV-001',{exact:true}).waitFor({timeout:8000});}catch(e){throw new Error(JSON.stringify({errors,queries,body:await page.locator('body').innerText()}));}
+  try{await page.getByText('PO-1',{exact:true}).waitFor({timeout:8000});}catch(e){throw new Error(JSON.stringify({errors,queries,body:await page.locator('body').innerText()}));}
   assert.doesNotMatch(await page.locator('body').innerText(),/초안|draft|bản nháp/i);
-  assert.equal(await page.locator('tbody td').filter({has:page.locator('button')}).count(),3,'Rows expose record open, PDF and protected cancellation');
+  assert.equal(await page.locator('tbody td').filter({has:page.locator('button')}).count(),2,'Rows expose record opening and one shared action cell');
   const assertSeparateCards=async()=>{
    const layout=await page.locator('[data-search-panel]').evaluate(search=>{
     const results=document.querySelector('[data-search-results]');
@@ -202,7 +202,7 @@ try{
   };
   await assertSeparateCards();
   await page.locator('tbody tr').first().dblclick();assert.equal(await page.evaluate(()=>window.navigation),'/invoices/i1');
-  await page.getByRole('button',{name:lang==='ko'?'다음':lang==='vi'?'Tiếp':'Next',exact:true}).click();await page.waitForFunction(()=>document.querySelector('tbody')?.textContent.includes('INV-001'));
+  await page.getByRole('button',{name:lang==='ko'?'다음':lang==='vi'?'Tiếp':'Next',exact:true}).click();await page.waitForFunction(()=>document.querySelector('tbody')?.textContent.includes('PO-1'));
   await page.getByPlaceholder(invoiceUi[lang].search).fill('PO-1');
   await page.waitForResponse(r=>r.url().includes('search=PO-1'));
   assert.ok(queries.some(q=>q.search==='PO-1'&&q.page==='0'));
