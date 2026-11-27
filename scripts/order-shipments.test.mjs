@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {changeApprovalFixture} from './helpers/change-approval-fixture.mjs';
-const {shippingDetail,listShippingOrders,createOrderShipment,cancelOrderShipment,saveShippingPolicy,shippingActor,registerOrderShipmentRoutes}=createRequire(import.meta.url)('../backend/dist/services/orderShipments');
+const {shippingDetail,createOrderShipment,cancelOrderShipment,saveShippingPolicy,shippingActor,registerOrderShipmentRoutes}=createRequire(import.meta.url)('../backend/dist/services/orderShipments');
 
 test('split order shipments preserve color/size balances, explicit exclusions, cancellations and company scope',async()=>{
  const f=await changeApprovalFixture({registration:true});try{
@@ -18,6 +18,15 @@ test('split order shipments preserve color/size balances, explicit exclusions, c
   const red=await db.attrColor.create({data:{code:'SHIP-RED',name:'Red'}}),blue=await db.attrColor.create({data:{code:'SHIP-BLUE',name:'Blue'}});
   const order=await db.workOrder.create({data:{orgId:org,sellerOrgId:org,buyerOrgId:buyer.id,customerId:buyer.id,orderId:'shipping-test',orderNumber:'ORD-SHIP',totalQuantity:190,workOrderItems:{create:[{itemId:'red',styleId:style.id,colorId:red.id,gender:'M',sizeQuantities:{S:100,M:50},totalQuantity:150},{itemId:'blue',styleId:style.id,colorId:blue.id,gender:'M',sizeQuantities:{S:40},totalQuantity:40}]}} ,include:{workOrderItems:{orderBy:{id:'asc'}}}});
   const [r,b]=order.workOrderItems,request=(lines)=>({clientKey:randomUUID(),shipmentDate:'2026-11-06',remark:'Partial shipment',lines});
+  assert.equal((await shippingDetail(db,org,actor.id,order.id)).comparison,null);
+  const invoice=async(sequence,status,quantity,percentage=100)=>db.invoice.create({data:{sellerOrgId:org,buyerOrgId:buyer.id,invoiceNumber:'SHIP-INV-'+sequence,clientKey:randomUUID(),sequenceNumber:sequence,status,pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',subtotal:quantity,total:quantity,snapshot:{},issuedBy:'test',orders:{create:{workOrderId:order.id,sourceOrderId:order.orderId,sourceOrderNumber:order.orderNumber,sourceUpdatedAt:order.updatedAt,billingPercentage:percentage,basisAmount:190,billedAmount:quantity,installmentNumber:sequence}}}});
+  const firstInvoice=await invoice(1,'ISSUED',100,30),finalInvoice=await invoice(2,'ISSUED',190);
+  const invoiceOrder=await db.invoiceOrder.findFirst({where:{invoiceId:finalInvoice.id}});
+  await db.invoiceLine.create({data:{invoiceId:finalInvoice.id,invoiceOrderId:invoiceOrder.id,workOrderItemId:r.id,sourceItemId:r.id,lineKey:'red-S',styleId:style.id,styleCode:'SHIRT',styleName:'Shirt',description:'Shirt',color:'Red',gender:'M',size:'S',quantity:100,bucketQuantity:100,unitPrice:1,amount:100,remark:'',adjustmentReason:'',hsCode:'',origin:''}});
+  await invoice(3,'CANCELLED',999);
+  const comparison=(await shippingDetail(db,org,actor.id,order.id)).comparison;
+  assert.equal(comparison.id,finalInvoice.id,'latest valid invoice, not the cancelled newer document');assert.equal(comparison.quantity,100,'quantity comes from frozen lines, not money or summed cumulative invoices');assert.equal(comparison.billingPercentage,100);
+  assert.equal((await shippingDetail(db,org,actor.id,order.id)).cells.find(c=>c.itemId===r.id&&c.size==='S').invoiced,100);
   const initial=await shippingDetail(db,org,actor.id,order.id);assert.equal(initial.totals.ordered,190);assert.equal(initial.totals.shipped,0);assert.equal(initial.policy.version,0);assert.equal(await db.$queryRawUnsafe('SELECT * FROM "OrderShippingPolicy"').then(rows=>rows.length),0,'reads do not create policies or fake historical shipments');
   const firstInput=request([{itemId:r.id,size:'S',quantity:20},{itemId:r.id,size:'M',quantity:10}]);
   const first=await createOrderShipment(db,org,actor.id,order.id,firstInput);
@@ -36,7 +45,6 @@ test('split order shipments preserve color/size balances, explicit exclusions, c
   assert.equal((await saveShippingPolicy(db,org,admin.id,order.id,exclusion)).version,1);await saveShippingPolicy(db,org,admin.id,order.id,exclusion);
   await assert.rejects(createOrderShipment(db,org,actor.id,order.id,request([{itemId:r.id,size:'S',quantity:1}])),/SHIPPING_EXCLUDED/);
   assert.equal((await createOrderShipment(db,org,actor.id,order.id,firstInput)).id,first.id,'retry remains safe after exclusion');
-  assert.equal((await listShippingOrders(db,org,actor.id,{mode:'TRACKED'})).rows.length,0);assert.equal((await listShippingOrders(db,org,actor.id,{mode:'EXCLUDED'})).rows[0].shipped,65);
   const excluded=await shippingDetail(db,org,actor.id,order.id);assert.equal(excluded.totals.shipped,65);assert.equal(excluded.totals.remaining,125);assert.equal(excluded.events.length,1,'exclusion is not fabricated completion');
   await assert.rejects(saveShippingPolicy(db,org,admin.id,order.id,{excluded:false,version:0,reason:'Resume',clientKey:randomUUID()}),/SHIPPING_CHANGED/);
   await saveShippingPolicy(db,org,admin.id,order.id,{excluded:false,version:1,reason:'Resume',clientKey:randomUUID()});
@@ -49,6 +57,6 @@ test('split order shipments preserve color/size balances, explicit exclusions, c
   const worker=await db.employee.create({data:{orgId:org,name:'Worker',gradeId:grade.id,orgRole:'WORKER',status:'ACTIVE'}});await assert.rejects(shippingActor(db,org,worker.id),/SHIPPING_ACCESS_DENIED/);
   const routes=new Map(),app=Object.fromEntries(['get','put','post'].map(method=>[method,(path,handler)=>routes.set(method+path,handler)]));
   registerOrderShipmentRoutes(app,db,{requireOrgRole:async()=>({organization:company}),actorId:()=>actor.id,canAccess:async()=>false});
-  await assert.rejects(routes.get('get/orders/shipments')({query:{}},{json:()=>assert.fail('denied role policy must not return data')}),/SHIPPING_ACCESS_DENIED/);
+  await assert.rejects(routes.get('get/orders/:orderId/shipments')({query:{}},{json:()=>assert.fail('denied role policy must not return data')}),/SHIPPING_ACCESS_DENIED/);
  }finally{await f.close();}
 });

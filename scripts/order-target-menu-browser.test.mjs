@@ -32,7 +32,6 @@ function Menus() {
     React.createElement('div', { hidden: pathname !== '/order' }, React.createElement(OrderList)),
     React.createElement(Routes, null,
       React.createElement(Route, { path: '/order', element: null }),
-      React.createElement(Route, { path: '/order-shipments', element: React.createElement(OrderShipments) }),
       React.createElement(Route, { path: '/invoices', element: React.createElement(InvoiceWorkspace) })
     )
   );
@@ -138,13 +137,6 @@ try {
     const explanationTone=await explanation.locator('[data-order-workflow-explanation="RECEIVED"] .MuiChip-root').evaluate(el=>getComputedStyle(el).backgroundColor);assert.equal(explanationTone,tableTone);
     if(language==='ko'&&width===1440){await page.waitForTimeout(300);await page.screenshot({path:'logs/order-status-label-explanation-preview.png'});}
     await page.keyboard.press('Escape');await explanation.waitFor({state:'hidden'});assert.equal(await information.evaluate(el=>document.activeElement===el),true);
-    await page.evaluate(() => window.testNavigate('/order-shipments'));
-    await button('SHIPPING').waitFor();
-    const shipment = page.locator('main table').getByText('SHIP-LIST-ORDER', { exact: true });
-    await shipment.waitFor();
-    assert.equal(await button('INVOICE').count(), 0);
-    assert.deepEqual(reads, []);
-
     async function changeTarget(kind, excluded = true) {
       const gear = button(kind);
       assert.equal((await gear.textContent()).trim(), '', 'settings trigger displays only the gear');
@@ -176,11 +168,6 @@ try {
       await dialog.waitFor({ state: 'hidden' });
     }
 
-    await changeTarget('SHIPPING');
-    await shipment.waitFor({ state: 'hidden' });
-    assert.ok(shipmentReads.filter(mode => mode === 'TRACKED').length >= 2, 'shipment list reloads after saving target inclusion');
-    assert.equal(saved.INVOICE.excluded, false);
-    assert.ok(reads.length > 0 && reads.every(kind => kind === 'SHIPPING'));
     const previousReadCount = reads.length;
 
     await page.evaluate(() => window.testNavigate('/invoices'));
@@ -207,7 +194,6 @@ try {
     await orderStatus('RECEIVED').waitFor();
     assert.ok(reads.slice(previousReadCount).length > 0 && reads.slice(previousReadCount).every(kind => kind === 'INVOICE'));
     assert.deepEqual(writes.map(({ kind, input }) => ({ kind, id: input.rows[0].id, excluded: input.rows[0].excluded, revision: input.rows[0].revision, reason: Object.hasOwn(input, 'reason') })), [
-      { kind: 'SHIPPING', id: 17, excluded: true, revision: 0, reason: false },
       { kind: 'INVOICE', id: 17, excluded: true, revision: 0, reason: false },
       { kind: 'INVOICE', id: 17, excluded: false, revision: 1, reason: false },
     ]);
@@ -227,9 +213,6 @@ try {
     await page.getByRole('heading', { level: 1 }).waitFor();
     assert.equal(await page.getByRole('button', { name: managementTargetText.en.SHIPPING, exact: true }).count(), 0);
     assert.equal(await page.getByRole('button', { name: managementTargetText.en.INVOICE, exact: true }).count(), 0);
-    await page.evaluate(() => window.testNavigate('/order-shipments'));
-    await page.locator('main table').getByText('SHIP-LIST-ORDER', { exact: true }).waitFor();
-    assert.equal(await page.getByRole('button', { name: managementTargetText.en.SHIPPING, exact: true }).count(), 0);
     await page.evaluate(() => window.testNavigate('/invoices'));
     await page.getByRole('button', { name: invoiceMessages.en.newInvoice, exact: true }).waitFor();
     assert.equal(await page.getByRole('button', { name: managementTargetText.en.INVOICE, exact: true }).count(), 0);

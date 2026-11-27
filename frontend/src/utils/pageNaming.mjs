@@ -31,7 +31,7 @@ export const PAGE_ROUTES = [
   ['/business-partner','partners','list'], ['/customer','partners','list'],
   ['/outsourcing-partner','partners','list'], ['/material-supplier','partners','list'], ['/logistics-partner','partners','list'],
   ['/customer-pricing','customerPricing','page'],
-  ['/order-shipments','orderShipments','page','detail'], ['/order','order','list','detail'], ['/style','style','list','detail'],
+  ['/order','order','list','detail'], ['/style','style','list','detail'],
   ['/customer-production-report','customerProductionReport','page'],
   ['/st-review','standardReview','page'], ['/shipment-review','shipmentReview','page'],
   ['/qc-review','qcReview','page'], ['/assignment','assignment','page','detail'],
@@ -70,6 +70,7 @@ export function formatPageTitle(name, mode, languageCode = 'ko') {
 export function resolvePageNaming(path, languageCode, translate) {
   const url = new URL(path || '/', 'https://baro.local');
   const pathname = url.pathname.replace(/\/$/,'') || '/';
+  if(/^\/order\/[^/]+\/shipments$/.test(pathname)){const label=translate('menu.orderShipments');return {path:pathname,key:'orderShipments',mode:'page',menuLabel:label,title:label};}
   const row = PAGE_ROUTES.filter(([base]) => pathname === base || pathname.startsWith(`${base}/`))
     .sort((a,b) => b[0].length - a[0].length)[0];
   if (!row) return null;

@@ -184,7 +184,6 @@ export const resolveFeatureByPath = (pathname, orgType = 'SERVICE') => {
   if (path === '/invoices' || path.startsWith('/invoices/')) return FEATURE_KEYS.INVOICE;
   if (path === '/') return null;
   if (path.startsWith('/dashboard')) return FEATURE_KEYS.DASHBOARD;
-  if (path.startsWith('/order-shipments')) return FEATURE_KEYS.ORDER_SHIPMENTS;
   if (path.startsWith('/order')) return FEATURE_KEYS.ORDER;
   if (path.startsWith('/customer-production-report')) return FEATURE_KEYS.PRODUCTION_STATUS;
   if (path.startsWith('/outsourcing-partner')) return FEATURE_KEYS.OUTSOURCING_PARTNER;
@@ -231,7 +230,6 @@ export const canAccessPath = (pathname, authState) => {
   if(path.startsWith('/system-setting/entities'))return context?.entryType==='SYSTEM'&&context?.systemRole==='SYSTEM_ADMIN';
   if(path.startsWith('/system-setting/shipping-ports'))return context?.entryType==='SYSTEM'&&context?.systemRole==='SYSTEM_ADMIN';
   if(path.startsWith('/system-setting/text-acronyms'))return context?.entryType==='SYSTEM'&&context?.systemRole==='SYSTEM_ADMIN';
-  if(path.startsWith('/order-shipments')&&(!context||context.entryType!=='ORG'||context.orgType!=='MANUFACTURER'))return false;
   // The root route is a redirect-only shell. Allow authenticated users to enter it.
   if (path === '/') return Boolean(context);
   if (path.replace(/\/+$/,'') === '/business-partner') return [FEATURE_KEYS.CUSTOMER,FEATURE_KEYS.OUTSOURCING_PARTNER,FEATURE_KEYS.MATERIAL_SUPPLIER,FEATURE_KEYS.LOGISTICS_PARTNER].some(feature=>canAccessFeatureByContext(feature,context));

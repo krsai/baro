@@ -15,7 +15,7 @@ export async function requireOrderTargetAdmin(db:any,orgId:number,actorId:number
  if(actor.orgRole!=='ADMIN')fail('TARGET_ACCESS_DENIED',403);
  const policy=await db.systemSetting.findUnique({where:{key:'ROLE_ACCESS_POLICY'}});
  const configured=policy?.value?.MANUFACTURER?.ADMIN;
- if(Array.isArray(configured)&&!configured.includes(Number(policy?.value?.__schemaVersion||0)<19?'ORDER':'ORDER_SHIPMENTS'))fail('TARGET_ACCESS_DENIED',403);
+ if(Array.isArray(configured)&&!configured.includes('ORDER'))fail('TARGET_ACCESS_DENIED',403);
  return actor;
 }
 async function order(db:any,orgId:number,id:number,lock=false){
@@ -31,22 +31,17 @@ export function shippingCells(items:any[],shipments:any[]){
  const used=new Map<string,number>();for(const shipment of shipments)if(!shipment.cancelledAt)for(const cell of shipment.lines){const id=cell.itemId+':'+cell.size;used.set(id,(used.get(id)||0)+cell.quantity);}
  return items.flatMap(item=>Object.entries(item.sizeQuantities||{}).filter(([,quantity])=>Number.isSafeInteger(quantity)&&Number(quantity)>0).map(([size,quantity])=>({itemId:item.id,size,ordered:Number(quantity),shipped:used.get(item.id+':'+size)||0,remaining:Number(quantity)-(used.get(item.id+':'+size)||0),style:item.style,color:item.color,gender:item.gender})));
 }
+export async function shipmentInvoiceComparison(db:any,orgId:number,workOrderId:number){
+ const invoice=await db.invoice.findFirst({where:{sellerOrgId:orgId,status:'ISSUED',orders:{some:{workOrderId}}},orderBy:[{sequenceNumber:'desc'},{revisionNumber:'desc'}],include:{orders:{where:{workOrderId},include:{lines:true}}}});
+ if(!invoice)return null;
+ const source=invoice.orders[0];
+ return {id:invoice.id,number:invoice.invoiceNumber,billingPercentage:Number(source.billingPercentage),quantity:source.lines.reduce((sum:number,line:any)=>sum+line.quantity,0),lines:source.lines.map((line:any)=>({itemId:line.workOrderItemId,size:line.size,quantity:line.quantity,description:line.description}))};
+}
 export async function shippingDetail(db:any,orgId:number,actorId:number,id:number){
  await shippingActor(db,orgId,actorId);const row=await order(db,orgId,id);
  const [state,shipments,events]=await Promise.all([policy(db,orgId,id),db.$queryRawUnsafe('SELECT s.*,e.name AS "createdByName",c.name AS "cancelledByName" FROM "OrderShipment" s JOIN "Employee" e ON e.id=s."createdByEmployeeId" LEFT JOIN "Employee" c ON c.id=s."cancelledByEmployeeId" WHERE s."orgId"=$1 AND s."workOrderId"=$2 ORDER BY s."shipmentDate" DESC,s."createdAt" DESC',orgId,id),db.$queryRawUnsafe('SELECT a.*,e.name AS "actorName" FROM "OrderShippingPolicyEvent" a JOIN "Employee" e ON e.id=a."actorId" WHERE a."orgId"=$1 AND a."workOrderId"=$2 ORDER BY a."createdAt" DESC',orgId,id)]);
- const cells=shippingCells(row.workOrderItems,shipments);return {order:row,policy:state,shipments,events,cells,totals:{ordered:cells.reduce((n,c)=>n+c.ordered,0),shipped:cells.reduce((n,c)=>n+c.shipped,0),remaining:cells.reduce((n,c)=>n+c.remaining,0)}};
-}
-export async function listShippingOrders(db:any,orgId:number,actorId:number,query:any={}){
- await shippingActor(db,orgId,actorId);const q=text(query.q||'',120),mode=query.mode||'TRACKED',page=Number(query.page||0);
- if(!['TRACKED','EXCLUDED','ALL'].includes(mode)||!Number.isSafeInteger(page)||page<0||page>100000)fail('SHIPPING_INVALID_INPUT');
- const rows=await db.$queryRawUnsafe(`SELECT w.id,w."orderNumber",w."dueDate",COALESCE(c.name,'') AS customer,c."nameKo" AS "customerKo",c."nameVi" AS "customerVi",COALESCE(p.excluded,false) AS excluded,
- COALESCE((SELECT sum((v.value#>>'{}')::bigint) FROM "WorkOrderItem" i CROSS JOIN LATERAL jsonb_each(CASE WHEN jsonb_typeof(i."sizeQuantities")='object' THEN i."sizeQuantities" ELSE '{}'::jsonb END) v WHERE i."workOrderId"=w.id AND jsonb_typeof(v.value)='number'),0)::text AS ordered,
- COALESCE((SELECT sum((cell->>'quantity')::bigint) FROM "OrderShipment" s CROSS JOIN LATERAL jsonb_array_elements(s.lines) cell WHERE s."workOrderId"=w.id AND s."orgId"=w."orgId" AND s."cancelledAt" IS NULL),0)::text AS shipped,
- count(*) OVER()::integer AS "resultCount"
- FROM "WorkOrder" w LEFT JOIN "Organization" c ON c.id=w."customerId" LEFT JOIN "OrderShippingPolicy" p ON p."workOrderId"=w.id AND p."orgId"=w."orgId"
- WHERE w."orgId"=$1 AND COALESCE(w."sellerOrgId",w."orgId")=$1 AND ($2='' OR position(lower($2) IN lower(w."orderNumber"||' '||COALESCE(c.name,'')||' '||COALESCE(c."nameKo",'')))>0)
- AND ($3='ALL' OR COALESCE(p.excluded,false)=($3='EXCLUDED')) ORDER BY w."createdAt" DESC,w.id DESC LIMIT 20 OFFSET $4`,orgId,q,mode,page*20);
- return {rows:rows.map((r:any)=>({...r,ordered:Number(r.ordered),shipped:Number(r.shipped)})),total:rows[0]?.resultCount||0,page};
+ const comparison=await shipmentInvoiceComparison(db,orgId,id);
+ const cells=shippingCells(row.workOrderItems,shipments).map(cell=>({...cell,invoiced:comparison?comparison.lines.filter((line:any)=>line.itemId===cell.itemId&&line.size===cell.size).reduce((sum:number,line:any)=>sum+line.quantity,0):null}));return {order:row,policy:state,shipments,events,cells,comparison,totals:{ordered:cells.reduce((n,c)=>n+c.ordered,0),shipped:shipments.filter((s:any)=>!s.cancelledAt).reduce((sum:number,s:any)=>sum+s.lines.reduce((n:number,c:any)=>n+c.quantity,0),0),remaining:cells.reduce((n,c)=>n+c.remaining,0)}};
 }
 export async function saveShippingPolicy(db:any,orgId:number,actorId:number,id:number,input:any){
  return retryEditTransaction(db,tx=>saveShippingPolicyInTransaction(tx,orgId,actorId,id,input));
@@ -91,10 +86,9 @@ export function registerOrderShipmentRoutes(app:any,db:any,gates:any){
  const route=(method:string,path:string,action:any)=>app[method](path,async(req:any,res:any)=>{
   const access=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT'],allowSystemAdmin:false});if(!access)return;
   const orgId=access.organization.id,actorId=gates.actorId();const actor=await shippingActor(db,orgId,actorId);
-  if(!await gates.canAccess({orgType:access.organization.type,orgRole:actor.orgRole,feature:'ORDER_SHIPMENTS'}))fail('SHIPPING_ACCESS_DENIED',403);
+  if(!await gates.canAccess({orgType:access.organization.type,orgRole:actor.orgRole,feature:'ORDER'}))fail('SHIPPING_ACCESS_DENIED',403);
   res.json(await action(req,orgId,actorId));
  });
- route('get','/orders/shipments',(r:any,o:number,a:number)=>listShippingOrders(db,o,a,r.query));
  route('get','/orders/:orderId/shipments',(r:any,o:number,a:number)=>shippingDetail(db,o,a,Number(r.params.orderId)));
  route('post','/orders/:orderId/shipments',(r:any,o:number,a:number)=>createOrderShipment(db,o,a,Number(r.params.orderId),r.body));
  route('put','/orders/:orderId/shipping-policy',(r:any,o:number,a:number)=>saveShippingPolicy(db,o,a,Number(r.params.orderId),r.body));

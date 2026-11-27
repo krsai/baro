@@ -8,7 +8,7 @@ const require=createRequire(import.meta.url);
 const {readIndustryMenuPolicy,saveIndustryMenuPolicy,companyIndustryMenuFeatures,industryMenuMiddleware,industryMenuApiFeature,registerIndustryMenuRoutes,COMMON_MENU_FEATURES,INDUSTRY_SPECIFIC_FEATURES}=require('../backend/dist/services/industryMenuPolicy.js');
 
 test('split business APIs require their own menu without inheriting another menu permission',async()=>{
- for(const [path,feature] of [['/customer-production-reports','PRODUCTION_STATUS'],['/orders/shipments','ORDER_SHIPMENTS'],['/orders/12/shipping-policy','ORDER_SHIPMENTS'],['/shipping-requests','SHIPPING_REQUEST'],['/revenue-forecast','REVENUE_FORECAST']]){
+ for(const [path,feature] of [['/customer-production-reports','PRODUCTION_STATUS'],['/orders/shipments','ORDER'],['/orders/12/shipping-policy','ORDER'],['/shipping-requests','SHIPPING_REQUEST'],['/revenue-forecast','REVENUE_FORECAST']]){
   assert.equal(industryMenuApiFeature(path),feature);
   const db={systemSetting:{findUnique:async()=>({value:{menuSplitVersion:19,approvalSettingsSplit:true,fullScopeTypes:['MANUFACTURER'],subscribers:{MANUFACTURER:[feature]}}})}};
   for(const permitted of [true,false]){

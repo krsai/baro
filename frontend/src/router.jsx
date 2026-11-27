@@ -365,11 +365,7 @@ const router = createBrowserRouter([
             element: <StReview />,
           },
           {
-            path: 'order-shipments',
-            element: <OrderShipments />,
-          },
-          {
-            path: 'order-shipments/:orderId',
+            path: 'order/:orderId/shipments',
             element: <OrderShipments />,
           },
           {

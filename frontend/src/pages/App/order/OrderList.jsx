@@ -1,3 +1,5 @@
+import {getStyleGroupPastelStyle} from '../../../utils/orderItemPresentation';
+import {orderShipmentText} from '../../../constants/orderShipments';
 import {canAccessPath} from '../../../utils/accessControl';
 import {getRowActionsLabel,orderInvoiceNavigationText} from '../../../constants/rowActions';
 import ManagementTargetSettingsButton from '../../../components/ManagementTargetSettingsButton';
@@ -113,7 +115,7 @@ const ORDER_LIST_COLUMN_WIDTHS = {
   orderValue: '12%',
   dueDate: '10%',
   lock: '5%',
-  actions: '160px',
+  actions: '280px',
 };
 const ORDER_LIST_TEXT_ELLIPSIS_SX = {
   whiteSpace: 'nowrap',
@@ -172,24 +174,6 @@ const GENDER_SORT_ORDER = {
   M: 0,
   W: 1,
   U: 2,
-};
-const STYLE_GROUP_PASTEL_STYLES = [
-  { background: '#eaf4ff', border: '#cfe2ff', accent: '#7ab6ff' },
-  { background: '#ffeef3', border: '#ffd6e0', accent: '#ff9eb9' },
-  { background: '#edf9f0', border: '#d4eedb', accent: '#8fcea0' },
-  { background: '#fff7e6', border: '#f1dfb8', accent: '#dba84a' },
-  { background: '#f3efff', border: '#ded5ff', accent: '#a58bf0' },
-  { background: '#eefafa', border: '#cfeaea', accent: '#69bebe' },
-];
-const STYLE_GROUP_PASTEL_FALLBACK = {
-  background: '#f7f7f7',
-  border: '#ececec',
-  accent: '#c6c6c6',
-};
-const getStyleGroupPastelStyle = (index) => {
-  if (!STYLE_GROUP_PASTEL_STYLES.length) return STYLE_GROUP_PASTEL_FALLBACK;
-  const safeIndex = Number.isFinite(index) ? Math.abs(index) : 0;
-  return STYLE_GROUP_PASTEL_STYLES[safeIndex % STYLE_GROUP_PASTEL_STYLES.length];
 };
 const buildOrderTabLabel = (order, baseLabel = 'Order') => {
   const orderNumber = String(order?.orderNumber || order?.id || '').trim();
@@ -3235,6 +3219,7 @@ const OrderList = () => {
                           </Typography>
                         </TableCell>
                         <TableCell data-table-actions sx={{ textAlign: 'center',whiteSpace:'nowrap' }}>
+                          {authState.activeOrgType==='MANUFACTURER'&&['ADMIN','OPERATOR','ACCOUNTANT'].includes(activeProfile?.orgRole)&&Number(order.sellerOrgId)===Number(activeOrgId)&&<Button size="small" onClick={event=>{event.stopPropagation();navigateToPath('/order/'+order.dbId+'/shipments');}}>{(orderShipmentText[languageCode]||orderShipmentText.en).title}</Button>}
                           <Button size="small" disabled={!order.issuedInvoiceCount||!canAccessPath('/invoices',authState)} onClick={event=>{event.stopPropagation();navigateToPath('/invoices?orderId='+encodeURIComponent(order.id));}}>
                             {(orderInvoiceNavigationText[languageCode]||orderInvoiceNavigationText.en).view}
                           </Button>
@@ -3397,6 +3382,7 @@ const OrderList = () => {
           sx={{ alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}
         >
           <LastUpdaterLabel />
+          {!isNewOrder&&currentDetailOrder&&authState.activeOrgType==='MANUFACTURER'&&['ADMIN','OPERATOR','ACCOUNTANT'].includes(activeProfile?.orgRole)&&Number(currentDetailOrder.sellerOrgId)===Number(activeOrgId)&&<Button variant="outlined" disabled={isSavingOrder||hasFormChanges} onClick={()=>navigateToPath('/order/'+currentDetailOrder.dbId+'/shipments')}>{(orderShipmentText[languageCode]||orderShipmentText.en).title}</Button>}
           {!isNewOrder && currentDetailOrder && Number(currentDetailOrder.sellerOrgId)===Number(activeOrgId) && canAccessPath('/invoices',authState) && <Button variant="outlined" disabled={isSavingOrder||orderChangedElsewhere||reloadingOrder||hasFormChanges} onClick={()=>navigateToPath('/invoices/new/order/'+encodeURIComponent(currentDetailOrder.id))}>{languageCode==='ko'?'청구서 작성':languageCode==='vi'?'Lập hóa đơn':'Create invoice'}</Button>}
           {orderChangedElsewhere&&<Button onClick={reloadLatestOrder} disabled={isSavingOrder||reloadingOrder}>{orderRefreshText[1]}</Button>}
           <SaveButton

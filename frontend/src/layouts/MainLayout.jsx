@@ -669,7 +669,6 @@ const MainLayout = () => {
             icon: <HistoryIcon />,
             path: '/work-history',
           },
-          ...((activeProfile?.orgType==='MANUFACTURER'||activeProfile?.entryType==='SYSTEM')?[{label:getUiMessage('menu.orderShipments','Order shipments',languageCode),icon:<LocalShippingOutlinedIcon />,path:'/order-shipments'}]:[]),
           {
             label: getUiMessage('menu.attendance', '\uCD9C\uD1F4\uADFC', languageCode),
             icon: <ScheduleIcon />,

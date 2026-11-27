@@ -3,7 +3,7 @@ const GROUPS = [
   ['ORDER', 'salesWorkflow', ['/business-partner', '/customer-production-report']],
   ['RECORDS', 'productionWorkflow', ['/style', '/order', '/assignment', '/work-history']],
   ['INVENTORY', 'inventoryMaterials', ['/inventory/movements', '/inventory/stock', '/inventory/materials']],
-  ['LOGISTICS', 'logistics', ['/order-shipments', '/shipping']],
+  ['LOGISTICS', 'logistics', ['/shipping']],
   ['ACCOUNTING', 'finance', ['/invoices', '/outsourcing-record', '/payroll', '/bank-ledger']],
   ['ADMIN', 'peoplePayroll', ['/employee', '/attendance', '/work-time', '/holiday']],
   ['OPERATIONS', 'managementAnalysis', ['/account-overview', '/revenue-analysis']],
@@ -40,7 +40,6 @@ export function organizeCompanyMenu(items, translate, orgType) {
     const children = paths.map(path => {
       used.add(path);
       const leaf=leaves.get(path);
-      if(orgType==='SERVICE'&&path==='/order-shipments')return null;
       return transport&&path==='/business-partner'&&leaf?{...leaf,label:translate('menu.customerPartners')}:leaf;
     }).filter(Boolean);
     if (source && children.length) result.push({ ...source, label: translate(`menu.${orgType==='SERVICE'&&key==='ORDER'?'sales':labelKey}`), children });

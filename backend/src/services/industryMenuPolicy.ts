@@ -36,7 +36,7 @@ export function industryMenuMiddleware(db:any,requireOrgRole:any,canAccess?:any)
   const feature=settingsRequest?'APPROVAL_SETTINGS':industryMenuApiFeature(req.path);if(!feature)return next();
   try{
    const context=await requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT','WORKER'],allowSystemAdmin:false});if(!context)return;
-   if((settingsRequest||['INVENTORY_MATERIALS','INVENTORY_STOCK','INVENTORY_MOVEMENTS','INVENTORY_SETTINGS','PRODUCTION_STATUS','ORDER_SHIPMENTS','SHIPPING_REQUEST','REVENUE_FORECAST'].includes(feature))&&canAccess&&!await canAccess({orgType:context.organization.type,orgRole:context.employee?.orgRole,feature}))return res.status(403).json({error:'FEATURE_ACCESS_DENIED'});
+   if((settingsRequest||['ORDER','INVENTORY_MATERIALS','INVENTORY_STOCK','INVENTORY_MOVEMENTS','INVENTORY_SETTINGS','PRODUCTION_STATUS','ORDER_SHIPMENTS','SHIPPING_REQUEST','REVENUE_FORECAST'].includes(feature))&&canAccess&&!await canAccess({orgType:context.organization.type,orgRole:context.employee?.orgRole,feature}))return res.status(403).json({error:'FEATURE_ACCESS_DENIED'});
    const allowed=await companyIndustryMenuFeatures(db,context.organization.id,context.organization.type);
    if(!allowed.includes(feature))return res.status(403).json({error:'INDUSTRY_MENU_UNAVAILABLE'});
    return next();
@@ -71,7 +71,7 @@ export function industryMenuApiFeature(path:string){
   [/^\/logistics-status-reports(?:\/|$)/,'PRODUCTION_STATUS'],
   [/^\/customer-production-reports(?:\/|$)/,'PRODUCTION_STATUS'],
   [/^\/shipping-requests(?:\/|$)/,'SHIPPING_REQUEST'],
-  [/^\/orders\/(?:shipments(?:\/|$)|\d+\/(?:shipments|shipping-policy)(?:\/|$))/,'ORDER_SHIPMENTS'],
+  [/^\/orders\/(?:shipments(?:\/|$)|\d+\/(?:shipments|shipping-policy)(?:\/|$))/,'ORDER'],
   [/^\/employees\/\d+\/tenure-recognition\/?$/,'EMPLOYEE'],
   [/^\/employees\/?$/,'EMPLOYEE'],[/^\/holidays(?:\/|$)/,'HOLIDAY'],
   [/^\/(?:work-time-requests|employee-leaves)(?:\/|$)/,'WORK_TIME'],
