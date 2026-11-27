@@ -666,39 +666,33 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
             stickyHeader
             aria-label={getUiMessage('styleBoard.tableAriaLabel', 'Style list table', languageCode)}
             size="small"
-            sx={{ tableLayout: 'fixed' }}
+            sx={{ tableLayout: 'fixed', minWidth: canViewProcessSummary ? 1080 : 600 }}
           >
             <TableHead>
               <TableRow>
-                <TableCell sx={{ width: '12%' }}>
+                <TableCell sx={{ width: 140 }}>
                   {getUiMessage('styleBoard.customer', '고객사', languageCode)}
                 </TableCell>
-                <TableCell sx={{ width: '18%' }}>
+                <TableCell>
                   {getUiMessage('styleBoard.styleName', '스타일명', languageCode)}
                 </TableCell>
-                <TableCell sx={{ width: '14%' }}>
-                  {getUiMessage('styleBoard.styleCode', '스타일 코드', languageCode)}
-                </TableCell>
                 {canViewProcessSummary ? (
-                  <TableCell sx={{ width: '15%' }}>{formatTimeReferenceColumnLabel('PT')}</TableCell>
+                  <TableCell sx={{ width: 110 }}>{formatTimeReferenceColumnLabel('PT')}</TableCell>
                 ) : null}
                 {canViewProcessSummary ? (
-                  <TableCell sx={{ width: '15%' }}>{formatTimeReferenceColumnLabel('ST')}</TableCell>
+                  <TableCell sx={{ width: 160 }}>{formatTimeReferenceColumnLabel('ST')}</TableCell>
                 ) : null}
                 {canViewProcessSummary ? (
-                  <TableCell sx={{ width: '15%' }}>{formatTimeReferenceColumnLabel('AT')}</TableCell>
+                  <TableCell sx={{ width: 160 }}>{formatTimeReferenceColumnLabel('AT')}</TableCell>
                 ) : null}
-                <TableCell sx={{ width: '11%' }}>
-                  {getUiMessage('styleBoard.orderHistory', '주문 내역', languageCode)}
-                </TableCell>
-                {!isBrand && <TableCell align="center" sx={{ width: '6%' }}>
+                <TableCell align="center" sx={{ width: 190 }}>
                   {getUiMessage('styleBoard.action', '작업', languageCode)}
-                </TableCell>}
+                </TableCell>
               </TableRow>
             </TableHead>
             <RecordInteractionScope>
               {!loadError && rows.length === 0 && (
-                <TableStatusRow colSpan={8} languageCode={languageCode} state={loading?"loading":"empty"}/>
+                <TableStatusRow colSpan={canViewProcessSummary ? 6 : 3} languageCode={languageCode} state={loading?"loading":"empty"}/>
               )}
               {rows.map((style) => {
                 const deleteBlocked = loading || style.canDelete !== true || Boolean(style.hasWorkRecords);
@@ -716,11 +710,8 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
                       {resolveCustomerDisplayName({ name: style.customer, nameKo: style.customerNameKo, nameVi: style.customerNameVi }, languageCode) || '-'}
                     </TableCell>
                     <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={style.name || ''}>
-                      {style.name || '-'}
+                      <RecordOpenButton onOpen={() => handleRowDoubleClick(style)}>{style.name || '-'}</RecordOpenButton>
                     </TableCell>
-                    <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={style.styleCode || ''}><RecordOpenButton onOpen={() => handleRowDoubleClick(style)}>
-                      {style.styleCode || style.id || '-'}
-                    </RecordOpenButton></TableCell>
                     {canViewProcessSummary ? (
                       <TableCell>
                         {style.hasTotalPT ? formatLocalizedSeconds(style.totalPT, languageCode) : '-'}
@@ -771,13 +762,12 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
                         </Box>
                       </TableCell>
                     ) : null}
-                    <TableCell onDoubleClick={event => event.stopPropagation()}>
-                      <Button size="small" onClick={event => { event.stopPropagation(); setHistoryStyle(style); }}>
+                    <TableCell align="center" onDoubleClick={event => event.stopPropagation()}>
+                      <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, whiteSpace: 'nowrap'}}>
+                      <Button variant="outlined" size="small" onClick={event => { event.stopPropagation(); setHistoryStyle(style); }}>
                         {getUiMessage('styleBoard.orderHistory', '주문 내역', languageCode)}
                       </Button>
-                    </TableCell>
-                    {!isBrand && <TableCell align="center">
-                      <Tooltip title={deleteTooltipTitle}>
+                      {!isBrand && <Tooltip title={deleteTooltipTitle}>
                         <span
                           onClick={(event) => event.stopPropagation()}
                           onDoubleClick={(event) => event.stopPropagation()}
@@ -790,8 +780,9 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
                             onClick={(event) => handleDeleteClick(style, event)}
                            />
                         </span>
-                      </Tooltip>
-                    </TableCell>}
+                      </Tooltip>}
+                      </Box>
+                    </TableCell>
                   </RecordRow>
                 );
               })}

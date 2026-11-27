@@ -1,3 +1,5 @@
+- 스타일 목록 열 배치 정정: 스타일 코드 표시 열을 제거하고 스타일명에 남은 폭 전체를 배정한다. 고객·PT/ST/AT·작업은 필요한 고정 폭을 확보하며 좁은 화면은 표 안에서 스크롤한다. 스타일명은 명시적 상세 열기 버튼이고 주문 내역은 오른쪽 작업 열의 테두리 버튼으로 삭제와 함께 배치한다. 브랜드도 같은 목록 구성을 따른다. 구현·UI·번역·인코딩 검사 완료 / 프런트 빌드 완료 / 운영 배포·시각 인수 미확인. 저장된 코드·검색·상세·주문 내역·삭제 권한은 유지한다.
+
 - 브랜드 스타일 기존 상세 복구: 별도 간이 입력창으로 보내던 브랜드 라우트를 기존 StyleBoard·StyleDetail·StyleInfo로 연결했다. 동일 StyleProduct ID·revision·사진·제품 원문을 브랜드 전용 API로 조회/저장하고 공정·시간·BOM·원가·제조사 분류/포장 입력과 API는 제외한다. 제품 보존/저장 whitelist/미존재 오류 회귀·프런트 빌드·UI·JSX·번역·인코딩 통과 / 운영 배포·실계정 브라우저 인수 미확인. 기존 목록 공통화 기록의 별도 간이 상세는 이번 정정으로 대체한다.
 
 - Work-log Excel download: added a list header action exporting current filtered logs as Summary and Work Records XLSX sheets, loading authorized details with cache bypass. Verified XLSX roundtrip, coverage, Unicode, numeric values, leading-zero codes and missing-details rejection; encoding, i18n, UI consistency and frontend build passed. Production deployment and browser acceptance unverified.
