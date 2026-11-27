@@ -131,6 +131,7 @@ const StyleInfo = ({
     let active = true;
 
     const loadCategories = async () => {
+      if (isBrandOrg) { setCategories([]); setLoadingCategories(false); return; }
       setLoadingCategories(true);
       setCategories([]);
       try {
@@ -165,7 +166,7 @@ const StyleInfo = ({
     return () => {
       active = false;
     };
-  }, [languageCode, activeOrgId]);
+  }, [languageCode, activeOrgId, isBrandOrg]);
 
   useEffect(() => {
     if (imageUrls.length === 0) {
@@ -651,7 +652,7 @@ const StyleInfo = ({
                 textFieldProps={selectTextFieldProps}
               />
             </Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {!isBrandOrg && <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="body2" color="text.secondary">카테고리</Typography>
               <SearchableSelect
                 size="small"
@@ -669,7 +670,7 @@ const StyleInfo = ({
                 sx={fieldControlSx}
                 textFieldProps={selectTextFieldProps}
               />
-            </Box>
+            </Box>}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="body2" color="text.secondary">스타일명</Typography>
               <TextField
@@ -713,8 +714,9 @@ const StyleInfo = ({
 
           <Box sx={{ mt: 'var(--ui-section-gap, 20px)' }} />
 
-          <Typography variant="h6" gutterBottom>{packText.section}</Typography>
+          {!isBrandOrg && <><Typography variant="h6" gutterBottom>{packText.section}</Typography>
           <VolumeInput label={packText.packedCbmPerPiece} name="packedCbmPerPiece" value={formData.packedCbmPerPiece??''} formula={formData.packedCbmPerPieceFormula||''} languageCode={languageCode} onChange={({cbm,cbmFormula})=>{emitInputChange('packedCbmPerPiece',cbm);emitInputChange('packedCbmPerPieceFormula',cbmFormula);}}/>
+</>}
           {showStyleAnalysis ? (
             <>
               <Box sx={{ mt: 'var(--ui-section-gap, 20px)' }} />

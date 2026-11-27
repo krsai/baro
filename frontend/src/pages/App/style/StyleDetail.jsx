@@ -18,6 +18,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { RequestScopeBoundary } from '../../../context/RequestScopeContext';
 import { buildQueryString } from '../../../utils/apiClient';
+import {fetchBrandStyle, saveBrandStyle} from '../../../utils/brandStyleApi';
 import {
   createStyle as createStyleOnApi,
   fetchStyleById,
@@ -272,7 +273,7 @@ const StyleDetail = () => {
 
       setLoadingStyle(true);
       try {
-        const style = await fetchStyleById(styleId, {
+        const style = isBrandOrg ? await fetchBrandStyle(styleId, activeOrgId, defaultBrandCustomerName) : await fetchStyleById(styleId, {
           orgId: activeOrgId,
           ownerOrgId: ownerOrgIdFromQuery,
           forceRefresh: true,
@@ -395,7 +396,7 @@ const StyleDetail = () => {
         customerOrgId: styleFormData.customerOrgId || null,
       });
       try {
-        const saved = await createStyleOnApi(payload, { orgId: activeOrgId });
+        const saved = isBrandOrg ? await saveBrandStyle(payload, activeOrgId) : await createStyleOnApi(payload, { orgId: activeOrgId });
         showNotification(getStyleDetailMessage(languageCode, 'createSuccess'), 'success');
         const normalizedSaved = { ...saved, processes: normalizeProcesses(saved.processes) };
         setOriginalData(normalizedSaved);
@@ -424,7 +425,7 @@ const StyleDetail = () => {
     });
 
     try {
-      const saved = await updateStyleOnApi(styleId, payload, {
+      const saved = isBrandOrg ? await saveBrandStyle(payload, activeOrgId, styleId) : await updateStyleOnApi(styleId, payload, {
         orgId: activeOrgId,
         ownerOrgId: resolvedOwnerOrgId,
       });
@@ -556,14 +557,14 @@ const StyleDetail = () => {
             </RequestScopeBoundary>
           )}
 
-          <ProcessVersionManager
+          {canViewProcessInfo && <ProcessVersionManager
             open={versionManagerOpen}
             onClose={() => setVersionManagerOpen(false)}
             styleId={styleId}
             orgId={activeOrgId}
             ownerOrgId={resolvedOwnerOrgId}
             notify={showNotification}
-          />
+          />}
 
         </>
       )}
