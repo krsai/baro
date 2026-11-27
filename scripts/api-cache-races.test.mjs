@@ -2,19 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
-function harness() {
+function harness({loadAcronyms=async()=>{},supabase=null}={}) {
   const source = readFileSync(new URL('../frontend/src/utils/apiClient.js', import.meta.url), 'utf8')
     .replace(/^import .*;\r?\n/gm, '')
     .replace(/export /g, '')
     .replace(/import\.meta\.env\.VITE_API_BASE_URL/g, "''");
   const calls = [], events = [];
   const api = new Function('fetch', 'referenceSettingsTopics', 'normalizeHumanPayload', 'loadTextAcronyms', 'supabase', 'recordLastUpdaterForCurrentPath', 'emitWorkspaceDataChanged', 'WORKSPACE_DATA_TOPICS',
-    `${source}; return {requestJSON, setRequestContext, clearGetResponseCache};`)(
+    `${source}; return {requestJSON, setRequestContext, getRequestContext, clearGetResponseCache};`)(
     (url, options) => new Promise(resolve => calls.push({url, options, resolve})),
-    () => [], value => value, async () => {}, null, () => {}, event => events.push(event), {PAYROLL_SOURCES:'payroll-sources',ASSIGNMENT_BOARD:'assignment-board'});
+    () => [], value => value, loadAcronyms, supabase, () => {}, event => events.push(event), {PAYROLL_SOURCES:'payroll-sources',ASSIGNMENT_BOARD:'assignment-board'});
   const context = {accessToken: 'test-session', userEmail: 'test@example.test', orgId: 1};
   api.setRequestContext(context);
-  const reply = (index, value, ok = true) => calls[index].resolve({ok, status: ok ? 200 : 500, text: async () => JSON.stringify(value)});
+  const reply = (index, value, ok = true, status=ok?200:500) => calls[index].resolve({ok, status, text: async () => JSON.stringify(value)});
   return {...api, calls, reply, context, events};
 }
 
@@ -28,6 +28,62 @@ test('successful mutation prevents a pending old read from refilling cache or be
   h.reply(0, 'old'); await old;
   h.reply(2, 'new'); await fresh;
   assert.equal(await h.requestJSON('/orders'), 'new');
+});
+
+test('a company switch during mutation preflight never sends the previous company payload',async()=>{
+ let release;const h=harness({loadAcronyms:()=>new Promise(resolve=>{release=resolve;})});
+ const mutation=h.requestJSON('/orders/1',{method:'PUT',body:JSON.stringify({name:'Company A Order'})}).then(value=>({value}),error=>({error}));
+ h.setRequestContext({...h.context,orgId:2});release();await new Promise(setImmediate);
+ if(h.calls.length)h.reply(0,{ok:true});const result=await mutation;
+ assert.equal(h.calls.length,0,'a stale payload must not reach fetch under the new company');assert.equal(result.error?.status,499);
+});
+
+test('leaving and returning to the same company or logging back in does not revive an old save',async()=>{
+ for(const transition of ['company','logout','user']){
+  let release;const h=harness({loadAcronyms:()=>new Promise(resolve=>{release=resolve;})});
+  const mutation=h.requestJSON('/orders/1',{method:'PUT',body:'{}'}).catch(error=>error);
+  if(transition==='company')h.setRequestContext({...h.context,orgId:2});
+  else if(transition==='logout')h.setRequestContext({});
+  else h.setRequestContext({...h.context,userEmail:'another@example.test'});
+  h.setRequestContext(h.context);release();const error=await mutation;
+  assert.equal(error.status,499,transition);assert.equal(h.calls.length,0,transition);
+ }
+});
+
+test('a scoped read waiting to execute cannot adopt a new company context',async()=>{
+ const h=harness();const pending=h.requestJSON('/orders',{requestScheduler:{groupId:'workspace',scopeId:'orders-tab'}}).catch(error=>error);
+ h.setRequestContext({...h.context,orgId:2});assert.equal((await pending).status,499);assert.equal(h.calls.length,0);
+});
+
+test('same-user token renewal during preflight retains the save and uses the renewed token',async()=>{
+ let release;const h=harness({loadAcronyms:()=>new Promise(resolve=>{release=resolve;})});
+ const mutation=h.requestJSON('/orders/1',{method:'PUT',body:'{}'});
+ h.setRequestContext({...h.context,accessToken:'renewed-token'});release();await new Promise(setImmediate);
+ assert.equal(h.calls.length,1);assert.equal(h.calls[0].options.headers.get('authorization'),'Bearer renewed-token');assert.equal(h.calls[0].options.headers.get('x-org-id'),'1');
+ h.reply(0,{ok:true});assert.deepEqual(await mutation,{ok:true});
+});
+
+test('a company switch during 401 renewal prevents resending an old mutation',async()=>{
+ let release;const h=harness({supabase:{auth:{refreshSession:()=>new Promise(resolve=>{release=resolve;})}}});
+ const mutation=h.requestJSON('/orders/1',{method:'DELETE'}).catch(error=>error);
+ h.reply(0,{error:'expired'},false,401);await new Promise(setImmediate);assert.equal(typeof release,'function');
+ h.setRequestContext({...h.context,orgId:2});release({data:{session:{access_token:'renewed-token',user:{email:h.context.userEmail}}}});
+ assert.equal((await mutation).status,499);assert.equal(h.calls.length,1);
+});
+
+test('a late refresh from a previous login cannot overwrite the current login context',async()=>{
+ let release;const h=harness({supabase:{auth:{refreshSession:()=>new Promise(resolve=>{release=resolve;})}}});
+ const mutation=h.requestJSON('/orders/1',{method:'DELETE'}).catch(error=>error);
+ h.reply(0,{error:'expired'},false,401);await new Promise(setImmediate);
+ const next={accessToken:'current-user-token',userEmail:'current@example.test',orgId:2};h.setRequestContext(next);
+ release({data:{session:{access_token:'previous-user-token',user:{email:h.context.userEmail}}}});assert.equal((await mutation).status,499);
+ assert.deepEqual(h.getRequestContext(),next);
+});
+
+test('a completed old-company mutation emits updates for its sent company, not the current company',async()=>{
+ const h=harness();const mutation=h.requestJSON('/factories/1',{method:'DELETE'});
+ assert.equal(h.calls[0].options.headers.get('x-org-id'),'1');h.setRequestContext({...h.context,orgId:2});
+ h.reply(0,{ok:true});await mutation;assert.equal(h.events.length,1);assert.equal(h.events[0].orgId,'1');
 });
 
 test('local factory changes invalidate dependent views and quantity review emits no saved event',async()=>{

@@ -13,6 +13,9 @@ const requestContext = {
   userEmail: '',
   orgId: null,
 };
+// Token renewal keeps the workspace. Company/user changes and logout end it,
+// including A -> B -> A while a request is still preparing or refreshing auth.
+let requestContextRevision = 0;
 const workspaceClientId=typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():'';
 export const clearGetResponseCache = () => {
   getResponseCache.clear();
@@ -254,6 +257,9 @@ export const setRequestContext = (next = {}) => {
     typeof next.userEmail === 'string' ? next.userEmail.trim().toLowerCase() : '';
   const parsedOrgId = Number(next.orgId);
   const normalizedOrgId = Number.isFinite(parsedOrgId) && parsedOrgId > 0 ? parsedOrgId : null;
+  if (requestContext.userEmail !== normalizedEmail || requestContext.orgId !== normalizedOrgId || Boolean(requestContext.accessToken) !== Boolean(normalizedAccessToken)) {
+    requestContextRevision++;
+  }
   if (
     requestContext.accessToken !== normalizedAccessToken ||
     requestContext.userEmail !== normalizedEmail ||
@@ -272,11 +278,13 @@ export const getRequestContext = () => ({
   orgId: requestContext.orgId,
 });
 
-const syncRequestContextFromSession = (session) => {
+const syncRequestContextFromSession = (session, expectedRevision) => {
+  if (expectedRevision !== requestContextRevision) return '';
   const accessToken =
     typeof session?.access_token === 'string' ? session.access_token.trim() : '';
   const userEmail =
     typeof session?.user?.email === 'string' ? session.user.email.trim().toLowerCase() : '';
+  if (requestContext.userEmail && userEmail && requestContext.userEmail !== userEmail) return '';
   if (accessToken) {
     requestContext.accessToken = accessToken;
   }
@@ -288,18 +296,20 @@ const syncRequestContextFromSession = (session) => {
 
 const resolveSupabaseSessionAccessToken = async ({ forceRefresh = false } = {}) => {
   if (!supabase?.auth) return '';
+  const expectedRevision = requestContextRevision;
   try {
     if (forceRefresh && typeof supabase.auth.refreshSession === 'function') {
       const { data, error } = await supabase.auth.refreshSession();
+      if (expectedRevision !== requestContextRevision) return '';
       if (!error) {
-        const refreshedToken = syncRequestContextFromSession(data?.session ?? null);
+        const refreshedToken = syncRequestContextFromSession(data?.session ?? null, expectedRevision);
         if (refreshedToken) return refreshedToken;
       }
     }
     if (typeof supabase.auth.getSession === 'function') {
       const { data, error } = await supabase.auth.getSession();
       if (!error) {
-        return syncRequestContextFromSession(data?.session ?? null);
+        return syncRequestContextFromSession(data?.session ?? null, expectedRevision);
       }
     }
   } catch (_error) {
@@ -471,6 +481,13 @@ const purgeExpiredGetCache = () => {
 };
 
 export const requestJSON = async (path, options = {}) => {
+  const startingContext = {...requestContext};
+  const startingRevision = requestContextRevision;
+  const requireStartingContext = () => {
+    if (startingRevision !== requestContextRevision || startingContext.userEmail && requestContext.userEmail && startingContext.userEmail !== requestContext.userEmail) {
+      throw createHttpError('request cancelled', 499, {reason: 'workspace_context_changed'});
+    }
+  };
   const {
     skipGlobalLoading = false,
     skipCache = false,
@@ -484,7 +501,7 @@ export const requestJSON = async (path, options = {}) => {
     .trim()
     .toUpperCase();
   if (['POST', 'PUT', 'PATCH'].includes(method) && typeof requestOptions.body === 'string') {
-    await loadTextAcronyms(API_BASE);
+    try { await loadTextAcronyms(API_BASE); } finally { requireStartingContext(); }
     try {
       requestOptions.body = JSON.stringify(normalizeHumanPayload(JSON.parse(requestOptions.body), {path}));
     } catch { /* Preserve malformed/non-JSON bodies for the existing request handler. */ }
@@ -598,6 +615,7 @@ export const requestJSON = async (path, options = {}) => {
     }
 
     try {
+      requireStartingContext();
       const headers = new Headers(requestOptions.headers || {});
       if(workspaceClientId)headers.set('x-workspace-client',workspaceClientId);
       if (requestOptions.body && !headers.has('content-type')) {
@@ -608,6 +626,7 @@ export const requestJSON = async (path, options = {}) => {
         requestContext.accessToken || (!hasExplicitAuthorization
           ? await resolveSupabaseSessionAccessToken()
           : '');
+      requireStartingContext();
       if (initialAccessToken && !hasExplicitAuthorization) {
         headers.set('Authorization', `Bearer ${initialAccessToken}`);
       }
@@ -616,6 +635,7 @@ export const requestJSON = async (path, options = {}) => {
       }
 
       const executeFetch = async (nextHeaders) => {
+        requireStartingContext();
         const response = await fetch(`${API_BASE}${path}`, {
           ...requestOptions,
           signal: mergedAbortController.signal,
@@ -634,6 +654,7 @@ export const requestJSON = async (path, options = {}) => {
         const refreshedAccessToken = await resolveSupabaseSessionAccessToken({
           forceRefresh: true,
         });
+        requireStartingContext();
         if (refreshedAccessToken && refreshedAccessToken !== initialAccessToken) {
           headers.set('Authorization', `Bearer ${refreshedAccessToken}`);
           ({ response, data } = await executeFetch(headers));
@@ -649,25 +670,26 @@ export const requestJSON = async (path, options = {}) => {
       }
 
       if (method !== 'GET') {
+        const mutationOrgId = new URL(path, 'http://baro.local').searchParams.get('orgId') || headers.get('x-org-id') || startingContext.orgId;
         // Mutating requests invalidate related cached GET responses.
         invalidateCacheByPath(path);
         const referenceTopics=referenceSettingsTopics(path);
         if(referenceTopics.length&&data?.ok!==false&&!data?.error)emitWorkspaceDataChanged({topics:referenceTopics,source:'reference-settings'});
         if (/^\/(freight|shipping-requests)(\/|\?|$)/.test(path) && !/\/(charges|documents\/share)(\?|$)/.test(path)) {
-          emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.SHIPPING], orgId: new URL(path, 'http://baro.local').searchParams.get('orgId') || requestContext.orgId, source: 'shipping' });
+          emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.SHIPPING], orgId: mutationOrgId, source: 'shipping' });
         }
         if (/^\/factories(?:\/[^/?]+(?:\/production-allowance-version-boundaries)?)?(?:\?|$)/.test(path) && data?.ok!==false && !data?.error) {
-          emitWorkspaceDataChanged({topics:['employees','attendance','assignment-board','payroll-sources','production-allowance-settings'],orgId:new URL(path,'http://baro.local').searchParams.get('orgId')||requestContext.orgId,source:'factory-settings'});
+          emitWorkspaceDataChanged({topics:['employees','attendance','assignment-board','payroll-sources','production-allowance-settings'],orgId:mutationOrgId,source:'factory-settings'});
         }
         if (/^\/(attendance-entries|work-logs)(\/|\?|$)/.test(path) && data?.ok!==false && !data?.error && data?.requiresQuantityReview!==true) {
-          emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.PAYROLL_SOURCES, ...(/^\/attendance-entries/.test(path) ? ['attendance'] : [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD])], orgId: new URL(path, 'http://baro.local').searchParams.get('orgId') || requestContext.orgId, source: 'payroll-source' });
+          emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.PAYROLL_SOURCES, ...(/^\/attendance-entries/.test(path) ? ['attendance'] : [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD])], orgId: mutationOrgId, source: 'payroll-source' });
         }
       }
 
       recordLastUpdaterForCurrentPath({
         method,
         responseData: data,
-        fallbackUpdater: requestContext.userEmail,
+        fallbackUpdater: startingContext.userEmail,
       });
 
       return data;
