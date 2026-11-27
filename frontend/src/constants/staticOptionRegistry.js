@@ -1,4 +1,5 @@
 import { getCurrentLanguageCode, normalizeLanguageCode } from '../utils/appLanguage';
+import {ORG_ROLE_KEYS,ORG_ROLE_DEFAULT_LABELS} from './organizationAccess';
 
 const normalizeToken = (value) =>
   String(value || '')
@@ -46,10 +47,7 @@ const RAW_STATIC_OPTION_GROUPS = [
     key: 'orgRole',
     title: '조직 역할',
     items: [
-      createItem('ADMIN', { ko: '관리자', en: 'Admin', vi: 'Quan tri' }, ['관리자']),
-      createItem('OPERATOR', { ko: '운영자', en: 'Operator', vi: 'Van hanh' }, ['운영자']),
-      createItem('ACCOUNTANT', { ko: '회계사', en: 'Accountant', vi: 'Kế toán' }, ['회계사']),
-      createItem('WORKER', { ko: '작업자', en: 'Worker', vi: 'Cong nhan' }, ['작업자']),
+      ...Object.values(ORG_ROLE_KEYS).map(role=>createItem(role,ORG_ROLE_DEFAULT_LABELS[role],[ORG_ROLE_DEFAULT_LABELS[role].ko])),
     ],
   },
   {

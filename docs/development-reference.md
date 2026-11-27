@@ -3762,6 +3762,7 @@ AT 학습의 ST seed는 위 `스타일 → 배정 → 작업기록 ST 불변식`
 - 구독 상태(`TRIAL`, `ACTIVE`, `GRACE`) 기반 워크스페이스 접근 제어
 - `entryType` 분기: `SYSTEM` / `ORG` / `ONBOARDING`
 - 조직 역할별 메뉴 접근 정책은 `SystemSetting`의 `ROLE_ACCESS_POLICY`에 공용 저장한다.
+- 접근 권한 표의 역할 코드·명칭은 `organizationAccess`의 `ORG_ROLE_KEYS`·`ORG_ROLE_DEFAULT_LABELS`를 원본으로 사용하고 `staticOptionRegistry`의 orgRole도 같은 객체를 참조한다. 표에서 회계사/작업자를 회계/직원으로 따로 축약하거나 언어별 배열을 복제하지 않는다. 직원의 실제 직무 FK와 권한 역할 enum은 별개이며 이 표시 공통화로 변경하지 않는다.
 - `GET/PUT /system/access-policy`는 시스템 관리자만 사용하며, `/auth/context`가 현재 정책을 각 조직 계정에 전달한다.
 - 프론트의 사이드바와 보호 라우트는 같은 `accessPolicy`를 사용한다. 정책 조회와 `/auth/context`는 계정 전환 및 저장 직후 반영을 위해 GET 캐시를 사용하지 않는다.
 - 생산 분석 메뉴·목록·상세·이전 월간 경로와 `PRODUCTION_ANALYSIS` 권한은 사용자 요청으로 제거했다. 작업 기록(`WORK_HISTORY`)과 근태 원본 및 공용 API는 유지한다. 문서 내 과거 생산 분석 관련 기준은 제거된 화면의 이력이다.

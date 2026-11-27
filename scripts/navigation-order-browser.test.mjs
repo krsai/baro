@@ -30,6 +30,8 @@ return {policy:getDefaultRoleAccessPolicy()};}`}));
   const group=key=>page.locator('[data-menu-group="'+key+'"]'),row=p=>page.locator('[data-menu-path="'+p+'"]');
   await group('ADMIN').locator('[data-menu-drag-handle]').waitFor();
   await page.waitForFunction(()=>!document.querySelector('[data-menu-group="ADMIN"] [data-menu-drag-handle]').disabled);
+  const expectedRoles={ko:['회계사','작업자'],en:['Accountant','Worker'],vi:['Kế toán','Cong nhan']}[language];
+  for(const label of expectedRoles)assert.equal(await page.getByRole('columnheader',{name:label,exact:true}).count(),2);
   const grants=()=>page.locator('[data-menu-path]').evaluateAll(nodes=>Object.fromEntries(nodes.map(row=>[row.dataset.menuPath,[...row.querySelectorAll('input')].map(n=>[n.checked,n.disabled])])));
   const policyBefore=await grants();
   const from=group('ADMIN').locator('[data-menu-drag-handle]'),to=group('ACCOUNTING').locator('[data-menu-drag-handle]');await from.scrollIntoViewIfNeeded();const a=await from.boundingBox(),b=await to.boundingBox();await page.mouse.move(a.x+a.width/2,a.y+a.height/2);await page.mouse.down();await page.mouse.move(a.x+a.width/2,a.y+a.height/2-10,{steps:3});await page.mouse.move(b.x+b.width/2,b.y+b.height/2,{steps:12});await page.mouse.up();
