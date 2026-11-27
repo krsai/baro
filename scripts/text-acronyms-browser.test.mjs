@@ -15,7 +15,7 @@ try{
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
  for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
   const page=await browser.newPage({viewport:{width,height:1100}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
+  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`import React from '/node_modules/.vite/deps/react.js';export const LanguageContext=React.createContext(null);export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({showNotification:(message,severity)=>window.notices.push({message,severity}),removeNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
   await page.route('**/src/lib/supabaseClient.js*',r=>r.fulfill({contentType:'application/javascript',body:'export const supabase={auth:{getSession:async()=>({data:{session:null}})}};'}));
   let value={revision:0,entries:[{acronym:'BOM',expansion:'Bill Of Materials',meaning:'자재 명세서'},{acronym:'iOS',expansion:'',meaning:''}]},writes=0,publicReads=0,failLoad=lang==='en'&&width===1440;
@@ -26,7 +26,7 @@ try{
     if(url.pathname==='/text-acronyms'){publicReads++;if(failLoad){failLoad=false;return r.fulfill({status:503,headers,json:{error:'FAILED'}});}}
     return r.fulfill({headers,json:value});
    }
-   writes++;const body=req.postDataJSON();assert.equal(body.entries.find(row=>row.acronym==='eSIM').expansion,'');
+   writes++;const body=req.postDataJSON();assert.equal(body.entries.find(row=>row.acronym==='eSIM').expansion,'');assert.equal(body.entries.find(row=>row.acronym==='eSIM').meaningEn,'Custom Meaning');assert.equal(body.entries.find(row=>row.acronym==='eSIM').meaningVi,'Ý Nghĩa Riêng');
    if(writes===1)return r.fulfill({status:409,headers,json:{error:'TEXT_ACRONYMS_CHANGED'}});
    value={revision:1,entries:body.entries};return r.fulfill({headers,json:value});
   });
@@ -35,10 +35,15 @@ try{
   const t=textAcronymText[lang];await page.getByRole('button',{name:t.add,exact:true}).click();
   const acronym=page.getByRole('textbox',{name:new RegExp('^'+t.acronym)}),expansion=page.getByLabel(t.expansion,{exact:true});
   await acronym.fill('eSIM');await acronym.press('Tab');assert.equal(await acronym.inputValue(),'eSIM');assert.equal(await expansion.inputValue(),'');
-  await page.getByLabel(t.meaning,{exact:true}).fill('사용자 약어');
+  await page.getByLabel(t.meaningKo,{exact:true}).fill('사용자 약어');
+  await page.getByLabel(t.meaningEn,{exact:true}).fill('Custom Meaning');await page.getByLabel(t.meaningVi,{exact:true}).fill('Ý Nghĩa Riêng');
+  const actions=page.locator('[data-dialog-record-actions]');assert.equal(await actions.getByRole('button',{name:t.remove,exact:true}).locator('svg').count(),1);
+  if(width===1440){const left=await acronym.boundingBox(),right=await expansion.boundingBox();assert.ok(Math.abs(left.y-right.y)<2,'acronym and expansion share one row');}
   const save=page.getByRole('button',{name:t.save,exact:true});await save.click();await page.waitForFunction(()=>window.notices.some(n=>n.severity==='error'));
-  assert.equal(await acronym.inputValue(),'eSIM');assert.equal(await page.getByLabel(t.meaning,{exact:true}).inputValue(),'사용자 약어');assert.equal(writes,1);
+  assert.equal(await acronym.inputValue(),'eSIM');assert.equal(await page.getByLabel(t.meaningKo,{exact:true}).inputValue(),'사용자 약어');assert.equal(writes,1);
+  assert.equal(await page.getByLabel(t.meaningEn,{exact:true}).inputValue(),'Custom Meaning');assert.equal(await page.getByLabel(t.meaningVi,{exact:true}).inputValue(),'Ý Nghĩa Riêng');
   await save.click();await page.waitForFunction(()=>window.notices.some(n=>n.severity==='success'));assert.equal(writes,2);assert.equal(await save.isDisabled(),true);
+  const search=page.getByRole('textbox',{name:t.search,exact:true});await search.fill('Ý Nghĩa Riêng');await page.getByRole('cell',{name:'eSIM',exact:true}).waitFor();assert.equal(await page.getByRole('cell',{name:'BOM',exact:true}).count(),0);await search.fill('');
   const live=page.getByLabel('Live Text',{exact:true});await live.fill('eSIM ESIM esim Esim BOM bom COTTON');await live.press('Tab');assert.equal(await live.inputValue(),'eSIM eSIM Esim Esim BOM Bom Cotton');
   await expansion.fill('embedded SIM');await expansion.press('Tab');assert.equal(await expansion.inputValue(),'embedded SIM');
   const before=publicReads;value={...value,revision:2,entries:[...value.entries,{acronym:'eGPU',expansion:'',meaning:''}]};await page.evaluate(()=>window.remoteDictionary());await page.waitForFunction(()=>true);await page.waitForTimeout(100);assert.ok(publicReads>before);assert.equal(await expansion.inputValue(),'embedded SIM');
