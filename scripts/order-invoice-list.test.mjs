@@ -6,9 +6,11 @@ import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approva
 const require=createRequire(import.meta.url);
 const {orderInvoiceListScope,loadOrderInvoiceCounts}=require('../backend/dist/services/orderInvoiceList');
 const {registerInvoiceDraftRoutes}=require('../backend/dist/routes/invoiceDraft.routes');
+const {savePartnerContacts}=require('../backend/dist/services/partnerContacts');
 test('order invoice navigation counts and filters actual company/order FKs before pagination, across dates and duplicate order numbers',async()=>{
  const f=await changeApprovalFixture({registration:true});try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id;
+  await db.organization.update({where:{id:s.vendor.id},data:{name:'CURRENT EN',nameKo:'현재 한국어',nameVi:'Tên Hiện Tại'}});
   const makeOrder=(seller,orderNumber='SAME-NUMBER')=>db.workOrder.create({data:{orgId:seller,sellerOrgId:seller,buyerOrgId:s.vendor.id,orderId:randomUUID(),orderNumber}});
   const a=await makeOrder(org),b=await makeOrder(org,'SECOND'),foreign=await makeOrder(s.other.id),empty=await makeOrder(org,'EMPTY');
   let sequence=0;
@@ -29,6 +31,18 @@ test('order invoice navigation counts and filters actual company/order FKs befor
   registerInvoiceDraftRoutes(app,{db,requireAccess:async()=>({organization:s.company,employee:s.people.admin}),actor:()=> 'actor'});
   const list=async query=>{let value;await routes.get('/invoices/issued')({query},{setHeader(){},json(result){value=result;return this;},status(){return this;}});return value;};
   const scoped=await list({orderId:a.orderId});assert.deepEqual(new Set(scoped.rows.map(row=>row.id)),new Set([first.id,cancelled.id]));assert.equal(scoped.hasMore,false);assert.equal(scoped.orderScope.orderId,a.orderId);assert.equal(scoped.orderScope.orderNumber,a.orderNumber);
+  assert.equal(scoped.rows[0].buyerOrgId,s.vendor.id);
+  assert.deepEqual(scoped.rows[0].buyerDisplayNames,{name:'CURRENT EN',nameKo:'현재 한국어',nameVi:'TÊN HIỆN TẠI'});
+  assert.equal(scoped.rows[0].buyerName,'Frozen Buyer','document snapshot remains separate from list names');
+  await db.$transaction(tx=>savePartnerContacts(tx,org,s.vendor.id,s.people.admin.id,{revision:0,mode:'LOCAL',patch:{name:'local buyer',nameKo:'청구 거래처',nameVi:'Tên Riêng',contactPhone:'PRIVATE-PHONE'}}));
+  const local=(await list({orderId:a.orderId})).rows[0];
+  assert.deepEqual(local.buyerDisplayNames,{name:'LOCAL BUYER',nameKo:'청구 거래처',nameVi:'TÊN RIÊNG'});
+  assert.deepEqual(Object.keys(local.buyerDisplayNames).sort(),['name','nameKo','nameVi']);
+  assert.doesNotMatch(JSON.stringify(local),/PRIVATE-PHONE|contactDefaults|contactLocal/);
+  assert.equal((await db.invoice.findUnique({where:{id:first.id}})).snapshot.fields.buyer.name,'Frozen Buyer');
+  assert.equal((await db.organization.findUnique({where:{id:s.vendor.id}})).name,'CURRENT EN');
+  await db.$transaction(tx=>savePartnerContacts(tx,org,s.vendor.id,s.people.admin.id,{revision:1,mode:'DEFAULT',patch:{}}));
+  assert.equal((await list({orderId:a.orderId})).rows[0].buyerDisplayNames.nameKo,'현재 한국어');
   assert.equal((await list({orderId:b.orderId})).rows.length,30);assert.equal((await list({orderId:b.orderId,page:'1'})).rows.length,1);
   assert.equal((await list({orderId:a.orderId,start:'2026-01-01'})).rows.length,0);
   await assert.rejects(list({orderId:foreign.orderId}),/INVOICE_ORDER_NOT_FOUND/);

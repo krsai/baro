@@ -1,5 +1,6 @@
 import {orderInvoiceListScope} from '../services/orderInvoiceList';
 import {invoiceListItemSummary} from '../services/invoiceListSummary';
+import {loadInvoiceBuyerNames} from '../services/invoiceBuyerNames';
 import {invoiceReceivedTotals,invoiceEditRevision,invoiceEditLock,updateIssuedInvoice} from '../services/invoiceEdit';
 import { saveInvoiceDraft, deleteInvoiceDraft } from "../services/invoiceDraftStore";
 import { createInvoiceRevisionDraft, issueInvoiceDraft, recordInvoicePayment, replaceInvoicePaymentAllocations, voidInvoicePayment } from "../services/invoiceIssueStore";
@@ -59,11 +60,12 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
     if (!Number.isSafeInteger(page) || page < 0 || page > 10000) return res.status(400).json({ error: "invalid page" });
     const rows = await db.invoiceDraft.findMany({ where: { sellerOrgId: access.organization.id },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }], skip: page * 30, take: 31,
-      include: { buyer: { select: { name: true } }, orders: { select: { sourceOrderId: true } } },
+      include: { buyer: { select: { id:true,name: true,nameKo:true,nameVi:true,createdAt:true } }, orders: { select: { sourceOrderId: true } } },
     });
+    const buyerNames=await loadInvoiceBuyerNames(db,access.organization.id,rows.slice(0,30));
     res.setHeader("Cache-Control", "no-store");
     return res.json({ rows: rows.slice(0, 30).map((row: any) => ({ id: row.id, revision: row.revision,
-      buyerName: row.buyer.name, number: row.content?.fields?.number ?? "", updatedAt: row.updatedAt,
+      buyerOrgId:row.buyerOrgId,buyerDisplayNames:buyerNames.get(row.buyerOrgId)||null,buyerName: row.buyer.name, number: row.content?.fields?.number ?? "", updatedAt: row.updatedAt,
       updatedBy: row.updatedBy, orderIds: row.orders.map((order: any) => order.sourceOrderId) })), hasMore: rows.length > 30 });
   });
   app.get("/invoices/drafts/:id", async (req: any, res: any) => {
@@ -117,12 +119,13 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
       ] } : {}),
     },
       orderBy: [{ issuedAt: "desc" }, { id: "desc" }], skip: page * 30, take: 31,
-      include: { buyer: { select: { name: true } }, orders: { select: { id: true, sourceOrderId: true, sourceOrderNumber: true, installmentNumber: true,
+      include: { buyer: { select: { id:true,name: true,nameKo:true,nameVi:true,createdAt:true } }, orders: { select: { id: true, sourceOrderId: true, sourceOrderNumber: true, installmentNumber: true,
         workOrder: { select: { totalQuantity: true, invoiceFinalLockedAt: true, invoiceFinalLockInvoiceId: true, invoiceFinalRecognizedQuantity: true } } } },
         payments: { where: { voidedAt: null }, select: { amount: true, kind: true,
           allocations: { where: { voidedAt: null }, select: { amount: true } } } } },
     });
     const visible = rows.slice(0, 30);
+    const buyerNames=await loadInvoiceBuyerNames(db,access.organization.id,visible);
     const actors=await attachLedgerActorNames(db,access.organization.id,visible.map((row:any)=>({id:row.id,createdBy:row.issuedBy})));
     const familyIds = [...new Set(visible.map((row: any) => invoiceFamily(row)))];
     const familyInvoices = familyIds.length ? await db.invoice.findMany({ where: { sellerOrgId: access.organization.id,
@@ -143,7 +146,7 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
     }
     res.setHeader("Cache-Control", "no-store");
       return res.json({orderScope:orderScope?{orderId:orderScope.orderId,orderNumber:orderScope.orderNumber}:null, rows: visible.map((row: any) => { const familyBalance = invoiceFamilyBalance(familyInvoices, invoiceFamily(row)); return ({ id: row.id,documentKind:row.documentKind||'ORDER', invoiceNumber: row.invoiceNumber,
-      expectedCollectionDate:(row.snapshot as any)?.fields?.expectedCollectionDate||null, status: row.status, buyerName: (row.snapshot as any)?.fields?.buyer?.name ?? row.buyer.name, currencyCode: row.currencyCode, total: row.currencyCode==='MIX'?null:String(row.total),
+      expectedCollectionDate:(row.snapshot as any)?.fields?.expectedCollectionDate||null, status: row.status,buyerOrgId:row.buyerOrgId,buyerDisplayNames:buyerNames.get(row.buyerOrgId)||null, buyerName: (row.snapshot as any)?.fields?.buyer?.name ?? row.buyer.name, currencyCode: row.currencyCode, total: row.currencyCode==='MIX'?null:String(row.total),
       receivableAdded: row.currencyCode==='MIX'?null:String(row.receivableAdded),currencyTotals:(row.snapshot as any)?.currencyTotals,currencyBalances:familyBalance.currencyBalances,
       issuedAt: row.issuedAt, issuedBy: row.issuedBy, issuedByName:actors.find((actor:any)=>actor.id===row.id)?.createdByName||null, orders: row.orders,
       sellerName:(row.snapshot as any)?.fields?.seller?.name||access.organization.name,

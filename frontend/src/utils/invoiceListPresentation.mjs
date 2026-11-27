@@ -1,3 +1,7 @@
+import {resolveCustomerDisplayName} from './appLanguage.js';
+
+export const invoiceBillToName=(row,languageCode)=>resolveCustomerDisplayName(row.buyerDisplayNames,languageCode)||row.buyerName||'—';
+
 export const invoiceListPresentationText={
  ko:{billTo:'청구처',more:count=>`외 ${count}개`,garments:quantity=>`${quantity}장`,quantity:'수량'},
  en:{billTo:'Bill To',more:count=>`+ ${count} More`,garments:quantity=>`${quantity} Pcs`,quantity:'Quantity'},

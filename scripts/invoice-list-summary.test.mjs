@@ -1,8 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {invoiceListDescription,compactInvoiceList} from '../frontend/src/utils/invoiceListPresentation.mjs';
+import {invoiceBillToName,invoiceListDescription,compactInvoiceList} from '../frontend/src/utils/invoiceListPresentation.mjs';
 const {invoiceListItemSummary}=createRequire(import.meta.url)('../backend/dist/services/invoiceListSummary');
+
+test('bill-to follows the active language and shared fallback, while old payloads keep their frozen name',()=>{
+ const row={buyerName:'Frozen',buyerDisplayNames:{name:'English',nameKo:'한국어',nameVi:'Tiếng Việt'}};
+ assert.equal(invoiceBillToName(row,'ko'),'한국어');assert.equal(invoiceBillToName(row,'en'),'English');assert.equal(invoiceBillToName(row,'vi'),'Tiếng Việt');
+ assert.equal(invoiceBillToName({...row,buyerDisplayNames:{name:'English',nameKo:''}},'ko'),'English');
+ assert.equal(invoiceBillToName({buyerName:'Frozen'},'vi'),'Frozen');
+});
 
 test('issued style counts use snapshot identities and add all invoiced size/color quantities once',()=>{
  const snapshot={lines:[{styleId:1,styleName:'Frozen Shirt',quantity:100},{styleId:1,styleName:'Frozen Shirt',quantity:200},{styleId:2,styleName:'Frozen Shirt',quantity:50}]};

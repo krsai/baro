@@ -59,9 +59,9 @@ test('partner contacts belong to the editing company; defaults, revision and rol
   registerPartnerEditorRoutes({get:()=>{},put:(path,fn)=>routes.set(path,fn)},db,{requireOrgRole:async()=>allowed?{organization:s.company}:null,actorId:()=>actor});
   const save=routes.get('/partner-editor/entity/:id/contacts'),response={json:value=>result=value};
   await save({params:{id:String(target)},query:{orgId:target},body:{contacts:{revision:2,patch:{contactName:'DEX contact via API'}}}},response);
-  assert.equal(result.contactName,'DEX contact via API');assert.equal(result.canEditProfile,false);assert.equal(result.contactRevision,3);
+  assert.equal(result.contactName,'Dex Contact Via API');assert.equal(result.canEditProfile,false);assert.equal(result.contactRevision,3);
   await assert.rejects(save({params:{id:String(target)},body:{contacts:{revision:3,patch:{contactName:'Rollback API'}},classification:{revision:0}}},response),/COMPANY_PROFILE_IS_PRIVATE/);
-  assert.equal((await read()).contactName,'DEX contact via API');assert.equal((await read()).contactRevision,3);
+  assert.equal((await read()).contactName,'Dex Contact Via API');assert.equal((await read()).contactRevision,3);
   const owned=await db.organization.create({data:{name:'Owned customer',type:'BRAND',ownerOrgId:org}});
   const relation=await db.orgRelationship.create({data:{manufacturerOrgId:org,brandOrgId:owned.id,defaultSizeSetCode:'LEGACY_APPAREL'}});
   await save({params:{id:String(owned.id)},body:{relationshipId:relation.id,contacts:{revision:0,patch:{contactName:'Local person'}},defaultSizeSetCode:'URD_NUMERIC'}},response);
@@ -69,7 +69,7 @@ test('partner contacts belong to the editing company; defaults, revision and rol
   await assert.rejects(save({params:{id:String(target)},body:{relationshipId:relation.id,contacts:{revision:3,patch:{contactName:'Wrong relationship'}}}},response),/INVALID_PARTNER_ID/);
   const businessRequest={params:{id:String(s.vendor.id)},body:{contacts:{revision:0,mode:'LOCAL',patch:{contactName:'Business contact'}}}};
   await assert.rejects(save({...businessRequest,body:{...businessRequest.body,defaultSizeSetCode:null}},response),/COMPANY_PROFILE_IS_PRIVATE/);
-  await save(businessRequest,response);assert.equal(result.sourceKind,'BUSINESS');assert.equal(result.contactName,'Business contact');assert.equal(result.contactRevision,1);
+  await save(businessRequest,response);assert.equal(result.sourceKind,'BUSINESS');assert.equal(result.contactName,'Business Contact');assert.equal(result.contactRevision,1);
   allowed=false;result=null;await save({params:{id:String(target)},body:{}},response);assert.equal(result,null);
   const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(row=>row.version==='20261115010000_partner_local_contacts');
   await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);assert.equal((await read()).contactRevision,3);
