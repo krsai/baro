@@ -1,3 +1,4 @@
+const vatRowOnly=process.argv.includes('--vat-row-only');
 const orderEntryOnly=process.argv.includes('--order-entry-only');
 const reviewOnly=process.argv.includes('--review-only');
 import {invoicePaymentAccountText} from '../frontend/src/constants/invoicePaymentAccount.js';
@@ -35,7 +36,7 @@ const port=43221,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/invoice-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
- for(const [lang,failure] of (orderEntryOnly?[]:(reviewOnly||adjustmentOnly||summaryOnly||compactOnly)?[['ko','none'],['en','none'],['vi','none']]:scheduleOnly?[['ko','none'],['en','none'],['vi','none']]:bankReviewOnly?[['ko','none'],['en','issue'],['en','save'],['vi','none']]:[['ko','detail'],['en','detail'],['vi','detail'],['en','revision'],['ko','layout'],['ko','none'],['en','none'],['vi','none'],['en','issue'],['en','save'],['ko','advance'],['en','advance'],['vi','advance']])){
+ for(const [lang,failure] of (orderEntryOnly?[]:(vatRowOnly||reviewOnly||adjustmentOnly||summaryOnly||compactOnly)?[['ko','none'],['en','none'],['vi','none']]:scheduleOnly?[['ko','none'],['en','none'],['vi','none']]:bankReviewOnly?[['ko','none'],['en','issue'],['en','save'],['vi','none']]:[['ko','detail'],['en','detail'],['vi','detail'],['en','revision'],['ko','layout'],['ko','none'],['en','none'],['vi','none'],['en','issue'],['en','save'],['ko','advance'],['en','advance'],['vi','advance']])){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],saves=[],issues=[],reads=[];let failed=false;
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
   await page.addInitScript(({lang,invoice})=>{window.testLang=lang;window.testInvoice=invoice;},{lang,invoice:failure==='detail'?{id:'i1',buyerOrgId:2,invoiceNumber:'INV-001',revisionNumber:1,pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',orders:[{sourceOrderId:'o1',sourceUpdatedAt:source.sourceUpdatedAt,billingPercentage:'100',appliedDeductionAmount:'0'}],snapshot:{fields:{number:'INV-001',date:'2026-10-31',seller:source.seller,buyer:source.buyer,notes:'',bank:'Saved bank USD-001'},lines:combineInvoiceSources([source]).lines.map(row=>({...row,lineKey:row.key,unitPrice:'2'}))}}:null});
@@ -64,6 +65,18 @@ try{
   const orderControls=page.locator('[data-invoice-order-controls]');
   assert.equal(await orderControls.locator('td:last-child input').count(),1,'Billing percentage is the last cell');
   assert.equal(await orderControls.evaluate(row=>!!(document.querySelector('[data-invoice-line]').compareDocumentPosition(row)&Node.DOCUMENT_POSITION_FOLLOWING)),true,'Order billing controls follow the items');
+  if(vatRowOnly){
+   const line=page.locator('[data-invoice-line]').first(),treatment=line.locator('[data-invoice-vat-treatment]').getByRole('combobox'),rate=line.locator('[data-invoice-vat-rate] input');
+   assert.equal(await page.locator('fieldset').getByRole('combobox').count(),1,'VAT treatment exists only in the item row');
+   assert.equal(await rate.isDisabled(),true);
+   const choose=async suffix=>{await treatment.focus();await treatment.press('ArrowDown');await page.getByRole('option',{name:new RegExp('^CMT'+suffix)}).click();};
+   await choose('V');await rate.fill('8');assert.match(await page.locator('.invoice-total').innerText(),/32\.40/);
+   await choose('E');assert.equal(await rate.inputValue(),'0');assert.equal(await rate.isDisabled(),true);
+   await choose('V');await rate.fill('10');assert.match(await page.locator('.invoice-total').innerText(),/33\.00/);
+   for(const width of [1366,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.equal(await line.locator('[data-invoice-vat-treatment]').count(),1);}
+   await page.getByRole('button',{name:invoiceUi[lang].issue,exact:true}).click();await page.waitForFunction(()=>window.issuedEditor===true);
+   assert.equal(saves[0].fields.vatTreatment,'V');assert.equal(saves[0].fields.vatRate,'10');assert.deepEqual(errors,[]);await page.close();continue;
+  }
   if(adjustmentOnly){
    assert.equal(await page.getByRole('button',{name:invoiceUi[lang].cancel,exact:true}).count(),0);
    const adjustment=page.getByLabel(/\(\+\/-\)/);await adjustment.waitFor();
@@ -89,7 +102,7 @@ try{
   assert.equal(await page.locator('textarea[aria-label^="Remark "]').count(),0);
   const grid=page.locator('fieldset table').first();
   const numeric=grid.locator('tbody tr[data-invoice-line]').first().locator('input');await numeric.first().focus();await numeric.first().press('Enter');assert.equal(await numeric.nth(1).evaluate(el=>document.activeElement===el),true,'invoice quantity Enter advances to price');
-  assert.equal(await grid.locator('thead th').count(),7);
+  assert.equal(await grid.locator('thead th').count(),9);
   assert.equal(await grid.getByRole('columnheader',{name:'S',exact:true}).count(),0);
   assert.equal(await grid.locator('thead th').nth(3).evaluate(el=>getComputedStyle(el).textAlign),'right');
   assert.equal(await grid.locator('tbody tr[data-invoice-line]').first().locator('td').nth(1).innerText(),source.orderNumber);
@@ -131,16 +144,16 @@ try{
    for(const width of [1920,1720,1366,768,390]){
     await page.setViewportSize({width,height:1000});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
-    const dimensions=await grid.locator('tr[data-invoice-line] input[inputmode="decimal"]').nth(0).first().evaluate(input=>({input:input.getBoundingClientRect().width,cell:input.closest('td').getBoundingClientRect().width}));
+    const dimensions=await grid.locator('tr[data-invoice-line] td:nth-child(6) input[inputmode="decimal"]').nth(0).first().evaluate(input=>({input:input.getBoundingClientRect().width,cell:input.closest('td').getBoundingClientRect().width}));
     assert.ok(dimensions.input<=dimensions.cell&&dimensions.cell>=100,JSON.stringify(dimensions));
 
    }
    assert.deepEqual(errors,[]);await page.close();continue;
   }
   assert.equal(await grid.locator('tbody tr[data-invoice-line]').count(),1);
-  assert.match(await grid.innerText(),/\$/);assert.equal(await grid.locator('tr[data-invoice-line] input[inputmode="decimal"]').nth(0).inputValue(),'2');await grid.locator('tr[data-invoice-line] input[inputmode="decimal"]').nth(0).fill('2.3456');assert.match(await grid.innerText(),/Shirt/);assert.doesNotMatch(await grid.innerText(),/HS \/ Origin/);
+  assert.match(await grid.innerText(),/\$/);assert.equal(await grid.locator('tr[data-invoice-line] td:nth-child(6) input[inputmode="decimal"]').nth(0).inputValue(),'2');await grid.locator('tr[data-invoice-line] td:nth-child(6) input[inputmode="decimal"]').nth(0).fill('2.3456');assert.match(await grid.innerText(),/Shirt/);assert.doesNotMatch(await grid.innerText(),/HS \/ Origin/);
   assert.equal(await page.getByRole('textbox',{name:'HS code',exact:true}).count(),0);assert.equal(await page.getByRole('textbox',{name:'Origin',exact:true}).count(),0);
-  await grid.locator('tr[data-invoice-line] input[inputmode="decimal"]').nth(1).fill('14');
+  await grid.locator('tr[data-invoice-line] td:nth-child(5) input[inputmode="decimal"]').nth(0).fill('14');
   await page.getByRole('textbox',{name:new RegExp('^'+RegExp.escape(invoiceUi[lang].notes)+'$','i')}).fill('One missing piece');
   if(failure==='advance'){const rate=page.locator('input[inputmode="decimal"][aria-label$=" PO-1"]');await rate.fill('30');await rate.press('Tab');}
   assert.equal(await issue.isEnabled(),true);
@@ -159,7 +172,7 @@ try{
   assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark===''));assert.equal(saves[0].lines[0].adjustmentReason,'Reviewed Note');assert.equal(saves[0].fields.notes,'Reviewed Note');if(failure!=='revision'){assert.match(saves[0].fields.bank,bankReviewOnly?/USD-999/:/USD-001/);assert.doesNotMatch(saves[0].fields.bank,/VND-001/);assert.equal(saves[0].fields.bankAccountId,bankReviewOnly?'3':'1');}assert.equal(saves[0].fields.number,failure==='save'?'CUSTOM-2026-A':failure==='detail'?'INV-001-R2':'');
   assert.deepEqual(errors,[]);await page.close();
  }
- for(const lang of ((orderEntryOnly||reviewOnly||adjustmentOnly||summaryOnly||bankReviewOnly||scheduleOnly||compactOnly)?[]:['ko','en','vi'])){
+ for(const lang of ((vatRowOnly||orderEntryOnly||reviewOnly||adjustmentOnly||summaryOnly||bankReviewOnly||scheduleOnly||compactOnly)?[]:['ko','en','vi'])){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],queries=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(lang=>{window.testLang=lang;},lang);
@@ -194,7 +207,7 @@ try{
   for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await assertSeparateCards();}
   assert.deepEqual(errors,[]);await page.close();
  }
- for(const lang of ((reviewOnly||bankReviewOnly||scheduleOnly)?[]:['ko','en','vi'])){
+ for(const lang of ((vatRowOnly||reviewOnly||bankReviewOnly||scheduleOnly)?[]:['ko','en','vi'])){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],reads=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(lang=>{window.testLang=lang;},lang);
@@ -216,5 +229,5 @@ try{
   for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await remark.inputValue(),'Keep this order invoice');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
   assert.deepEqual(errors,[]);await page.close();
  }
- console.log(orderEntryOnly?'PASS single-order invoice entry: ko/en/vi, independent order route, no customer/order selection, desktop/mobile draft preservation.':reviewOnly?'PASS invoice review checkbox removal: ko/en/vi desktop/mobile, issuance remains enabled after valid field edits.':scheduleOnly?'Collection date: ko/en/vi entry and draft/issue payload passed.':bankReviewOnly?'Invoice bank confirmation and selected account payload passed, including ambiguous issue/save retry recovery.':'Invoice editor passed ko/en/vi: single-order entry from orders, discard protection, responsive layout, direct issue and retry recovery.');
+ console.log(vatRowOnly?'PASS VAT treatment/rate in item rows: ko/en/vi desktop/mobile, tax calculation, exempt reset and issue payload.':orderEntryOnly?'PASS single-order invoice entry: ko/en/vi, independent order route, no customer/order selection, desktop/mobile draft preservation.':reviewOnly?'PASS invoice review checkbox removal: ko/en/vi desktop/mobile, issuance remains enabled after valid field edits.':scheduleOnly?'Collection date: ko/en/vi entry and draft/issue payload passed.':bankReviewOnly?'Invoice bank confirmation and selected account payload passed, including ambiguous issue/save retry recovery.':'Invoice editor passed ko/en/vi: single-order entry from orders, discard protection, responsive layout, direct issue and retry recovery.');
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}
