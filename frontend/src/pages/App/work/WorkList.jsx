@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {Box,Button,Chip,DialogActions,DialogContent,DialogTitle,FormControl,IconButton,InputLabel,MenuItem,Paper,Select,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Tooltip,Typography} from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
+import DownloadIcon from '@mui/icons-material/Download';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
@@ -17,6 +18,7 @@ import 'dayjs/locale/vi';
 import AppPageContainer from '../../../components/AppPageContainer';
 import DateRangeSelector from '../../../components/DateRangeSelector';
 import PageSectionHeader from '../../../components/PageSectionHeader';
+import PageActions from '../../../components/PageActions';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
@@ -34,6 +36,7 @@ import { deleteWorkLog, loadWorkLogs } from './workLogStorage';
 import QuantityImportReviewTable from './QuantityImportReviewTable';
 import {
   extractWorkLogImportIssueRows,
+  downloadWorkLogImportIssues,
   formatWorkLogImportError,
   importWorkLogRows,
   parseWorkLogImportWorkbook,
@@ -68,6 +71,8 @@ const TEXT = {
   },
   importIssueLocation: { ko: '위치', en: 'Location', vi: 'Vi tri' },
   importIssueReason: { ko: '오류 사유', en: 'Reason', vi: 'Ly do' },
+  downloadErrors: { ko: '오류 다운로드', en: 'Download Errors', vi: 'Tải Lỗi Xuống' },
+  downloadError: { ko: '오류 파일을 다운로드하지 못했습니다.', en: 'Failed To Download The Error File.', vi: 'Không Thể Tải Tệp Lỗi Xuống.' },
   close: { ko: '닫기', en: 'Close', vi: 'Dong' },
   add: { ko: '기록 추가', en: 'Add Log', vi: 'Them ghi chep' },
   searchPlaceholder: {
@@ -898,9 +903,29 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
           </TableContainer>
         </DialogContent>
         <DialogActions>
+          <PageActions secondary={
           <Button onClick={() => setImportIssueDialogOpen(false)}>
             {resolveText(TEXT.close, languageCode, 'Close')}
           </Button>
+          } primary={
+          <Button
+            variant="contained"
+            startIcon={<DownloadIcon />}
+            disabled={importIssueRows.length === 0}
+            onClick={() => {
+              try {
+                downloadWorkLogImportIssues(importIssueRows, {
+                  locationLabel: resolveText(TEXT.importIssueLocation, languageCode, 'Location'),
+                  reasonLabel: resolveText(TEXT.importIssueReason, languageCode, 'Reason'),
+                });
+              } catch {
+                showNotification(resolveText(TEXT.downloadError, languageCode, 'Failed To Download The Error File.'), 'error');
+              }
+            }}
+          >
+            {resolveText(TEXT.downloadErrors, languageCode, 'Download Errors')}
+          </Button>
+          } />
         </DialogActions>
       </Dialog>
     </AppPageContainer>

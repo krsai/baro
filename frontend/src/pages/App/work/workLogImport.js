@@ -700,6 +700,17 @@ export const parseWorkLogImportWorkbook = async (file) => {
   return parsedRows;
 };
 
+export const downloadWorkLogImportIssues = (issues, { locationLabel, reasonLabel }) => {
+  const sheet = XLSX.utils.aoa_to_sheet([
+    [locationLabel, reasonLabel],
+    ...issues.map((issue) => [String(issue.location ?? ''), String(issue.detail ?? '')]),
+  ]);
+  sheet['!cols'] = [{ wch: 24 }, { wch: 120 }];
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Import Errors');
+  XLSX.writeFile(workbook, 'work-log-import-errors.xlsx');
+};
+
 export const importWorkLogRows = async ({ orgId, fileName, rows, approvedQuantityKeys = [] }) => {
   const query = buildQueryString({ orgId });
   return requestJSON(`/work-logs/import${query}`, {
