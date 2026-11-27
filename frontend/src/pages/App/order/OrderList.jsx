@@ -1,5 +1,6 @@
 import {canAccessPath} from '../../../utils/accessControl';
 import ManagementTargetSettingsButton from '../../../components/ManagementTargetSettingsButton';
+import OrderWorkflowInformationButton from '../../../components/OrderWorkflowInformationButton';
 import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
 import LocalizedDateField from '../../../components/LocalizedDateField';
 import Dialog from '../../../components/AppDialog';
@@ -13,7 +14,6 @@ import SearchPanel from '../../../components/SearchPanel';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import { getOrderWorkflowLabel, orderWorkflowOptions, ORDER_WORKFLOW_TONES } from '../../../constants/orderWorkflow.mjs';
 import StatusLabel from '../../../components/StatusLabel';
-import InformationButton from '../../../components/InformationButton';
 import { orderWorkflowInformation } from '../../../constants/orderWorkflowInformation.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
@@ -3113,7 +3113,7 @@ const OrderList = () => {
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.progress }}>
                     <Stack direction="row" alignItems="center" spacing={0.5} sx={{ whiteSpace: 'nowrap' }}>
                       <span>{orderWorkflowInformation[languageCode]?.title || orderWorkflowInformation.en.title}</span>
-                      <InformationButton content={orderWorkflowInformation} languageCode={languageCode} />
+                      <OrderWorkflowInformationButton languageCode={languageCode} />
                     </Stack>
                   </TableCell>
                   <TableCell

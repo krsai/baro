@@ -4,7 +4,8 @@ import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 import { managementTargetText } from '../frontend/src/constants/managementTargets.js';
 import { invoiceMessages } from '../frontend/src/constants/invoiceMessages.js';
-import { getOrderWorkflowLabel } from '../frontend/src/constants/orderWorkflow.mjs';
+import { getOrderWorkflowLabel,ORDER_WORKFLOW_KEYS } from '../frontend/src/constants/orderWorkflow.mjs';
+import {orderWorkflowInformation} from '../frontend/src/constants/orderWorkflowInformation.mjs';
 
 const filename = 'order-target-menu-test.html';
 const fixture = 'frontend/' + filename;
@@ -121,6 +122,19 @@ try {
     assert.equal(await button('SHIPPING').count(), 0);
     assert.equal(await button('INVOICE').count(), 1);
     await orderStatus('RECEIVED').waitFor();
+    const tableTone=await orderStatus('RECEIVED').evaluate(el=>getComputedStyle(el.closest('.MuiChip-root')).backgroundColor);
+    const information=page.getByRole('button',{name:new RegExp('^'+orderWorkflowInformation[language].title+' ·')});
+    await information.focus();await page.keyboard.press('Enter');
+    const explanation=page.getByRole('dialog',{name:orderWorkflowInformation[language].title,exact:true});await explanation.waitFor();
+    assert.equal(await explanation.locator('[data-order-workflow-explanation]').count(),ORDER_WORKFLOW_KEYS.length);
+    for(const status of ORDER_WORKFLOW_KEYS){
+      const row=explanation.locator('[data-order-workflow-explanation="'+status+'"]');
+      assert.equal(await row.locator('.MuiChip-root').innerText(),getOrderWorkflowLabel(status,language));
+      assert.equal((await row.locator('p').innerText()).startsWith(getOrderWorkflowLabel(status,language)+':'),false);
+    }
+    const explanationTone=await explanation.locator('[data-order-workflow-explanation="RECEIVED"] .MuiChip-root').evaluate(el=>getComputedStyle(el).backgroundColor);assert.equal(explanationTone,tableTone);
+    if(language==='ko'&&width===1440){await page.waitForTimeout(300);await page.screenshot({path:'logs/order-status-label-explanation-preview.png'});}
+    await page.keyboard.press('Escape');await explanation.waitFor({state:'hidden'});assert.equal(await information.evaluate(el=>document.activeElement===el),true);
     await page.evaluate(() => window.testNavigate('/order-shipments'));
     await button('SHIPPING').waitFor();
     const shipment = page.locator('main table').getByText('SHIP-LIST-ORDER', { exact: true });
