@@ -3,37 +3,51 @@ import {Box,Stack,Typography} from '@mui/material';
 import InvoiceSheet from './InvoiceSheet';
 import {billRouteFields,billFreightFields} from '../utils/billFormLayout.mjs';
 
-// The sample's document regions are shared by Master and House, not rebuilt
-// as unrelated cards. Mobile keeps the same reading order without tiny text.
-export default function BillDocumentForm({field,numberField,issuerField,masterField,logo,logoActions,logoActionsLabel,containerField,air=false}){
- const region={p:{xs:1.5,md:2},minWidth:0,borderColor:'divider'};
+// Follow the reference's party/route column and full-width document tables.
+export default function BillDocumentForm({field,numberField,issuerField,masterField,logo,logoActions,logoActionsLabel,containerField,air=false,surrenderStatus,onBoardDate}){
+ const rule='#233b66',cell={p:1.25,minWidth:0};
+ const table={display:'grid',borderTop:1,borderColor:rule};
+ const cargoCell={...cell,borderRight:{md:'1px solid '+rule},'&:last-child':{borderRight:0},minHeight:{md:320},'& .MuiTextField-root':{width:'100%'}};
  return <>
-  {logoActions&&<Box component="details" sx={{border:1,borderColor:'divider',borderRadius:1,p:1}}><Typography component="summary" sx={{cursor:'pointer'}}>{logoActionsLabel}</Typography><Box sx={{pt:1}}>{logoActions}</Box></Box>}
-  <InvoiceSheet data-shipping-bl-form data-bl-document-layout sx={{borderRadius:1}}>
-  <Box data-bl-region="identity" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'1fr 1fr'},alignItems:'stretch'}}>
-   <Stack data-bl-parties spacing={2} sx={{...region,borderRight:{md:1},borderColor:'divider','& > .MuiTextField-root':{flex:1},'& .MuiInputBase-root':{height:'100%',alignItems:'flex-start'}}}>{['shipper','consignee','notify'].map(key=>field(key,true))}</Stack>
-   <Box data-bl-identity sx={{...region,display:'grid',gridTemplateRows:'auto minmax(150px,1fr) auto',gap:2,borderTop:{xs:1,md:0},borderColor:'divider'}}>
-    <Box>{numberField}</Box>
-    <Stack spacing={2} alignItems="center" justifyContent="center" sx={{py:1,minWidth:0}}>
-     {logo&&<Box component="img" alt="BL Issuer Logo" src={logo} sx={{width:'min(100%, 280px)',height:76,objectFit:'contain'}}/>}
-     <Typography component="h2" align="center" sx={{fontSize:{xs:18,md:20},fontWeight:700,lineHeight:1.35,letterSpacing:0.3}}>{air?'AIR WAYBILL':'COMBINED TRANSPORT'}{!air&&<><br/>BILL OF LADING</>}</Typography>
+  {(masterField||logoActions)&&<Stack spacing={1.5}>
+   {masterField&&<Box sx={{maxWidth:{md:440}}}>{masterField}</Box>}
+   {logoActions&&<Box component="details" sx={{border:1,borderColor:'divider',borderRadius:1,p:1}}><Typography component="summary" sx={{cursor:'pointer'}}>{logoActionsLabel}</Typography><Box sx={{pt:1}}>{logoActions}</Box></Box>}
+  </Stack>}
+  <InvoiceSheet data-shipping-bl-form data-bl-document-layout sx={{borderRadius:0,border:0,p:{xs:1,md:2},color:rule}}>
+   <Box data-bl-region="identity" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'1fr 1fr'},columnGap:{md:3},alignItems:'stretch'}}>
+    <Box data-bl-parties sx={{minWidth:0}}>
+     <Stack>{['shipper','consignee','notify'].map(key=><Box key={key} sx={{borderTop:'1px solid '+rule,pt:1.75,pb:1.5}}>{field(key,true)}</Box>)}</Stack>
+     <Box data-bl-region="route" sx={{...table,gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))'}}}>{billRouteFields.map(key=><Box key={key} sx={{...cell,px:0.75,pt:1.5,borderBottom:'1px solid '+rule}}>{field(key)}</Box>)}</Box>
+    </Box>
+    <Stack data-bl-identity spacing={2} sx={{minWidth:0,pt:{xs:2,md:0},pb:2}}>
+     <Box sx={{alignSelf:'flex-end',width:{xs:'100%',md:'82%'}}}>{numberField}</Box>
+     {logo&&<Box component="img" alt="BL Issuer Logo" src={logo} sx={{alignSelf:'center',width:'min(100%, 300px)',height:90,objectFit:'contain'}}/>}
+     <Typography component="h2" align="center" sx={{fontWeight:800,lineHeight:1.1,letterSpacing:0.5,fontSize:{xs:22,md:26}}}>
+      {!air&&<Box component="span" sx={{display:'block',fontSize:13,letterSpacing:1}}>COMBINED TRANSPORT</Box>}{air?'AIR WAYBILL':'BILL OF LADING'}
+     </Typography>
     </Stack>
-    <Stack spacing={2}>{issuerField}{masterField}</Stack>
    </Box>
-  </Box>
-  <Box data-bl-region="route" sx={{...region,borderTop:1,borderColor:'divider',display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))'},gap:1.25}}>{billRouteFields.map(key=>field(key))}</Box>
-  {containerField&&<Box data-bl-region="containers" sx={{...region,borderTop:1,borderColor:'divider'}}>{containerField}</Box>}
-  <Box data-bl-region="cargo" sx={{...region,borderTop:1,borderColor:'divider',display:'grid',gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',md:'1.2fr 1fr 2.4fr 1fr 1fr'},gap:1.5,alignItems:'start'}}>
-   <Box sx={{gridColumn:{xs:'1 / -1',md:'auto'}}}>{field('marks',true)}</Box>
-   <Stack spacing={1}>{field('quantity')}{field('unit')}</Stack>
-   <Box sx={{gridColumn:{xs:'1 / -1',md:'auto'},gridRow:{xs:2,md:'auto'}}}>{field('cargo',true)}</Box>
-   {field('weightKg')}{field('cbm')}
-  </Box>
-  <Box sx={{...region,borderTop:1,borderColor:'divider'}}>{field('totalPackagesWords')}</Box>
-  <Box data-bl-region="freight" sx={{...region,borderTop:1,borderColor:'divider',display:'grid',gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',md:'1.4fr 1fr .8fr .6fr 1fr 1fr'},gap:1}}>{billFreightFields.map(key=>field(key))}</Box>
-  <Box sx={{...region,borderTop:1,borderColor:'divider',display:'grid',gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',md:'repeat(4,minmax(0,1fr))'},gap:1}}>{['freightPayableAt','originalCount','issuePlace','issueDate'].map(key=>field(key))}</Box>
-  <Box data-bl-region="delivery" sx={{...region,borderTop:1,borderColor:'divider',display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'1fr 1fr'},gap:1.5}}>
-   {field('deliveryAgent',true)}<Stack spacing={1}>{field('onBoardDate')}<Typography align="center" variant="caption">Issuer Signature — Not Executed</Typography></Stack>
-  </Box>
- </InvoiceSheet></>;
+   {containerField&&<Box data-bl-region="containers" sx={{...cell,borderTop:1,borderColor:rule}}>{containerField}</Box>}
+   <Box data-bl-region="cargo" sx={{...table,gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',md:'24fr 10fr 38fr 14fr 14fr'},position:'relative'}}>
+    <Box sx={{...cargoCell,gridColumn:{xs:'1 / -1',md:'auto'}}}>{field('marks',true)}</Box>
+    <Stack spacing={1} sx={cargoCell}>{field('quantity')}{field('unit')}</Stack>
+    <Box sx={{...cargoCell,gridColumn:{xs:'1 / -1',md:'auto'},gridRow:{xs:2,md:'auto'}}}>{field('cargo',true)}</Box>
+    <Box sx={cargoCell}>{field('weightKg')}</Box><Box sx={cargoCell}>{field('cbm')}</Box>
+    {!air&&(surrenderStatus==='CONFIRMED'||onBoardDate)&&<Stack data-bl-onboard-mark spacing={0.75} sx={{gridColumn:'1 / -1',position:{md:'absolute'},right:{md:0},top:{md:110},width:{md:'28%'},alignSelf:'center',alignItems:'center',zIndex:1,p:1,pointerEvents:'none'}}>
+     {surrenderStatus==='CONFIRMED'&&<Typography sx={{fontSize:{xs:20,md:24},fontStyle:'italic',fontWeight:400}}>SURRENDERED</Typography>}
+     {onBoardDate&&<Typography align="center" sx={{fontSize:12}}>LOADED ON BOARD<br/>{onBoardDate}</Typography>}
+    </Stack>}
+   </Box>
+   <Box sx={{...cell,borderTop:1,borderColor:rule}}>{field('totalPackagesWords')}</Box>
+   <Box data-bl-region="freight" sx={{...table,gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',md:'24fr 16fr 16fr 10fr 17fr 17fr'},}}>{billFreightFields.map(key=><Box key={key} sx={{...cell,minHeight:{md:125},borderRight:'1px solid '+rule,'&:last-child':{borderRight:0}}}>{field(key)}</Box>)}</Box>
+   <Box data-bl-region="issue" sx={{...table,gridTemplateColumns:{xs:'minmax(0,1fr)',md:'24fr 36fr 40fr'}}}>
+    <Box sx={cell}>{field('freightPayableAt')}</Box><Box sx={cell}>{field('originalCount')}</Box>
+    <Box sx={{...cell,display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'1fr 1fr'},gap:1}}>{field('issuePlace')}{field('issueDate')}</Box>
+   </Box>
+   <Box data-bl-region="delivery" sx={{...table,gridTemplateColumns:{xs:'minmax(0,1fr)',md:'1fr 1fr'},borderBottom:2,borderColor:rule}}>
+    <Box sx={cell}>{field('deliveryAgent',true)}</Box>
+    <Stack spacing={2} sx={{...cell,justifyContent:'flex-end'}}>{field('onBoardDate')}{issuerField}<Typography align="center" variant="caption">Issuer Signature — Not Executed</Typography></Stack>
+   </Box>
+  </InvoiceSheet>
+ </>;
 }
