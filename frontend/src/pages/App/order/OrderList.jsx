@@ -86,6 +86,7 @@ const { useDeferredValue } = React;
 
 const createId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const ORDER_FILTER_ALL = 'ALL';
+const ORDER_FILTER_EXCLUDE_CLOSED = 'EXCLUDE_CLOSED';
 const ORDER_DETAIL_VIEW_MODES = {
   VERTICAL: 'vertical',
   HORIZONTAL: 'horizontal',
@@ -1599,7 +1600,9 @@ const OrderList = () => {
   const filteredOrders = useMemo(() => {
     const lowerTerm = deferredSearchTerm.toLowerCase();
     return orders.filter((order) => {
-      const matchesProgress = progressFilter === ORDER_FILTER_ALL || order.workflowStatus === progressFilter;
+      const matchesProgress = progressFilter === ORDER_FILTER_ALL || (progressFilter === ORDER_FILTER_EXCLUDE_CLOSED
+        ? order.workflowStatus !== 'COMPLETED'
+        : order.workflowStatus === progressFilter);
       if (!matchesProgress) return false;
 
       if (!deferredSearchTerm) return true;
@@ -1742,6 +1745,7 @@ const OrderList = () => {
   const currentLastSizeColumn = currentSizeColumns[currentSizeColumns.length - 1] || '';
   const orderProgressFilterOptions = useMemo(() => [
     { value: ORDER_FILTER_ALL, label: ORDER_STATUS_TEXT.filterAllLabel },
+    { value: ORDER_FILTER_EXCLUDE_CLOSED, label: languageCode === 'ko' ? '마감 제외' : languageCode === 'vi' ? 'Trừ Đã Đóng' : 'Exclude Closed' },
     ...orderWorkflowOptions(languageCode),
   ], [languageCode]);
   const genderOptionByCode = useMemo(
