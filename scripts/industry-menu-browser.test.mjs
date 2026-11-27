@@ -9,7 +9,7 @@ const canonicalPaths=[...new Set([...readFileSync('frontend/src/utils/companyMen
 const file='frontend/industry-menu-acceptance.html';assert.ok(!existsSync(file));
 writeFileSync(file,`<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module">
 import React from 'react';import{createRoot}from'react-dom/client';import{MemoryRouter}from'react-router-dom';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Page from'/src/pages/App/system/AccessPolicyBoard';import{MenuBlueprintContext}from'/src/context/MenuBlueprintContext';
-const menu=[{isParent:true,menuGroupKey:'INVENTORY',label:'Inventory',children:[{path:'/inventory/materials',label:'/inventory/materials'},{path:'/inventory/settings',label:'/inventory/settings'}]},{label:'Dashboard',path:'/dashboard'},{label:'Business',path:'/business'},{isParent:true,menuGroupKey:'LOGISTICS',label:'Logistics',children:[{label:'Shipping',path:'/shipping'}]},{isParent:true,menuGroupKey:'ORDER',label:'Sales',children:[{label:'Styles',path:'/style'}]},{label:'Expense',path:'/outsourcing-record'},{label:'Approvals',path:'/approval-settings'},{label:'Bank',path:'/bank-ledger'},{label:'Personal',path:'/personal-settings'}];
+const menu=[{isParent:true,menuGroupKey:'INVENTORY',label:'Inventory',children:[{path:'/inventory/materials',label:'/inventory/materials'},{path:'/inventory/settings',label:'/inventory/settings'}]},{label:'Dashboard',path:'/dashboard'},{label:'Business',path:'/business'},{isParent:true,menuGroupKey:'LOGISTICS',label:'Logistics',children:[{label:'Shipping',path:'/shipping'}]},{isParent:true,menuGroupKey:'RECORDS',label:'Production',children:[{label:'Styles',path:'/style'}]},{label:'Expense',path:'/outsourcing-record'},{label:'Approvals',path:'/approval-settings'},{label:'Bank',path:'/bank-ledger'},{label:'Personal',path:'/personal-settings'}];
 const collect=nodes=>nodes.flatMap(n=>n.children?collect(n.children):[n.path]);for(const path of ${JSON.stringify(canonicalPaths)})if(!collect(menu).includes(path))menu.push({path,label:path,...(path==='/business-partner'?{accessChildren:['/customer','/outsourcing-partner','/material-supplier','/logistics-partner'].map(path=>({path,label:path}))}:{})});
 createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,null,React.createElement(MenuBlueprintContext.Provider,{value:menu},React.createElement(Page)))));</script></body></html>`);
 const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','43292','--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
@@ -17,8 +17,8 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch('http://127.0.0.1:43292/industry-menu-acceptance.html')).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const language of ['ko','en','vi'])for(const width of [1440,390]){
-  const t=subscriberAccessText[language],l=accessPolicyLayoutText[language],page=await browser.newPage({viewport:{width,height:1000}}),errors=[];page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(60000);page.on('pageerror',e=>errors.push(e.message));
-  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${language}'});`}));
+  const t=subscriberAccessText[language],l=accessPolicyLayoutText[language],page=await browser.newPage({viewport:{width,height:1000}}),errors=[];page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(60000);page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
+  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`import React from '/node_modules/.vite/deps/react.js';export const LanguageContext=React.createContext(null);export const useLanguage=()=>({languageCode:'${language}'});`}));
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:"export const useAuth=()=>({activeProfile:{entryType:'SYSTEM',systemRole:'SYSTEM_ADMIN'}});"}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={showNotification:(message)=>{window.notice=message;},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>a;'}));
   await page.route('**/src/utils/apiClient.js*',r=>r.fulfill({contentType:'application/javascript',body:`import {getDefaultRoleAccessPolicy,getPolicyFeatures} from '/src/utils/roleAccessPolicyCore.mjs';import {SERVICE_FEATURES} from '/src/utils/serviceCompany.mjs';export const activateRequestScope=()=>{};export const deactivateRequestScope=()=>{};
@@ -32,11 +32,14 @@ export const requestJSON=async(url,options={})=>{
   const row=path=>page.locator(`[data-menu-path="${path}"]`);
   const provided=(path,type='MANUFACTURER')=>row(path).getByRole('checkbox').nth(type==='SERVICE'?5:0);
   const role=(path,index,type='MANUFACTURER')=>row(path).getByRole('checkbox').nth((type==='SERVICE'?5:0)+1+index);
-  await row('/style').waitFor();await page.waitForFunction(()=>window.called.includes('/system/access-policy'));
+  try{await row('/style').waitFor();}catch(e){console.error((await page.locator('body').innerText()).slice(0,2400));console.error(await page.evaluate(()=>window.called));throw e;}await page.waitForFunction(()=>window.called.includes('/system/access-policy'));
   assert.equal(await page.getByRole('tab').count(),0,'both industries share one permission matrix');
-  const expected={ko:['관리자','운영자','회계','직원'],en:['Administrator','Operator','Accountant','Worker'],vi:['Quản trị','Điều hành','Kế toán','Nhân viên']}[language];
+  const expected={ko:['관리자','운영자','회계사','작업자'],en:['Admin','Operator','Accountant','Worker'],vi:['Quan tri','Van hanh','Kế toán','Cong nhan']}[language];
   const headers=await page.getByRole('columnheader').allTextContents();assert.deepEqual(headers.slice(4,8),expected);assert.deepEqual(headers.slice(9,13),expected);
   assert.equal(await row('/bank-ledger').getByRole('checkbox').count(),10);
+  assert.equal(await row('/style').locator('[data-menu-availability="SERVICE"]').getByRole('checkbox').count(),0);
+  assert.equal(await row('/style').locator('[data-menu-availability="SERVICE"]').textContent(),l.unsupported);
+  assert.equal(await row('/personal-settings').locator('[data-menu-availability]').getByRole('checkbox').count(),0);
   for(const toggle of await row('/personal-settings').getByRole('checkbox').all()){assert.equal(await toggle.isChecked(),true);assert.equal(await toggle.isDisabled(),true);}
   await role('/outsourcing-record',2).uncheck();await role('/approval-settings',2).uncheck();
   await role('/outsourcing-record',2).check();assert.equal(await role('/approval-settings',2).isChecked(),false);
