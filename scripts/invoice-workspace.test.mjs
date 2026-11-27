@@ -7,7 +7,7 @@ const require = createRequire(import.meta.url);
 const ts = require('../backend/node_modules/typescript');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-function harness() {
+function harness(search = '', params = {}) {
   let index = 0;
   let effects = [];
   const slots = [];
@@ -59,7 +59,7 @@ function harness() {
     },
     '../../../constants/invoiceMessages': messageExports,
     './InvoiceEditor': { default: 'InvoiceEditor' },
-    'react-router-dom': {useLocation:()=>({search:''}),useParams:()=>({})},
+    'react-router-dom': {useLocation:()=>({search}),useParams:()=>params},
     '../../../constants/invoiceUi':{invoiceUi:{en:{},ko:{continue:'continue'}}},
     '../../../components/PageContentStack':{default:'PageContentStack'},
     './InvoiceList': { default: 'InvoiceList' },
@@ -100,37 +100,22 @@ test('invoice menu opens on issued history and enters a separate creation screen
 
 
 const customer = (app, tree, value) => app.find(app.controls(tree),'CustomerSelect')[0].props.onChange(value);
-const openOrders = (app, tree) => app.find(app.controls(tree),'Button')[0].props.onClick();
-const choose = (app, tree, number) => app.find(app.controls(tree),'Button').find(node=>node.props.children?.includes(number)).props.onClick();
-const apply = (app, tree) => app.find(app.controls(tree),'DialogActions')[0].props.children[0].props.onClick();
-test('editor keeps customer selection and explicitly applies order candidates',async()=>{
- const app=harness();let tree=app.render();assert.equal(tree.type,'InvoiceEditor');assert.deepEqual([...tree.props.orderIds],[]);
+test('new invoice menu creates a general invoice without order selection',async()=>{
+ const app=harness();let tree=app.render();assert.equal(tree.type,'GeneralInvoiceEditor');
+ assert.match(app.requests[0].url,/documentKind=GENERAL/);
  app.requests[0].resolve({rows:[{id:8,name:'A'}]});await flush();tree=app.render();
- assert.equal(app.find(app.controls(tree),'CustomerSelect').length,1);
- assert.equal(app.find(app.controls(tree),'Button')[0].props.disabled,true);
- customer(app,tree,{id:8,name:'A'});app.render();app.tick();assert.match(app.requests[1].url,/buyerOrgId=8/);
- app.requests[1].resolve({rows:[{orderId:'first',orderNumber:'PO1'}],hasMore:false});await flush();tree=app.render();
- openOrders(app,tree);tree=app.render();choose(app,tree,'PO1');tree=app.render();assert.deepEqual([...tree.props.orderIds],[]);
- apply(app,tree);tree=app.render();assert.deepEqual([...tree.props.orderIds],['first']);assert.equal(tree.props.buyerOrgId,8);
+ customer(app,tree,{id:8,name:'A'});tree=app.render();assert.equal(tree.props.buyerOrgId,8);
+ assert.equal(app.requests.length,1);assert.equal(app.find(app.controls(tree),'Dialog').length,0);
 });
-test('customer changes ignore stale responses and clear selected order FKs',async()=>{
- const app=harness();let tree=app.render();app.requests[0].resolve({rows:[]});await flush();tree=app.render();
- customer(app,tree,{id:8,name:'A'});app.render();app.tick();tree=app.render();
- customer(app,tree,{id:9,name:'B'});app.render();app.tick();
- app.requests[1].resolve({rows:[{orderId:'wrong',orderNumber:'WRONG'}],hasMore:false});await flush();tree=app.render();
- assert.equal(app.find(app.controls(tree),'Button').some(node=>node.props.children?.includes('WRONG')),false);assert.match(app.requests[2].url,/buyerOrgId=9/);
- app.requests[2].resolve({rows:[{orderId:'correct',orderNumber:'PO-B'}],hasMore:false});await flush();tree=app.render();
- openOrders(app,tree);tree=app.render();choose(app,tree,'PO-B');tree=app.render();apply(app,tree);tree=app.render();assert.deepEqual([...tree.props.orderIds],['correct']);
- customer(app,tree,null);tree=app.render();assert.deepEqual([...tree.props.orderIds],[]);assert.equal(app.find(app.controls(tree),'Button')[0].props.disabled,true);
+test('order route binds a single actual order and bypasses customer and order lists',()=>{
+ const app=harness('',{sourceOrderId:'actual-order/1'});const tree=app.menu('editor');
+ assert.equal(tree.type,'InvoiceEditor');assert.equal(tree.props.orderId,'actual-order/1');
+ assert.equal(tree.props.orgId,7);assert.equal(tree.props.renderSelection,undefined);assert.equal(app.requests.length,0);
+ tree.props.onIssued();assert.equal(app.navigations.at(-1),'/invoices');
 });
-test('search and pagination preserve applied selections and closing candidates does not apply',async()=>{
- const app=harness();let tree=app.render();app.requests[0].resolve({rows:[]});await flush();tree=app.render();
- customer(app,tree,{id:8,name:'A'});app.render();app.tick();
- app.requests[1].resolve({rows:[{orderId:'first',orderNumber:'PO1'}],hasMore:true});await flush();tree=app.render();
- openOrders(app,tree);tree=app.render();choose(app,tree,'PO1');tree=app.render();apply(app,tree);tree=app.render();
- openOrders(app,tree);tree=app.render();app.find(app.controls(tree),'SearchPanel')[0].props.search.props.onChange({target:{value:'PO2'}});app.render();app.tick();
- assert.match(app.requests[2].url,/search=PO2/);app.requests[2].resolve({rows:[{orderId:'second',orderNumber:'PO2'}],hasMore:true});await flush();tree=app.render();
- choose(app,tree,'PO2');tree=app.render();assert.deepEqual([...tree.props.orderIds],['first']);
- app.find(app.controls(tree),'Dialog')[0].props.onClose();tree=app.render();assert.deepEqual([...tree.props.orderIds],['first']);
- openOrders(app,tree);tree=app.render();assert.deepEqual([...tree.props.orderIds],['first']);
+test('historical order revision restores through its draft, preserving multiple-order support',async()=>{
+ const app=harness('?revision=old-draft');let tree=app.render();assert.equal(tree.type,'Container');
+ assert.match(app.requests[0].url,/drafts\/old-draft/);assert.equal(app.requests.length,1);
+ app.requests[0].resolve({content:{documentKind:'ORDER'}});await flush();tree=app.render();
+ assert.equal(tree.type,'InvoiceEditor');assert.equal(tree.props.draftId,'old-draft');assert.equal(tree.props.renderSelection,null);
 });

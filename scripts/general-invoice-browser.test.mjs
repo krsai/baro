@@ -59,7 +59,7 @@ try{
   await page.route('**/material-items/options?*',route=>route.fulfill({headers,json:[{id:'material-master',baseId:20,unitId:9,variantId:'material-variant',variantRevision:2,data:{nameEn:'Poly Bag Material',nameKo:'Poly Bag Material',nameVi:'Poly Bag Material',details:{length:30,width:40,height:0.08},unit:{id:9,nameEn:'Pcs',nameKo:'\uAC1C',nameVi:'C\u00e1i'},variantId:'material-variant',variantRevision:2}}]}));
   await page.goto(`http://127.0.0.1:${port}/${path.basename(html)}`);
   const t=generalInvoiceText[lang],u=invoiceUi[lang];
-  await page.getByRole('combobox',{name:new RegExp('^'+t.type,'i')}).click();await page.getByRole('option',{name:new RegExp('^'+t.general+'$','i')}).click();
+  assert.equal(await page.getByRole('textbox',{name:new RegExp('^'+t.type,'i')}).inputValue(),t.general);
   const customer=page.getByRole('textbox',{name:roleName(invoicePartyText[lang].target)});if(process.argv.includes('--customer-only')){
    await customer.fill('THE');await customer.press('Enter');const partial=page.getByRole('dialog');await partial.waitFor();assert.equal(await partial.getByText('THE SAN',{exact:true}).count(),1);assert.equal(await page.getByTestId('general-invoice-line').count(),0);await page.keyboard.press('Escape');await partial.waitFor({state:'hidden'});await customer.fill('');
    await customer.press('F2');const dialog=page.getByRole('dialog'),lookup=EXPENSE_LOOKUP_TEXT[lang];await dialog.getByText('CUST-001',{exact:true}).click();const details=dialog.getByTestId('payee-details');await details.getByText('0123456789',{exact:true}).waitFor();assert.equal(await details.getByText('TAX-123',{exact:true}).count(),1);assert.equal(await details.getByTestId('payee-accounts').count(),0);

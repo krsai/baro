@@ -1,9 +1,5 @@
-import Dialog from '../../../components/AppDialog';
-import SearchPanel from '../../../components/SearchPanel';
-import SearchInput from '../../../components/SearchInput';
-import {invoiceNumber} from '../../../utils/invoiceStyleRows.mjs';
 import React, { useEffect, useState } from 'react';
-import {Box,Button,Checkbox,Typography,DialogTitle,DialogContent,DialogActions,TextField,Stack} from '@mui/material';
+import {Box,Button,Typography,TextField,Stack} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import AppPageContainer from '../../../components/AppPageContainer';
 import ManagementTargetSettingsButton from '../../../components/ManagementTargetSettingsButton';
@@ -16,7 +12,7 @@ import { invoiceMessages } from '../../../constants/invoiceMessages';
 import InvoiceEditor from './InvoiceEditor';
 import GeneralInvoiceEditor from './GeneralInvoiceEditor';
 import {generalInvoiceText} from '../../../constants/generalInvoice';
-import {MenuItem} from '@mui/material';
+
 import InvoiceList from './InvoiceList';
 import {useLocation,useParams} from 'react-router-dom';
 
@@ -30,8 +26,11 @@ function InvoiceMenuWorkspace({ activeOrgId, canManageInvoiceTargets, view = 'li
   const { navigateToPath } = useAppActions();
   const { languageCode } = useLanguage();
   const t = invoiceMessages[languageCode] || invoiceMessages.en;
-  const {invoiceId}=useParams();
+  const {invoiceId,sourceOrderId:routeOrderId}=useParams();
+  const location=useLocation();
+  const sourceOrderId=routeOrderId||new URLSearchParams(location.search).get('orderId');
   if (view === 'editor') {
+    if(sourceOrderId&&!new URLSearchParams(location.search).has('revision'))return <InvoiceEditor key={activeOrgId+':'+sourceOrderId} orgId={activeOrgId} orderId={sourceOrderId} languageCode={languageCode} onClose={()=>navigateToPath('/order/'+encodeURIComponent(sourceOrderId))} onIssued={()=>navigateToPath('/invoices',{closeTabId:location.pathname,skipUnsavedChangesCheck:true})}/>;
     return <InvoiceCustomerWorkspace activeOrgId={activeOrgId} onBack={() => navigateToPath('/invoices',{closeTabId:'/invoices/new',skipUnsavedChangesCheck:true})} />;
   }
   if(view==='detail')return <InvoiceList key={invoiceId} orgId={activeOrgId} languageCode={languageCode} invoiceId={invoiceId}/>;
@@ -47,25 +46,18 @@ function InvoiceMenuWorkspace({ activeOrgId, canManageInvoiceTargets, view = 'li
 }
 
 function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
-  const {activeProfile}=useAuth();
-  const service=activeProfile?.orgType==='SERVICE';
-  const [documentKind,setDocumentKind]=useState(service?'GENERAL':'ORDER');
+  const documentKind='GENERAL';
   const location=useLocation(),revisionId=new URLSearchParams(location.search).get('revision');
   const {languageCode}=useLanguage(),t=invoiceMessages[languageCode]||invoiceMessages.en;
   const general=generalInvoiceText[languageCode]||generalInvoiceText.en;
   const [customers,setCustomers]=useState([]),[customer,setCustomer]=useState(null),[customersLoading,setCustomersLoading]=useState(false),[customersError,setCustomersError]=useState(false);
-  const [orders,setOrders]=useState([]),[chosen,setChosen]=useState([]),[search,setSearch]=useState(''),[page,setPage]=useState(0),[hasMore,setHasMore]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState(false),[reload,setReload]=useState(0);
-  const [orderModal,setOrderModal]=useState(false),[pendingChosen,setPendingChosen]=useState([]);
-  const rateText=languageCode==='ko'?{progress:'진행률',billing:'청구율'}:languageCode==='vi'?{progress:'Tiến độ',billing:'Tỷ lệ lập hóa đơn'}:{progress:'Progress',billing:'Billing rate'};
-  const modalText=languageCode==='ko'?{apply:'선택 적용',cancel:'취소',oldest:'오래된 주문부터 표시'}:languageCode==='vi'?{apply:'Áp dụng',cancel:'Hủy',oldest:'Đơn hàng cũ nhất trước'}:{apply:'Apply selection',cancel:'Cancel',oldest:'Oldest orders first'};
-  const pendingOrders=React.useRef(false);
+  const [reload,setReload]=useState(0);
   const [resumeKind,setResumeKind]=useState(null),[resumeError,setResumeError]=useState(false);
   useEffect(()=>{
     if(!revisionId)return;let alive=true;setResumeKind(null);setResumeError(false);
     requestJSON('/invoices/drafts/'+encodeURIComponent(revisionId)+buildQueryString({orgId:activeOrgId}),{skipCache:true}).then(row=>{if(alive)setResumeKind(row.content?.documentKind||'ORDER');}).catch(()=>{if(alive)setResumeError(true);});
     return()=>{alive=false;};
   },[activeOrgId,revisionId,reload]);
-  const orderIds=React.useMemo(()=>chosen.map(order=>order.orderId),[chosen]);
   useEffect(()=>{
     if(!activeOrgId||revisionId)return;
     let cancelled=false;setCustomersLoading(true);setCustomersError(false);
@@ -73,34 +65,12 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
       .then(data=>{if(!cancelled)setCustomers(data.rows);}).catch(()=>{if(!cancelled)setCustomersError(true);}).finally(()=>{if(!cancelled)setCustomersLoading(false);});
     return ()=>{cancelled=true;};
   },[activeOrgId,revisionId,reload,documentKind]);
-  useEffect(()=>{
-    if(!customer||revisionId||documentKind==='GENERAL'){setOrders([]);setLoading(false);pendingOrders.current=false;return;}
-    let cancelled=false;setLoading(true);pendingOrders.current=true;setError(false);if(!page)setOrders([]);
-    const timer=setTimeout(()=>requestJSON(`/invoices/orders${buildQueryString({orgId:activeOrgId,buyerOrgId:customer.id,search,page})}`,{skipCache:true})
-      .then(data=>{if(!cancelled){setOrders(previous=>page?[...new Map([...previous,...data.rows].map(order=>[order.orderId,order])).values()]:data.rows);setHasMore(data.hasMore);}})
-      .catch(()=>{if(!cancelled)setError(true);}).finally(()=>{if(!cancelled){setLoading(false);pendingOrders.current=false;}}),200);
-    return ()=>{cancelled=true;clearTimeout(timer);};
-  },[activeOrgId,customer,search,page,revisionId,reload,documentKind]);
-  const renderSelection=({requestChange,disabled})=><Box sx={{display:"flex",alignItems:"flex-start",flexWrap:"wrap",gap:2}}>
-    <TextField select size="small" sx={{width:180}} label={general.type} value={documentKind} disabled={disabled} onChange={event=>requestChange(()=>{setDocumentKind(event.target.value);setCustomer(null);setChosen([]);setOrders([]);setCustomers([]);})}><MenuItem value="ORDER" disabled={service}>{general.order}</MenuItem><MenuItem value="GENERAL">{general.general}</MenuItem></TextField>
-    <Box sx={{display:'grid',flex:1,minWidth:260,gridTemplateColumns:{xs:'minmax(0,1fr)',md:'minmax(260px,1fr) minmax(180px,1fr)'},gap:2}}>
-      <InvoicePartyPicker orgId={activeOrgId} languageCode={languageCode} options={customers} value={customer} disabled={disabled||customersLoading||customersError||!activeOrgId} onChange={value=>{if((value?.id??null)===(customer?.id??null))return;requestChange(()=>{setCustomer(value);setChosen([]);setOrders([]);setSearch('');setPage(0);setHasMore(false);setError(false);});}}/>
-      {documentKind==='ORDER'&&<Button variant="outlined" disabled={disabled||!customer} onClick={()=>{setPendingChosen(chosen);setOrderModal(true);setSearch('');setPage(0);}}>{t.orders}{chosen.length ? ': '+chosen.map(order=>order.orderNumber).join(', ') : ''}</Button>}
-      <Dialog open={orderModal} onClose={()=>setOrderModal(false)} fullWidth maxWidth="md">
-        <DialogTitle>{t.orders}</DialogTitle>
-        <DialogContent dividers>
-          <SearchPanel onReset={()=>{setSearch('');setPage(0);}} search={<SearchInput placeholder={t.search} inputProps={{'aria-label':t.search}} value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}}/>} sx={{mb:2}}/>
-          <Stack spacing={1}>{orders.map(order=>{const selected=pendingChosen.some(row=>row.orderId===order.orderId);return <Button key={order.orderId} variant={selected?'contained':'outlined'} aria-pressed={selected} onClick={()=>setPendingChosen(rows=>selected?rows.filter(row=>row.orderId!==order.orderId):[...rows,order])} sx={{justifyContent:'flex-start',gap:1,flexWrap:'wrap'}}><Checkbox checked={selected} tabIndex={-1} sx={{color:'inherit','&.Mui-checked':{color:'inherit'}}}/>{order.orderNumber} / {invoiceNumber(order.totalQuantity)} PCS<Box component="span" sx={{ml:'auto',fontWeight:400}}>{rateText.progress} {order.progressPercent==null?'—':`${order.progressPercent}%`} · {rateText.billing} {order.billingPercent??0}%</Box></Button>;})}</Stack>
-          {!loading&&!orders.length&&<Typography>{t.empty}</Typography>}
-          {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{t.failed}</Alert>}
-          {hasMore&&<Button disabled={loading} onClick={()=>setPage(value=>value+1)}>{t.next}</Button>}
-        </DialogContent>
-        <DialogActions><Button disabled={disabled} onClick={()=>{if(chosen.length===pendingChosen.length&&chosen.every(order=>pendingChosen.some(row=>row.orderId===order.orderId))){setOrderModal(false);return;}requestChange(()=>{setChosen(pendingChosen);setOrderModal(false);});}}>{modalText.apply}</Button></DialogActions>
-      </Dialog>
-    </Box>
-    {(customersError||error)&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{customersError?t.customersFailed:t.failed}</Alert>}
+  const renderSelection=({requestChange,disabled})=><Box sx={{display:'flex',alignItems:'flex-start',flexWrap:'wrap',gap:2}}>
+    <TextField size="small" sx={{width:180}} label={general.type} value={general.general} slotProps={{input:{readOnly:true}}}/>
+    <Box sx={{flex:1,minWidth:260}}><InvoicePartyPicker orgId={activeOrgId} languageCode={languageCode} options={customers} value={customer} disabled={disabled||customersLoading||customersError||!activeOrgId} onChange={value=>{if((value?.id??null)===(customer?.id??null))return;requestChange(()=>setCustomer(value));}}/></Box>
+    {customersError&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{t.customersFailed}</Alert>}
   </Box>;
   if(revisionId&&!resumeKind)return <AppPageContainer title={t.title}>{resumeError?<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{t.failed}</Alert>:<Typography>{t.loading||'…'}</Typography>}</AppPageContainer>;
   const Editor=(revisionId?resumeKind:documentKind)==='GENERAL'?GeneralInvoiceEditor:InvoiceEditor;
-  return <Editor key={activeOrgId+':'+documentKind} orgId={activeOrgId} buyerOrgId={customer?.id} orderIds={orderIds} draftId={revisionId} languageCode={languageCode} onClose={onBack} onIssued={onBack} renderSelection={revisionId?null:renderSelection}/>;
+  return <Editor key={activeOrgId+':'+documentKind} orgId={activeOrgId} buyerOrgId={customer?.id} draftId={revisionId} languageCode={languageCode} onClose={onBack} onIssued={onBack} renderSelection={revisionId?null:renderSelection}/>;
 }

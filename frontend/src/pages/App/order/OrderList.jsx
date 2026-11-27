@@ -1,3 +1,4 @@
+import {canAccessPath} from '../../../utils/accessControl';
 import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
 import LocalizedDateField from '../../../components/LocalizedDateField';
 import Dialog from '../../../components/AppDialog';
@@ -774,7 +775,8 @@ const OrderList = () => {
   const isOrderListRouteActive = location.pathname === '/order';
   const isOrderDetailRouteActive = location.pathname.startsWith('/order/');
   const { showNotification, navigateToPath } = useAppActions();
-  const { activeOrgId, activeProfile } = useAuth();
+  const authState = useAuth();
+  const { activeOrgId, activeProfile } = authState;
   const { languageCode } = useLanguage();
   const orderValueDetailText = useMemo(() => getOrderValueDetailText(languageCode), [languageCode]);
   const orderPageText = useMemo(
@@ -3386,6 +3388,7 @@ const OrderList = () => {
           sx={{ alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}
         >
           <LastUpdaterLabel />
+          {!isNewOrder && currentDetailOrder && Number(currentDetailOrder.sellerOrgId)===Number(activeOrgId) && canAccessPath('/invoices',authState) && <Button variant="outlined" disabled={isSavingOrder||orderChangedElsewhere||reloadingOrder||hasFormChanges} onClick={()=>navigateToPath('/invoices/new/order/'+encodeURIComponent(currentDetailOrder.id))}>{languageCode==='ko'?'청구서 작성':languageCode==='vi'?'Lập hóa đơn':'Create invoice'}</Button>}
           {orderChangedElsewhere&&<Button onClick={reloadLatestOrder} disabled={isSavingOrder||reloadingOrder}>{orderRefreshText[1]}</Button>}
           <SaveButton
             onClick={handleSave}

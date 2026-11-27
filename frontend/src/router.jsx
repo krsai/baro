@@ -479,6 +479,7 @@ const router = createBrowserRouter([
           { path: 'invoices', element: <Invoice /> },
           { path: 'invoices/list', element: <Navigate to="/invoices" replace /> },
           { path: 'invoices/new', element: <Invoice view="editor" /> },
+          { path: 'invoices/new/order/:sourceOrderId', element: <Invoice view="editor" /> },
           { path: 'invoices/:invoiceId', element: <Invoice view="detail" /> },
           {
             path: 'revenue-analysis',

@@ -9,6 +9,14 @@ const name = (path,lang='ko') => resolvePageNaming(path,lang,key=>({
   'menu.customer':'고객사','menu.personalSettings':'개인 설정',
 }[key] || key));
 
+test('order invoice creation keeps each order in a separate creation workspace',()=>{
+ for(const lang of ['ko','en','vi']){
+  const first=name('/invoices/new/order/order-1',lang),second=name('/invoices/new/order/order-2',lang);
+  assert.equal(first.mode,'create');assert.equal(first.title,name('/invoices/new',lang).title);
+  assert.notEqual(first.path,second.path);
+ }
+});
+
 test('shipping query detail follows the shared list/detail naming without renaming for modal forms',()=>{
  for(const language of ['ko','en','vi'])for(const route of ['/shipping','/transport-exchange']){
   const resolve=path=>resolvePageNaming(path,language,()=> 'Transport');

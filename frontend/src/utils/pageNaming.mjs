@@ -77,6 +77,7 @@ export function resolvePageNaming(path, languageCode, translate) {
   const rest = pathname.slice(base.length);
   let mode = rest ? childMode || 'detail' : baseMode;
   if (rest === '/new') mode = 'create';
+  if (base === '/invoices' && rest.startsWith('/new/order/')) mode = 'create';
   if (['/shipping','/transport-exchange'].includes(base) && !rest && url.searchParams.has('id')) mode = 'detail';
   if (base === '/freight' && !rest && url.searchParams.has('id')) mode = 'detail';
   if(base==='/bank-ledger'&&rest.startsWith('/edit/'))mode='detail';
