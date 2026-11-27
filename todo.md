@@ -1,3 +1,5 @@
+- Work-log Excel download: added a list header action exporting current filtered logs as Summary and Work Records XLSX sheets, loading authorized details with cache bypass. Verified XLSX roundtrip, coverage, Unicode, numeric values, leading-zero codes and missing-details rejection; encoding, i18n, UI consistency and frontend build passed. Production deployment and browser acceptance unverified.
+
 - Assignment board labels: removed the repeated Fully Billed chip, shortened the billed section heading and renamed the active section to In Progress in ko/en/vi. Encoding, i18n and frontend build passed. Production deployment and browser acceptance unverified.
 
 - Work-log import error download: added a localized XLSX download action for every displayed issue with its full location and reason. Verified 66-row XLSX roundtrip including Unicode and long reasons, encoding, i18n, UI consistency and frontend build. Production deployment and browser acceptance unverified.

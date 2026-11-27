@@ -33,6 +33,7 @@ import {
   resolveScopedFactoryManagementStartDateKey,
 } from '../../../utils/factoryManagementStart';
 import { deleteWorkLog, loadWorkLogs } from './workLogStorage';
+import { downloadWorkLogs } from './workLogExport';
 import QuantityImportReviewTable from './QuantityImportReviewTable';
 import {
   extractWorkLogImportIssueRows,
@@ -43,6 +44,8 @@ import {
 } from './workLogImport';
 
 const TEXT = {
+  export: { ko: '엑셀 다운로드', en: 'Download Excel', vi: 'Tải Excel' },
+  exportError: { ko: '작업 기록을 다운로드하지 못했습니다. 다시 시도해 주세요.', en: 'Could Not Download Work Records. Please Try Again.', vi: 'Không Thể Tải Nhật Ký Công Việc. Vui Lòng Thử Lại.' },
   import: { ko: '파일 업로드', en: 'Import File', vi: 'Nhap tep' },
   importSuccess: {
     ko: '엑셀 작업기록을 저장했습니다.',
@@ -295,6 +298,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
   const [dateFilterEnd, setDateFilterEnd] = useState(() => dayjs().endOf('month').toDate());
   const [deletingId, setDeletingId] = useState('');
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [importIssueRows, setImportIssueRows] = useState([]);
   const [importIssueDialogOpen, setImportIssueDialogOpen] = useState(false);
@@ -448,6 +452,25 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
   }, [logs, searchTerm]);
 
   const basePath = recordKind === 'OUTSOURCING' ? '/outsourcing-record' : '/work-history';
+
+  const handleExport = async () => {
+    if (exporting || !activeOrgId) return;
+    const visibleIds = filteredLogs.map(log => String(log.id));
+    setExporting(true);
+    try {
+      const rows = await loadWorkLogs({
+        orgId: activeOrgId, factoryId: selectedFactoryIdNumber, dateFrom, dateTo,
+        recordKind, includeRecords: true, skipCache: true, forceRefresh: true,
+      });
+      const byId = new Map(rows.map(log => [String(log.id), log]));
+      if (visibleIds.some(id => !byId.has(id))) throw new Error('WORK_LOG_EXPORT_CHANGED');
+      downloadWorkLogs(visibleIds.map(id => byId.get(id)), dateFrom, dateTo);
+    } catch {
+      showNotification(resolveText(TEXT.exportError, languageCode), 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const handleAdd = useCallback(() => {
     navigateToPath(`${basePath}/new`, {
@@ -615,6 +638,14 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
             )}
             actions={(
               <Stack direction="row" spacing={1}>
+                <Button
+                  variant="outlined"
+                  startIcon={<DownloadIcon />}
+                  onClick={handleExport}
+                  disabled={exporting || importing || loading || loadingFactories || loadError || factoryError || !activeOrgId || filteredLogs.length === 0}
+                >
+                  {resolveText(TEXT.export, languageCode)}
+                </Button>
                 <Button
                   variant="outlined"
                   startIcon={<UploadFileIcon />}
