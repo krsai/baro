@@ -95,7 +95,7 @@ try{
    assert.equal(saves.length,0);assert.deepEqual(errors,[]);await page.close();continue;
   }
   if(scheduleOnly)await page.getByLabel(cashScheduleText[lang].collection,{exact:true}).fill('2026-12-20');
-  const numberInput=page.getByLabel(invoiceDocumentText[lang].number,{exact:true});assert.equal(await numberInput.inputValue(),failure==='detail'?'INV-001-R2':'');if(failure==='save')await numberInput.fill('CUSTOM-2026-A');
+  assert.equal(await page.getByLabel(invoiceDocumentText[lang].number,{exact:true}).count(),0,'auto-numbered invoice creation has no number field');
   assert.equal(await page.locator('h1').count(),1);assert.equal(await page.getByRole('dialog').count(),0);
   assert.doesNotMatch(await page.locator('main').innerText(),/초안|draft|bản nháp/i);
   const issue=page.getByRole('button',{name:lang==='ko'?'발행':lang==='vi'?'Phát hành':'Issue',exact:true});assert.equal(await issue.isEnabled(),true);
@@ -171,7 +171,7 @@ try{
   assert.equal(saves.length,failure==='save'?2:1);assert.equal(issues.length,failure==='issue'?2:1);
   assert.equal(new Set(saves.map(s=>s.clientKey)).size,1);assert.ok(issues.every(i=>i.path==='/invoices/drafts/pending-1/issue'));
   if(failure==='advance')assert.equal(saves[0].percentages.o1,'30');
-  assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark===''));assert.equal(saves[0].lines[0].adjustmentReason,'Reviewed Note');assert.equal(saves[0].fields.notes,'Reviewed Note');if(failure!=='revision'){assert.match(saves[0].fields.bank,bankReviewOnly?/USD-999/:/USD-001/);assert.doesNotMatch(saves[0].fields.bank,/VND-001/);assert.equal(saves[0].fields.bankAccountId,bankReviewOnly?'3':'1');}assert.equal(saves[0].fields.number,failure==='save'?'CUSTOM-2026-A':failure==='detail'?'INV-001-R2':'');
+  assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark===''));assert.equal(saves[0].lines[0].adjustmentReason,'Reviewed Note');assert.equal(saves[0].fields.notes,'Reviewed Note');if(failure!=='revision'){assert.match(saves[0].fields.bank,bankReviewOnly?/USD-999/:/USD-001/);assert.doesNotMatch(saves[0].fields.bank,/VND-001/);assert.equal(saves[0].fields.bankAccountId,bankReviewOnly?'3':'1');}assert.equal(saves[0].fields.number,failure==='detail'?'INV-001-R2':'');
   assert.deepEqual(errors,[]);await page.close();
  }
  for(const lang of ((vatRowOnly||orderEntryOnly||reviewOnly||adjustmentOnly||summaryOnly||bankReviewOnly||scheduleOnly||compactOnly)?[]:['ko','en','vi'])){

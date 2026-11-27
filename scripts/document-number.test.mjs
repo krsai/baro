@@ -50,7 +50,7 @@ test('manual number validation preserves exact user text and rejects control cha
  assert.equal(normalizeDocumentNumber('  VN/2026-AB  '),'VN/2026-AB');assert.equal(normalizeDocumentNumber(''),'');
  for(const value of ['a\nb','a\tb','x'.repeat(201),123])assert.throws(()=>normalizeDocumentNumber(value),/INVALID_DOCUMENT_NUMBER/);
 });
-test('issuing a blank invoice number freezes its generated reference in the print snapshot and retries return the same invoice',async()=>{
+test('invoice issue always allocates its number, ignores legacy custom values and preserves exact retries',async()=>{
  const invoices=[],settings=new Map(),date=new Date('2026-10-28T00:00:00Z');
  const content={fields:{number:'',date:'2026-10-28'},basis:'MANUFACTURING_SERVICE_PRICE',currency:'USD',orders:[{orderId:'order-1',sourceUpdatedAt:date.toISOString()}],percentages:{'order-1':'100'},lines:[{key:JSON.stringify(['order-1','9:']),quantity:'1',unitPriceOverride:'100'}]};
  let draft={id:'draft-1',sellerOrgId:1,buyerOrgId:2,revision:1,content};
@@ -60,8 +60,8 @@ test('issuing a blank invoice number freezes its generated reference in the prin
  const first=await issueInvoiceDraft(tx,1,'test',draft.id,1);assert.equal(first.invoiceNumber,'INV-2026-000001');assert.equal(first.snapshot.fields.number,first.invoiceNumber);assert.equal(content.fields.number,'');
  assert.equal((await issueInvoiceDraft(tx,1,'test',draft.id,1)).id,first.id);assert.equal(invoices.length,1);
  draft={...draft,id:'draft-2',content:{...content,fields:{...content.fields,number:'CUSTOM-2026-A'}}};
- const manual=await issueInvoiceDraft(tx,1,'test',draft.id,1);assert.equal(manual.invoiceNumber,'CUSTOM-2026-A');assert.equal(manual.snapshot.fields.number,manual.invoiceNumber);
- draft={...draft,id:'draft-3',content:{...content,fields:{...content.fields,number:'custom-2026-a'}}};await assert.rejects(issueInvoiceDraft(tx,1,'test',draft.id,1),/DOCUMENT_NUMBER_ALREADY_EXISTS/);
+ const manual=await issueInvoiceDraft(tx,1,'test',draft.id,1);assert.equal(manual.invoiceNumber,'INV-2026-000002');assert.equal(manual.snapshot.fields.number,manual.invoiceNumber);
+ draft={...draft,id:'draft-3',content:{...content,fields:{...content.fields,number:'custom-2026-a'}}};const third=await issueInvoiceDraft(tx,1,'test',draft.id,1);assert.equal(third.invoiceNumber,'INV-2026-000003');
 });
 test('bank evidence resolves a custom expense management number through its company FK and approved version',async()=>{
  const handlers=new Map();let orgId=1;

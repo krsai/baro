@@ -4,7 +4,7 @@ import {assertInvoiceDeletable,assertInvoicePaymentUnlinked} from './invoiceDele
 import {resolveInvoicePaymentAccount,invoiceBankLinks} from './invoicePaymentAccount';
 import { createHttpError } from "../utils/http";
 import {issueGeneralInvoice} from './generalInvoice';
-import {allocateDocumentNumber,normalizeDocumentNumber} from './documentNumber';
+import {allocateDocumentNumber} from './documentNumber';
 import { editTransaction, retryEditTransaction, STALE_EDIT } from "../utils/editRevision";
 import { buildInvoiceSource } from "./invoiceSource";
 import { rebaseInvoiceFinalLocks } from "./invoiceFinalLock";
@@ -180,7 +180,6 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
         invoice: { sellerOrgId, status: "ISSUED", sequenceNumber: { gt: revisedFrom.sequenceNumber } } } });
       if (later) fail("INVOICE_REVISION_REVERSE_ORDER_REQUIRED");
     }
-    const requestedNumber = normalizeDocumentNumber(content.fields?.number);
     if (!Number.isFinite(Date.parse(content.fields?.date || ""))) fail("INVOICE_ISSUE_DOCUMENT_FIELDS_REQUIRED");
     const orders = await tx.workOrder.findMany({ where: { sellerOrgId, buyerOrgId: draft.buyerOrgId,
       orderId: { in: content.orders.map((row: any) => row.orderId) } },
@@ -228,7 +227,7 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
       (order as any).installmentNumber = revisedOrder?.installmentNumber ?? ((prior?.installmentNumber || 0) + 1);
     }
     calculated.snapshot.orders = calculated.orders;
-    const invoiceNumber=await allocateDocumentNumber(tx,sellerOrgId,'INV',content.fields.date,requestedNumber);
+    const invoiceNumber=await allocateDocumentNumber(tx,sellerOrgId,'INV',content.fields.date,'');
     calculated.snapshot.fields={...calculated.snapshot.fields,number:invoiceNumber};
     const latest = await tx.invoice.findFirst({ where: { sellerOrgId }, orderBy: { sequenceNumber: "desc" }, select: { sequenceNumber: true } });
     const invoice = await tx.invoice.create({ data: { ...invoiceBankLinks(content.fields), sellerOrgId, buyerOrgId: draft.buyerOrgId, invoiceNumber,

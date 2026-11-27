@@ -76,6 +76,7 @@ test('Prisma/PostgreSQL: own-customer drafts, exact retries, issue, immutable sn
   });
   await t.test('issue is atomic and idempotent with scoped code FKs and a frozen issued snapshot',async()=>{
    invoice=await issueInvoiceDraft(db,org,'actor',draft.id,draft.revision);
+   assert.match(invoice.invoiceNumber,/^INV-2026-\d{6}$/);assert.equal(invoice.snapshot.fields.number,invoice.invoiceNumber);
    assert.equal(invoice.documentKind,'GENERAL');assert.equal(invoice.pricingBasis,null);assert.equal(String(invoice.total),'1250');
    assert.equal((await issueInvoiceDraft(db,org,'actor',draft.id,draft.revision)).id,invoice.id);
    assert.equal(await db.invoiceOrder.count(),0);assert.equal(await db.invoiceLine.count(),0);assert.equal(await db.invoiceGeneralLine.count(),1);
@@ -111,21 +112,19 @@ test('Prisma/PostgreSQL: own-customer drafts, exact retries, issue, immutable sn
    assert.deepEqual(await db.organization.findMany({where:{id:buyer,...companyNameCodeSearch(s.other.id,'IDEN')}}),[],'another company cannot search through our identity links');
    assert.deepEqual((await db.invoice.findUnique({where:{id:invoice.id}})).snapshot,before.snapshot);
   });
-  await t.test('general invoices support existing partial receipt evidence and preserve receipt history through revisions',async()=>{
+  await t.test('general invoices preserve partial receipt evidence and block revisions of linked financial records',async()=>{
    const evidence=await db.$transaction(tx=>resolveEvidence(tx,org,{currencyCode:'USD'},{evidenceType:'INVOICE',direction:'IN',evidenceNumber:invoice.invoiceNumber,amount:'400.00',bankFee:'0'}));
    assert.equal(evidence.allocations[0].invoiceId,invoice.id);assert.equal(evidence.allocations[0].amount,'400.00');
    const payment=await recordInvoicePayment(db,org,'actor',invoice.id,{clientKey:randomUUID(),amount:'400',receivedAt:'2026-11-10',reference:'Receipt',note:''});
-   const revision=await createInvoiceRevisionDraft(db,org,'actor',invoice.id,{clientKey:randomUUID(),reason:'Correct the purchase price'});
-   const revised=await saveInvoiceDraft(db,org,'actor',{...revision.content,buyerOrgId:buyer,clientKey:revision.clientKey,revision:revision.revision,lines:revision.content.lines.map(row=>({...row,unitPrice:'1.50'}))},revision.id);
-   const issued=await issueInvoiceDraft(db,org,'actor',revised.id,revised.revision);
+   await assert.rejects(createInvoiceRevisionDraft(db,org,'actor',invoice.id,{clientKey:randomUUID(),reason:'Correct the purchase price'}),/INVOICE_DELETE_PAYMENT_LINKED/);
    const original=await db.invoice.findUnique({where:{id:invoice.id}});
-   assert.equal(original.status,'SUPERSEDED');assert.equal(original.snapshot.total,'1250');assert.equal(String(issued.total),'1500');
+   assert.equal(original.status,'ISSUED');assert.equal(original.snapshot.total,'1250');
    assert.equal((await db.invoicePayment.findUnique({where:{id:payment.id}})).invoiceId,invoice.id);
    const family=await db.invoice.findMany({where:{sellerOrgId:org},include:{payments:true,credits:true}}),balance=invoiceFamilyBalance(family,invoice.id);
-   assert.equal(balance.receivedAmount,'400.0000');assert.equal(balance.debtAmount,'1500.0000');
+   assert.equal(balance.receivedAmount,'400.0000');assert.equal(balance.debtAmount,'1250.0000');
    assert.equal(await db.workOrder.count(),0);
-   await assert.rejects(cancelIssuedInvoice(db,org,'actor',issued.id,'Cancelled purchase'),/CHANGE_APPROVAL_REQUIRED/);
-   assert.equal((await db.invoice.findUnique({where:{id:issued.id}})).status,'ISSUED');
+   await assert.rejects(cancelIssuedInvoice(db,org,'actor',invoice.id,'Cancelled purchase'),/CHANGE_APPROVAL_REQUIRED/);
+   assert.equal((await db.invoice.findUnique({where:{id:invoice.id}})).status,'ISSUED');
   });
  }finally{await f.close();}
 });

@@ -10,7 +10,7 @@ import {companyBillableCode} from './companyIndustries';
 import {publicCompanyFields} from './companyIdentity';
 import {attachLinkedCompanies} from './companyConnections';
 import {cashScheduleDate} from './cashSchedule';
-import {allocateDocumentNumber,normalizeDocumentNumber} from './documentNumber';
+import {allocateDocumentNumber} from './documentNumber';
 
 const invalid=(code='GENERAL_INVOICE_INVALID'):never=>{throw createHttpError(400,code);};
 export const generalInvoiceBuyerScope=(sellerOrgId:number)=>({isActive:true,id:{not:sellerOrgId},OR:[{ownerOrgId:sellerOrgId},{buyerWorkOrders:{some:{sellerOrgId}}}]});
@@ -90,7 +90,7 @@ export async function issueGeneralInvoice(tx:any,sellerOrgId:number,actor:string
  await resolveInvoicePaymentAccount(tx,sellerOrgId,content.fields);
  const calculated=calculateGeneralInvoice(content,await validateGeneralInvoiceCodes(tx,sellerOrgId,content.lines));
  if(original&&JSON.stringify(invoiceCurrencyTotals(original).map(row=>row.currencyCode).sort())!==JSON.stringify(calculated.snapshot.currencyTotals.map(row=>row.currencyCode).sort()))throw createHttpError(409,'INVOICE_REVISION_SCOPE_CHANGED');
- const invoiceNumber=await allocateDocumentNumber(tx,sellerOrgId,'INV',content.fields.date,normalizeDocumentNumber(content.fields.number));
+ const invoiceNumber=await allocateDocumentNumber(tx,sellerOrgId,'INV',content.fields.date,'');
  calculated.snapshot.fields={...calculated.snapshot.fields,number:invoiceNumber};
  const latest=await tx.invoice.findFirst({where:{sellerOrgId},orderBy:{sequenceNumber:'desc'},select:{sequenceNumber:true}});
  const invoice=await tx.invoice.create({data:{...invoiceBankLinks(content.fields),sellerOrgId,buyerOrgId:draft.buyerOrgId,documentKind:'GENERAL',pricingBasis:null,clientKey:issueKey,invoiceNumber,sequenceNumber:(latest?.sequenceNumber||0)+1,currencyCode:calculated.currencyCode,subtotal:calculated.subtotal,total:calculated.total,receivableAdded:calculated.total,snapshot:calculated.snapshot,issuedBy:actor,revisionOfInvoiceId:original?.id??null,rootInvoiceId:original?(original.rootInvoiceId||original.id):null,revisionNumber:original?original.revisionNumber+1:1,revisionReason}});

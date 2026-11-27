@@ -8,7 +8,7 @@ import {formatInvoiceMoney} from '../utils/invoiceItemGrid.mjs';
 export default function GeneralInvoiceBody({fields,languageCode,readOnly=false,onChange,currencyCode,currencyTotals,children,summaryProps,numberReadOnly=false}){
  const t=generalInvoiceText[languageCode]||generalInvoiceText.en;
  return <>
-  <InvoiceFormHeader numberReadOnly={numberReadOnly} fields={fields} languageCode={languageCode} readOnly={readOnly} onChange={onChange}/>
+  <InvoiceFormHeader hideNumber={!readOnly&&!numberReadOnly} numberReadOnly={numberReadOnly} fields={fields} languageCode={languageCode} readOnly={readOnly} onChange={onChange}/>
   {children}
   <InvoiceFormSummary {...summaryProps} subtotals={currencyTotals} fields={fields} languageCode={languageCode} readOnly={readOnly} currencyCode={currencyCode} currencyTotals={currencyTotals}/>
  </>;

@@ -69,15 +69,16 @@ try{
   }
   await customer.fill('Customer');await customer.press('Enter');
   const row=page.getByTestId('general-invoice-line').first();await row.waitFor();
+  assert.equal(await page.locator('[data-invoice-form-header] input[name="number"]').count(),0,'automatic invoice number is not an input');
   const columnLabels=await page.locator('[data-invoice-entry-grid] thead th').allTextContents();assert.deepEqual(columnLabels.slice(0,9),['#',t.description,t.quantity,t.unit,t.currency,t.price,t.vat,t.tax,t.total]);
   if(process.argv.includes('--layout-only')||process.argv.includes('--codes-only')){
    const header=page.locator('[data-invoice-form-header="editing"]'),metadata=header.locator('.invoice-document-identifiers'),currency=row.getByRole('combobox',{name:roleName(t.currency)});
-   await currency.waitFor();assert.equal(await header.locator('.invoice-document-identifiers').count(),1);const settingsBox=await page.locator('[data-invoice-entry-settings]').boundingBox(),documentBox=await header.boundingBox();assert.ok(settingsBox.y+settingsBox.height<=documentBox.y+1,'Settings precede the document');assert.equal(await metadata.getByRole('combobox').count(),0,'Header contains number and date only');
+   await currency.waitFor();assert.equal(await header.locator('.invoice-document-identifiers').count(),1);const settingsBox=await page.locator('[data-invoice-entry-settings]').boundingBox(),documentBox=await header.boundingBox();assert.ok(settingsBox.y+settingsBox.height<=documentBox.y+1,'Settings precede the document');assert.equal(await metadata.getByRole('combobox').count(),0,'Header contains the invoice date only');
    if(lang==='ko'&&width===1440){await currency.click();await page.getByRole('option',{name:'USD',exact:true}).click();assert.match(await currency.textContent(),/USD/);await currency.click();await page.getByRole('option',{name:'VND',exact:true}).click();}
    const controls=await header.locator('.MuiInputBase-root').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().height));
-   assert.ok(controls.every(height=>Math.abs(height-36)<1),'Header inputs share the 36px control height');
+   assert.ok(controls.every(height=>height>0),'Document fields remain visible');assert.equal(await metadata.locator('input[type="date"]').count(),1);assert.equal(await metadata.locator('input').count(),1,'No manual invoice number field');
    if(width>=900){
-    const positions=await metadata.locator('.MuiInputBase-root').evaluateAll(nodes=>nodes.map(node=>Math.round(node.getBoundingClientRect().y)));assert.equal(new Set(positions).size,1,'Number and date align');
+    const positions=await metadata.locator('.MuiInputBase-root').evaluateAll(nodes=>nodes.map(node=>Math.round(node.getBoundingClientRect().y)));assert.equal(new Set(positions).size,1,'Date field stays in the header');
     const parties=header.locator('.invoice-party');const left=await parties.nth(0).boundingBox(),right=await parties.nth(1).boundingBox();assert.equal(Math.round(left.y),Math.round(right.y));
     for(const party of await parties.all()){const address=await party.locator('.invoice-party-address').boundingBox(),panel=await party.boundingBox();assert.ok(address.width>panel.width-2,'Address uses the full party width');}
    }

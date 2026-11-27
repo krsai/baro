@@ -7,6 +7,7 @@ export const invoiceDocumentCss = `
 .invoice-sheet .invoice-document-top{display:flex;justify-content:space-between;align-items:center;gap:24px;border-bottom:2px solid #182b3d;padding-bottom:12px}
 .invoice-sheet .invoice-document-top .invoice-heading{padding:0}
 .invoice-sheet .invoice-document-identifiers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;width:60%;max-width:560px;min-width:0}
+.invoice-sheet .invoice-document-identifiers.invoice-document-date-only{grid-template-columns:minmax(0,1fr);width:270px;max-width:100%}
 .invoice-sheet .invoice-party-identity{grid-column:1/-1;display:flex;gap:16px;align-items:end}
 .invoice-sheet .invoice-party-identity .invoice-cell:first-child:not(:last-child){width:110px;flex-shrink:0}
 .invoice-sheet .invoice-party-identity .invoice-cell:last-child{flex:1}
