@@ -12,6 +12,8 @@ const {humanTextCaseInput}=require('../backend/dist/middleware/humanTextCase');
 test('words preserve separators, scripts, acronyms, technical references and contractions',()=>{
  for(const [input,expected]of [
   ['nguyen VAN an','Nguyen Van An'],['12 MAIN STREET, HANOI','12 Main Street, Hanoi'],
+  ['35 x 25 / 35 X 25 / x / X','35 x 25 / 35 x 25 / x / x'],
+  ['extra box XML X1 35x25','Extra Box XML X1 35x25'],
   ["o'connor and john's shipment","O'Connor And John's Shipment"],
   ['master b/l / house b/l USD AR/AP','Master B/L / House B/L USD AR/AP'],
   ['đẶNG thị hỒng / 한국 이름','Đặng Thị Hồng / 한국 이름'],

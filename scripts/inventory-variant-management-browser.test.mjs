@@ -7,6 +7,7 @@ import {chromium} from 'playwright-core';
 import {materialItemText} from '../frontend/src/constants/materialItems.js';
 import {materialVariantManagementText} from '../frontend/src/constants/materialVariantManagement.js';
 import {ITEM_ATTRIBUTE_TEXT} from '../frontend/src/constants/itemAttributes.js';
+const exactLabel=value=>new RegExp('^'+RegExp.escape(value)+'$','i');
 const fixture='frontend/variant-management-acceptance.html',port=43544;assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module">
 import React from 'react';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Master from '/src/components/MaterialMasterList';
@@ -38,59 +39,68 @@ try{
    if(path==='/code-item-options')return r.fulfill({headers,json:{owners,types,customers:[]}});
    if(path==='/code-item-types'){typeWrites++;const body=req.postDataJSON(),type={id:11,...body};types=[type];return r.fulfill({headers,json:type});}
    const body=req.postDataJSON();writes.push({method:req.method(),body});
-   if(req.method()==='DELETE'){rows=rows.filter(row=>row.id!=='new-item');return r.fulfill({headers,json:{deleted:true}});}
+   if(req.method()==='PUT'&&path.endsWith('/used-item')){rows[0]={...rows[0],revision:2,attributes:{...rows[0].attributes,type:types.find(type=>type.id===body.typeId)}};return r.fulfill({headers,json:{id:'used-item',revision:2}});}if(req.method()==='DELETE'){rows=rows.filter(row=>row.id!=='new-item');return r.fulfill({headers,json:{deleted:true}});}
    if(req.method()==='POST'&&++attempt===1)return r.fulfill({headers,status:503,json:{error:'UNAVAILABLE'}});
    const row={id:'new-item',baseId:1,masterId:'master',ownerId:body.ownerId,revision:req.method()==='PUT'?2:1,managed:true,used:false,unit,attributes:{owner:owners.find(o=>o.id===body.ownerId),type:types.find(type=>type.id===body.typeId),color:null,dimensions:{}}};rows=[rows[0],row];return r.fulfill({headers,json:{id:row.id,revision:row.revision}});
   });
+  await page.route('**/text-acronyms*',r=>r.fulfill({headers,json:{revision:1,entries:[]}}));
   await page.goto(`http://127.0.0.1:${port}/${fixture.split('/')[1]}`);
   const used=page.getByRole('row').filter({has:page.getByRole('cell',{name:'Used item',exact:true})});await used.waitFor();
-  assert.equal(await used.getByRole('button',{name:m.edit,exact:true}).isDisabled(),false);assert.equal(await used.getByRole('button',{name:m.remove,exact:true}).isDisabled(),true);
-  await used.getByRole('button',{name:m.edit,exact:true}).click();
-  const readOnlyDetail=page.getByRole('dialog');await readOnlyDetail.getByRole('combobox',{name:t.variant,exact:true}).waitFor();
-  assert.equal(await readOnlyDetail.getByRole('combobox',{name:t.variant,exact:true}).isDisabled(),true);
-  assert.equal(await readOnlyDetail.getByRole('button',{name:t.save,exact:true}).count(),0);assert.equal(writes.length,0);
-  await readOnlyDetail.getByRole('button',{name:t.close,exact:true}).click();await readOnlyDetail.waitFor({state:'hidden'});
+  assert.equal(await used.getByRole('button',{name:exactLabel(m.edit)}).isDisabled(),false);assert.equal(await used.getByRole('button',{name:exactLabel(m.remove)}).isDisabled(),true);
+  await used.getByRole('button',{name:exactLabel(m.edit)}).click();
+  const readOnlyDetail=page.getByRole('dialog');await readOnlyDetail.getByRole('combobox',{name:exactLabel(t.variant)}).waitFor();
+  assert.equal(await readOnlyDetail.getByRole('combobox',{name:exactLabel(t.variant)}).isDisabled(),false);
+  assert.equal(await readOnlyDetail.getByRole('button',{name:exactLabel(t.save)}).isDisabled(),true);assert.equal(await readOnlyDetail.getByRole('textbox',{name:exactLabel(t.owner)}).isDisabled(),true);assert.equal(writes.length,0);
+  if(process.argv.includes('--used-only')){
+   await readOnlyDetail.getByRole('combobox',{name:exactLabel(t.variant)}).fill('35 x 26');
+   await readOnlyDetail.getByRole('button',{name:exactLabel(t.save)}).click();await readOnlyDetail.waitFor({state:'hidden'});
+   await page.getByRole('cell',{name:'35 x 26',exact:true}).waitFor();
+   assert.equal(writes[0].method,'PUT');assert.equal(writes[0].body.ownerId,1);assert.equal(writes[0].body.revision,1);
+   assert.equal(rows[0].id,'used-item');assert.equal(rows[0].used,true);assert.equal(rows[0].revision,2);
+   assert.deepEqual(errors,[]);await page.close();continue;
+  }
+  await readOnlyDetail.getByRole('button',{name:exactLabel(t.close)}).click();await readOnlyDetail.waitFor({state:'hidden'});
   assert.equal(await page.getByRole('dialog').count(),0);
-  const register=page.locator('header').getByRole('button',{name:t.registerMaster,exact:true});
-  assert.equal(await page.getByRole('button',{name:t.registerMaster,exact:true}).count(),1);
+  const register=page.locator('header').getByRole('button',{name:exactLabel(t.registerMaster)});
+  assert.equal(await page.getByRole('button',{name:exactLabel(t.registerMaster)}).count(),1);
   const buttonBounds=await register.boundingBox(),titleBounds=await page.getByRole('heading',{name:'Material master',exact:true}).boundingBox();
   assert.ok(Math.abs(buttonBounds.y+buttonBounds.height/2-titleBounds.y-titleBounds.height/2)<3,'register is on the page title row');
   await register.click();
   const codeSearch=page.locator('[data-lookup-dialog]');
   await codeSearch.waitFor();
   assert.equal(await page.getByRole('dialog').count(),1,'registration opens code results directly without an empty wrapper');
-  assert.equal(await codeSearch.getByRole('button',{name:t.save,exact:true}).count(),0);
+  assert.equal(await codeSearch.getByRole('button',{name:exactLabel(t.save)}).count(),0);
   await codeSearch.getByRole('row').filter({has:page.getByRole('cell',{name:'MPP',exact:true})}).getByRole('button').click();
-  const registration=page.getByRole('dialog',{name:t.registerMaster,exact:true});
-  await registration.getByRole('combobox',{name:t.variant,exact:true}).waitFor();
-  assert.equal(await registration.getByRole('combobox',{name:t.variant,exact:true}).isDisabled(),true);
-  assert.equal(await registration.getByRole('textbox',{name:t.color,exact:true}).count(),0);
-  await registration.getByRole('textbox',{name:t.code,exact:true}).fill('CTN');
-  await registration.getByRole('textbox',{name:t.code,exact:true}).press('Enter');
+  const registration=page.getByRole('dialog',{name:exactLabel(t.registerMaster)});
+  await registration.getByRole('combobox',{name:exactLabel(t.variant)}).waitFor();
+  assert.equal(await registration.getByRole('combobox',{name:exactLabel(t.variant)}).isDisabled(),true);
+  assert.equal(await registration.getByRole('textbox',{name:exactLabel(t.color)}).count(),0);
+  await registration.getByRole('textbox',{name:exactLabel(t.code)}).fill('CTN');
+  await registration.getByRole('textbox',{name:exactLabel(t.code)}).press('Enter');
   assert.equal(writes.length,0,'selecting a code must not write');
   assert.equal(await page.getByRole('dialog').count(),1,'code selection keeps the first dialog');
   let editor=page.getByRole('dialog').last();
-  await editor.getByRole('textbox',{name:a.owner,exact:true}).fill('TSAN');await editor.getByRole('textbox',{name:a.owner,exact:true}).press('Enter');
-  await editor.getByRole('combobox',{name:t.variant,exact:true}).fill('10x10x10');
+  await editor.getByRole('textbox',{name:exactLabel(a.owner)}).fill('TSAN');await editor.getByRole('textbox',{name:exactLabel(a.owner)}).press('Enter');
+  await editor.getByRole('combobox',{name:exactLabel(t.variant)}).fill('10x10x10');
   assert.equal(await page.locator('[data-list-detail-dialog]').count(),1);
   const existing=editor.getByRole('button',{name:'BARO',exact:true});
   await existing.click();
   assert.equal(await editor.locator('[data-record-details]').count(),1,'existing item opens shared details');
   assert.equal(writes.length,0,'preview must not register or select a material');
   await editor.getByRole('button',{name:(inventoryColorText[lang]||inventoryColorText.en).clear,exact:true}).click();
-  assert.equal(await editor.getByRole('combobox',{name:t.variant,exact:true}).inputValue(),'10x10x10','returning from preview preserves the new draft');
-  assert.equal(await editor.getByRole('button',{name:t.addVariant,exact:true}).count(),0);
-  editor=page.getByRole('dialog').last();assert.equal(await editor.getByRole('textbox',{name:t.unit,exact:true}).inputValue(),'Each');
-  assert.equal(await editor.getByRole('textbox',{name:t.unit,exact:true}).getAttribute('readonly'),'');
-  assert.equal(await editor.getByRole('textbox',{name:t.color,exact:true}).count(),0);
-  await editor.getByRole('button',{name:t.save,exact:true}).click();await page.getByRole('button',{name:t.retry,exact:true}).waitFor();
-  assert.equal(await editor.getByRole('textbox',{name:a.owner,exact:true}).inputValue(),'THE SAN');
-  await editor.getByRole('button',{name:t.retry,exact:true}).click();
+  assert.equal(await editor.getByRole('combobox',{name:exactLabel(t.variant)}).inputValue(),'10x10x10','returning from preview preserves the new draft');
+  assert.equal(await editor.getByRole('button',{name:exactLabel(t.addVariant)}).count(),0);
+  editor=page.getByRole('dialog').last();assert.equal(await editor.getByRole('textbox',{name:exactLabel(t.unit)}).inputValue(),'Each');
+  assert.equal(await editor.getByRole('textbox',{name:exactLabel(t.unit)}).getAttribute('readonly'),'');
+  assert.equal(await editor.getByRole('textbox',{name:exactLabel(t.color)}).count(),0);
+  await editor.getByRole('button',{name:exactLabel(t.save)}).click();await page.getByRole('button',{name:exactLabel(t.retry)}).waitFor();
+  assert.equal(await editor.getByRole('textbox',{name:exactLabel(a.owner)}).inputValue(),'THE SAN');
+  await editor.getByRole('button',{name:exactLabel(t.retry)}).click();
   await page.getByRole('dialog').waitFor({state:'hidden'});
   assert.deepEqual(writes[0].body,writes[1].body);assert.equal(typeWrites,1,'direct registration creates its type once across retries');assert.equal(writes[1].body.quantity,undefined);
-  assert.equal(await page.locator('header').getByRole('button',{name:reg.requests,exact:true}).count(),0);
+  assert.equal(await page.locator('header').getByRole('button',{name:exactLabel(reg.requests)}).count(),0);
   await page.getByRole('cell',{name:'10x10x10',exact:true}).waitFor();assert.equal(rows.length,2);assert.equal(writes.at(-1).method,'POST');assert.deepEqual(errors,[]);await page.close();
 
  }
- console.log('PASS direct code search and material registration/retry ko/en/vi desktop/mobile');
+ console.log(process.argv.includes('--used-only')?'PASS used material type correction, owner lock, same ID/revision and lowercase x ko/en/vi desktop/mobile':'PASS direct code search and material registration/retry ko/en/vi desktop/mobile');
 }finally{await browser?.close();server.kill();if(existsSync(fixture))unlinkSync(fixture);}

@@ -29,7 +29,8 @@ export async function writeInventoryVariant(tx:any,scope:any,body:any,method:str
    if(!await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']}}}))fail('ACTIVE_EMPLOYEE_REQUIRED',403);
    await tx.$queryRaw`SELECT set_config('baro.variant_actor',${String(actorId)},true)`;
    const [old]=await tx.$queryRaw`SELECT * FROM "InventoryVariant" WHERE id=${id} AND "orgId"=${orgId} FOR UPDATE`;
-   if(old&&(method==='put'||method==='delete')&&(await tx.$queryRaw`SELECT "variantId" AS id FROM "InventoryStockItem" WHERE "orgId"=${orgId} AND ("variantId"=${id} OR "definitionId"=${id}) UNION ALL SELECT id FROM "PartnerTransactionCost" WHERE "orgId"=${orgId} AND "materialVariantId"=${id} UNION ALL SELECT id FROM "MaterialRegistrationRequest" WHERE "orgId"=${orgId} AND "resultVariantId"=${id} UNION ALL SELECT id FROM "BankLedgerEntry" WHERE "orgId"=${orgId} AND "materialVariantId"=${id} UNION ALL SELECT id FROM "InvoiceGeneralLine" WHERE "sellerOrgId"=${orgId} AND "materialVariantId"=${id} LIMIT 1`).length)fail('VARIANT_IN_USE',409);
+   const inUse=Boolean(old&&(await tx.$queryRaw`SELECT "variantId" AS id FROM "InventoryStockItem" WHERE "orgId"=${orgId} AND ("variantId"=${id} OR "definitionId"=${id}) UNION ALL SELECT id FROM "PartnerTransactionCost" WHERE "orgId"=${orgId} AND "materialVariantId"=${id} UNION ALL SELECT id FROM "MaterialRegistrationRequest" WHERE "orgId"=${orgId} AND "resultVariantId"=${id} UNION ALL SELECT id FROM "BankLedgerEntry" WHERE "orgId"=${orgId} AND "materialVariantId"=${id} UNION ALL SELECT id FROM "InvoiceGeneralLine" WHERE "sellerOrgId"=${orgId} AND "materialVariantId"=${id} UNION ALL SELECT id FROM "InventoryMovement" WHERE "orgId"=${orgId} AND "variantId"=${id} LIMIT 1`).length);
+   if(inUse&&(method==='delete'||body.ownerId!==old.ownerId||(body.colorId??null)!==old.colorId))fail('VARIANT_IN_USE',409);
    if(method==='delete'){
     if(!old){const [prior]=await tx.$queryRaw`SELECT id FROM "InventoryVariantEvent" WHERE "orgId"=${orgId} AND "originalId"=${id} AND action='DELETE' AND "actorId"=${actorId} AND revision=${body.revision+1}`;if(prior)return {deleted:true};fail('VARIANT_NOT_FOUND',404);}
     if(old.revision!==body.revision)fail('VARIANT_CHANGED',409);
@@ -48,12 +49,12 @@ export async function writeInventoryVariant(tx:any,scope:any,body:any,method:str
    const base=await tx.transactionCodeBase.findUnique({where:{id:baseId}}),fields=requirements(base);
    if(fields.type==='REQUIRED'&&!type||fields.color==='REQUIRED'&&!color)fail('VARIANT_INVALID');
    if(fields.type==='HIDDEN'&&type&&type.id!==old?.attributes?.type?.id||fields.color==='HIDDEN'&&color&&color.id!==old?.attributes?.color?.id)fail('VARIANT_INVALID');
-   const dimensions=old?.attributes?.dimensions||{},attributes={owner,type,color,dimensions};
+   const dimensions=old?.attributes?.dimensions||{},attributes={owner:inUse?old.attributes.owner:owner,type,color:inUse?old.attributes.color:color,dimensions};
    const identity=createHash('sha256').update(JSON.stringify([owner.id,color?.id??null,type?.id??null,dimensions])).digest('hex');
    if(old){
     if(old.identity===identity&&(method==='post'||old.revision===body.revision+1)&&old.managed)return {id,revision:old.revision};
     if(method==='post'||old.revision!==body.revision)fail('VARIANT_CHANGED',409);
-    if((await tx.$queryRaw`SELECT id FROM "InventoryMovement" WHERE "orgId"=${orgId} AND "variantId"=${id} LIMIT 1`).length)fail('VARIANT_IN_USE',409);
+    if(inUse)await tx.$queryRaw`SELECT set_config('baro.variant_type_correction',${id},true)`;
     await tx.$executeRaw`UPDATE "InventoryVariant" SET "ownerId"=${owner.id},"typeId"=${type?.id??null},"colorId"=${color?.id??null},attributes=${JSON.stringify(attributes)}::jsonb,identity=${identity},managed=true,revision=revision+1 WHERE id=${id} AND "orgId"=${orgId}`;
     return {id,revision:old.revision+1};
    }

@@ -21,6 +21,7 @@ export function titleCaseWords(value){
  // Match complete protected tokens first; never rewrite references embedded in prose.
  return value.replace(/https?:\/\/[^\s<>]+|[\w.!#$%&'*+/=?^`{|}~-]+@[\w.-]+\.[A-Za-z]{2,}|\{[^{}]+\}|[\p{L}\p{M}\d]+(?:[/'’][\p{L}\p{M}\d]+)*/giu,token=>{
   if(token.includes('@')||/^https?:\/\//i.test(token)||token.startsWith('{'))return token;
+  if(/^x$/i.test(token))return 'x';
   if((token.match(/[A-Z]/g)||[]).length>=2&&acronyms.has(token.toUpperCase()))return acronyms.get(token.toUpperCase());
   if(/\d/.test(token)||!/^[\p{Script=Latin}\p{M}/'’]+$/u.test(token))return token;
   if(token.includes('/'))return token.split('/').map(part=>titleCaseWords(part)).join('/');

@@ -73,6 +73,18 @@ test('stock item CRUD shares inventory identities, keeps managed definitions, pr
   await assert.rejects(call('delete','/material-items/variants/:id',{params:{id:retained.id},body:{revision:1}}),/VARIANT_IN_USE/);
   await assert.rejects(db.$executeRaw`UPDATE "InventoryVariant" SET revision=revision+1 WHERE id=${retained.id}`,/VARIANT_ACTOR_REQUIRED/);
   await assert.rejects(db.$transaction(async tx=>{await tx.$queryRaw`SELECT set_config('baro.variant_actor',${String(actor)},true)`;await tx.$executeRaw`UPDATE "InventoryVariant" SET revision=revision+1 WHERE id=${retained.id}`;}),/VARIANT_IN_USE/);
+  const beforeMovements=await db.$queryRaw`SELECT * FROM "InventoryMovement" WHERE "variantId"=${retained.id}`;
+  const beforeStock=await db.$queryRaw`SELECT * FROM "InventoryStockItem" WHERE "definitionId"=${retained.id}`;
+  const correctedType=await call('post','/code-item-types',{query:{context:'MATERIAL'},body:{baseId:base.id,nameEn:'35 x 26',nameKo:'35 x 26',nameVi:'35 x 26'}});
+  const correction={...body,revision:1,typeId:correctedType.id};
+  assert.equal((await call('put','/material-items/variants/:id',{params:{id:retained.id},body:correction})).revision,2);
+  assert.equal((await call('put','/material-items/variants/:id',{params:{id:retained.id},body:correction})).revision,2);
+  assert.deepEqual(await db.$queryRaw`SELECT * FROM "InventoryMovement" WHERE "variantId"=${retained.id}`,beforeMovements);
+  assert.deepEqual(await db.$queryRaw`SELECT * FROM "InventoryStockItem" WHERE "definitionId"=${retained.id}`,beforeStock);
+  const [audit]=await db.$queryRaw`SELECT * FROM "InventoryVariantEvent" WHERE "originalId"=${retained.id} AND revision=2`;
+  assert.equal(audit.beforeSnapshot.typeId,type.id);assert.equal(audit.afterSnapshot.typeId,correctedType.id);
+  const correctionMigration=readFileSync('backend/prisma/migrations/20261127020000_used_material_type_correction/migration.sql','utf8');await f.pg.exec(correctionMigration);await f.pg.exec(correctionMigration);
+  await call('put','/material-items/variants/:id',{params:{id:retained.id},body:{...body,revision:2}});
   await call('post','/inventory-entry/:id/delete-request',{params:{id:movement.id},body:{clientKey:randomUUID(),revision:2,approvalRevision:0}});
   assert.equal((await db.$queryRaw`SELECT * FROM "InventoryVariant" WHERE id=${retained.id}`).length,1,'registered definitions survive deletion of their last movement');
   const migration=readFileSync('backend/prisma/migrations/20261120100000_inventory_variant_management/migration.sql','utf8');await f.pg.exec(migration);await f.pg.exec(migration);
@@ -81,7 +93,7 @@ test('stock item CRUD shares inventory identities, keeps managed definitions, pr
   const hidden=await call('get','/material-items/variant-options',{query:{baseId:base.id}});
   assert.deepEqual(hidden.fields,{type:'HIDDEN',color:'HIDDEN'});
   await assert.rejects(call('post','/material-items/variants',{body:{...body,masterId:hidden.master.id,clientKey:randomUUID()}}),/VARIANT_INVALID/);
-  await call('put','/material-items/variants/:id',{params:{id:retained.id},body:{...body,revision:1,ownerId:org}});
+  await call('put','/material-items/variants/:id',{params:{id:retained.id},body:{...body,revision:3,ownerId:org}});
   const [preserved]=await db.$queryRaw`SELECT attributes FROM "InventoryVariant" WHERE id=${retained.id}`;
   assert.equal(preserved.attributes.type.id,type.id,'old hidden type is preserved during an unrelated edit');
 
