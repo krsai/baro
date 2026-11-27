@@ -23,6 +23,7 @@ import {requestJSON,buildQueryString} from '../../utils/apiClient';
 import {approvalSettingsText} from '../../constants/approvalSettings';
 import {emitWorkspaceDataChanged} from '../../utils/workspaceDataEvents';
 import {approvalBandOrderErrors,cleanApprovalBands,invalidApprovalBands} from '../../utils/approvalBands.mjs';
+import {approvalMenuOptions} from '../../utils/approvalMenuOptions';
 
 const keyFor=(menu,operation)=>menu+':'+operation;
 const registrationFor=(menu,operation)=>menu==='BANK_LEDGER'&&operation==='CREATE';
@@ -38,12 +39,14 @@ const dirtyEntry=entry=>Boolean(entry?.form&&JSON.stringify(entry.form)!==entry.
 
 export default function ApprovalSettings({systemDefaults=false}){const {activeOrgId}=useAuth();return <CompanyApprovalSettings key={String(systemDefaults)+activeOrgId} activeOrgId={activeOrgId} systemDefaults={systemDefaults}/>;}
 function CompanyApprovalSettings({activeOrgId,systemDefaults}){
+ const authState=useAuth(),availableMenus=approvalMenuOptions(authState,systemDefaults);
  const location=useLocation();
  const {languageCode}=useLanguage(),{showNotification}=useAppActions();
  const t=approvalSettingsText[languageCode]||approvalSettingsText.en,subject=approvalSubjectText[languageCode]||approvalSubjectText.en,actionText=changeApprovalText[languageCode]||changeApprovalText.en,messages=approvalRuleText[languageCode]||approvalRuleText.en;
- const [menu,setMenu]=useState(()=>new URLSearchParams(location.search).get('menu')==='INVENTORY'?'INVENTORY':new URLSearchParams(location.search).get('menu')==='WORK_TIME'?'WORK_TIME':'EXPENSE'),[entries,setEntries]=useState({}),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0);
+ const [selectedMenu,setMenu]=useState(()=>new URLSearchParams(location.search).get('menu')||'EXPENSE'),[entries,setEntries]=useState({}),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0);
+ const menu=availableMenus.includes(selectedMenu)?selectedMenu:availableMenus[0]||'';
  useEffect(()=>{const selected=new URLSearchParams(location.search).get('menu');if(['WORK_TIME','INVENTORY'].includes(selected))setMenu(selected);},[location.key,location.search]);
- const operations=menu==='INVENTORY'?['CREATE','DELETE']:menu==='WORK_TIME'?['CREATE']:menu==='INVOICE'?['DELETE']:['CREATE','UPDATE','DELETE'];
+ const operations=!menu?[]:menu==='INVENTORY'?['CREATE','DELETE']:menu==='WORK_TIME'?['CREATE']:menu==='INVOICE'?['DELETE']:['CREATE','UPDATE','DELETE'];
  const lock=useRef(false),scope=useRef(activeOrgId),live=useRef(true);scope.current=activeOrgId;
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
  useEffect(()=>{let alive=true;setLoading(true);
@@ -59,7 +62,7 @@ function CompanyApprovalSettings({activeOrgId,systemDefaults}){
  useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['approval-settings','work-time-policy'],isBlocked:saving||dirty.length>0,
   shouldHandle:event=>event.source!=='approval-settings-save',onRefresh:()=>setReload(value=>value+1)});
  const update=(operation,patch)=>{setError('');setEntries(current=>{const key=keyFor(menu,operation),entry=current[key];if(!entry?.form)return current;return {...current,[key]:{...entry,form:{...entry.form,...patch}}};});};
- const disabled=saving||loading,invalid=dirty.some(entry=>invalidEntry(entry)||!entry.data?.canEdit||entry.error);
+ const disabled=saving||loading,invalid=dirty.some(entry=>!availableMenus.includes(entry.menu)||invalidEntry(entry)||!entry.data?.canEdit||entry.error);
  const save=async()=>{
   if(lock.current||disabled||!dirty.length||invalid)return;lock.current=true;setSaving(true);setError('');const orgId=activeOrgId;
   const changes=dirty.map(entry=>({menu:entry.menu,operation:entry.operation,settings:['WORK_TIME','INVENTORY'].includes(entry.menu)?entry.form:{...entry.form,stageAuthorityVersion:1,rules:cleanApprovalBands(entry.form.rules)}}));
@@ -74,7 +77,7 @@ function CompanyApprovalSettings({activeOrgId,systemDefaults}){
  };
  return <AppPageContainer title={systemDefaults?(approvalDefaultsText[languageCode]||approvalDefaultsText.en).system:t.title} titleActions={<SaveButton loading={saving} disabled={disabled||!dirty.length||invalid} onClick={save}>{t.save}</SaveButton>} contentSx={{flex:1,minWidth:0}}>
   <Stack spacing={3} data-testid="approval-settings-page" sx={{width:'100%',maxWidth:'none',minWidth:0,flex:1}}>
-   <TextField select size="small" label={subject.label} value={menu} disabled={saving} onChange={event=>{setMenu(event.target.value);setError('');}} sx={{width:{xs:'100%',sm:320}}}>{['EXPENSE','BANK_LEDGER','INVOICE','WORK_TIME','INVENTORY'].map(key=><MenuItem key={key} value={key}>{key==='INVENTORY'?(inventoryApprovalText[languageCode]||inventoryApprovalText.en).title:key==='WORK_TIME'?(workTimeText[languageCode]||workTimeText.en).title:actionText[key]}</MenuItem>)}</TextField>
+   <TextField select size="small" label={subject.label} value={menu} disabled={saving||!availableMenus.length} onChange={event=>{setMenu(event.target.value);setError('');}} sx={{width:{xs:'100%',sm:320}}}>{availableMenus.map(key=><MenuItem key={key} value={key}>{key==='INVENTORY'?(inventoryApprovalText[languageCode]||inventoryApprovalText.en).title:key==='WORK_TIME'?(workTimeText[languageCode]||workTimeText.en).title:actionText[key]}</MenuItem>)}</TextField>
    {error&&<Alert severity="error">{error}</Alert>}
    {operations.map(operation=><ApprovalOperationSettings key={keyFor(menu,operation)} entry={entries[keyFor(menu,operation)]} menu={menu} operation={operation} disabled={disabled} onChange={patch=>update(operation,patch)} onReload={()=>setReload(value=>value+1)} languageCode={languageCode} systemDefaults={systemDefaults}/>)}
   </Stack>
