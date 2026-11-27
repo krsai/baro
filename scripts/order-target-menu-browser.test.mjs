@@ -49,7 +49,7 @@ async function configurePage(page, language, orgType, orgRole) {
   const saved = { INVOICE: { excluded: false, revision: 0 }, SHIPPING: { excluded: false, revision: 0 } };
   const stub = (name, body) => page.route('**/src/context/' + name + '.jsx*', route => route.fulfill({ contentType: 'application/javascript', body }));
   await stub('AuthContext', 'const auth=' + JSON.stringify({ activeOrgId: 1, activeOrgType: orgType, activeProfile: { entryType: 'ORG', orgType, orgRole } }) + ';export const useAuth=()=>auth;');
-  await stub('LanguageContext', 'export const useLanguage=()=>({languageCode:' + JSON.stringify(language) + '});');
+  await stub('LanguageContext', "import React from '/node_modules/.vite/deps/react.js';export const LanguageContext=React.createContext({languageCode:"+JSON.stringify(language)+"});export const useLanguage=()=>({languageCode:" + JSON.stringify(language) + '});');
   await stub('AppContext', 'const noop=()=>{};const actions={navigateToPath:path=>window.testNavigate(path),showNotification:noop,markTabChanged:noop,clearTabChanged:noop,setUnsavedChangesGuard:noop,clearUnsavedChangesGuard:noop};export const useAppActions=()=>actions;export const useAppState=()=>({});');
   await page.route(url => url.origin === apiOrigin, async route => {
     const request = route.request();
@@ -76,6 +76,7 @@ async function configurePage(page, language, orgType, orgRole) {
         hasMore: false,
       } });
     }
+    if (url.pathname === '/text-acronyms') return route.fulfill({headers,json:{revision:1,entries:[]}});
     if (url.pathname === '/orders') {
       const workflowStatus = saved.INVOICE.excluded ? 'COLLECTION' : 'RECEIVED';
       orderReads.push(workflowStatus);
@@ -109,7 +110,7 @@ try {
   for (const language of ['ko', 'en', 'vi']) for (const width of [1440, 390]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const errors = [];
-    page.on('pageerror', error => errors.push(error.message));
+    page.on('pageerror', error => {errors.push(error.message);console.error(error.message);});
     const { reads, writes, saved, shipmentReads, orderReads } = await configurePage(page, language, 'MANUFACTURER', 'ADMIN');
     const labels = managementTargetText[language];
     const button = kind => page.getByRole('button', { name: labels[kind], exact: true });
@@ -118,7 +119,7 @@ try {
     await page.goto(origin + '/' + filename);
     await page.getByRole('heading', { level: 1 }).waitFor();
     assert.equal(await button('SHIPPING').count(), 0);
-    assert.equal(await button('INVOICE').count(), 0);
+    assert.equal(await button('INVOICE').count(), 1);
     await orderStatus('RECEIVED').waitFor();
     await page.evaluate(() => window.testNavigate('/order-shipments'));
     await button('SHIPPING').waitFor();
@@ -166,19 +167,19 @@ try {
     const previousReadCount = reads.length;
 
     await page.evaluate(() => window.testNavigate('/invoices'));
-    await button('INVOICE').waitFor();
+    await page.getByRole('button', { name: invoiceMessages[language].newInvoice, exact: true }).waitFor();
+    assert.equal(await button('INVOICE').count(), 0);
     assert.equal(await button('SHIPPING').count(), 0);
     assert.equal(await page.getByRole('button', { name: invoiceMessages[language].newInvoice, exact: true }).count(), 1);
     assert.equal(reads.length, previousReadCount);
+    await page.evaluate(() => window.testNavigate('/order'));
+    await button('INVOICE').waitFor();
     const initialOrderReads = orderReads.length;
     await changeTarget('INVOICE');
-    assert.equal(orderReads.length, initialOrderReads, 'the hidden order list waits until it is shown');
-    await page.evaluate(() => window.testNavigate('/order'));
     await orderStatus('COLLECTION').waitFor();
+    assert.ok(orderReads.length > initialOrderReads, 'the active order list reloads after saving invoice targets');
     assert.equal(orderReads.at(-1), 'COLLECTION');
-    await page.evaluate(() => window.testNavigate('/invoices'));
     await changeTarget('INVOICE', false);
-    await page.evaluate(() => window.testNavigate('/order'));
     await orderStatus('RECEIVED').waitFor();
     assert.equal(orderReads.at(-1), 'RECEIVED');
     assert.ok(reads.slice(previousReadCount).length > 0 && reads.slice(previousReadCount).every(kind => kind === 'INVOICE'));
@@ -198,6 +199,7 @@ try {
     await page.goto(origin + '/' + filename);
     await page.getByRole('heading', { level: 1 }).waitFor();
     assert.equal(await page.getByRole('button', { name: managementTargetText.en.SHIPPING, exact: true }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: managementTargetText.en.INVOICE, exact: true }).count(), 0);
     await page.evaluate(() => window.testNavigate('/order-shipments'));
     await page.locator('main table').getByText('SHIP-LIST-ORDER', { exact: true }).waitFor();
     assert.equal(await page.getByRole('button', { name: managementTargetText.en.SHIPPING, exact: true }).count(), 0);
@@ -208,7 +210,7 @@ try {
     assert.deepEqual(writes, []);
     await page.close();
   }
-  console.log('PASS shipment and invoice menus: ko/en/vi desktop/mobile, scoped saves, refreshed order status and manufacturer admin access.');
+  console.log('PASS order target settings and shipment/invoice menus: ko/en/vi desktop/mobile, scoped saves, refreshed order status and manufacturer admin access.');
 } finally {
   await browser?.close();
   server.kill();

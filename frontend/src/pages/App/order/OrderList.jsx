@@ -1,4 +1,5 @@
 import {canAccessPath} from '../../../utils/accessControl';
+import ManagementTargetSettingsButton from '../../../components/ManagementTargetSettingsButton';
 import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
 import LocalizedDateField from '../../../components/LocalizedDateField';
 import Dialog from '../../../components/AppDialog';
@@ -779,6 +780,7 @@ const OrderList = () => {
   const { showNotification, navigateToPath } = useAppActions();
   const authState = useAuth();
   const { activeOrgId, activeProfile } = authState;
+  const canManageInvoiceTargets = authState.activeOrgType === 'MANUFACTURER' && activeProfile?.orgRole === 'ADMIN';
   const { languageCode } = useLanguage();
   const orderValueDetailText = useMemo(() => getOrderValueDetailText(languageCode), [languageCode]);
   const orderPageText = useMemo(
@@ -3064,9 +3066,12 @@ const OrderList = () => {
       <AppPageContainer
         title={orderPageText.listTitle}
         titleActions={(
+          <Stack direction="row" spacing={1} alignItems="center">
+          {canManageInvoiceTargets && <ManagementTargetSettingsButton orgId={activeOrgId} languageCode={languageCode} kind="INVOICE" />}
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
             {orderPageText.addOrder}
           </Button>
+          </Stack>
         )}
         toolbar={(
           <SearchPanel onReset={()=>{setSearchTerm('');setProgressFilter(ORDER_FILTER_ALL);}}
