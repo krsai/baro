@@ -1,3 +1,4 @@
+import {billWorkflowText} from '../frontend/src/constants/billWorkflow.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -17,7 +18,7 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/shipping-work-layout-test.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const lang of ['ko','en','vi'])for(const width of [1440,390])for(const mode of ['FCL','LCL','AIR','EXPRESS']){
-  if((process.argv.includes('--info-layout-only')||process.argv.includes('--numeric-only'))&&mode!=='FCL')continue;
+  if((process.argv.includes('--info-layout-only')||process.argv.includes('--numeric-only')||process.argv.includes('--close-ui-only'))&&mode!=='FCL')continue;
   if(process.argv.includes('--shared-sr-only')&&mode!=='FCL')continue;
   if(process.argv.includes('--customer-only')&&mode!=='FCL')continue;
   if(process.argv.includes('--volume-formula-only')&&mode!=='EXPRESS')continue;
@@ -61,6 +62,12 @@ try{
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert.deepEqual(errors,[]);await dialog.getByRole('button',{name:t.close,exact:true}).click();console.log('PASS current SR shared cargo/containers edit and save',lang,width);await page.close();continue;
   }
   const form=page.getByTestId('shipping-operations-form');await form.waitFor({timeout:60000});
+  if(process.argv.includes('--close-ui-only')){
+   const workflow=billWorkflowText[lang];await page.getByRole('button',{name:workflow.addMaster,exact:true}).click();await page.getByRole('button',{name:workflow.direct,exact:true}).click();
+   const dialog=page.getByRole('dialog');await dialog.locator('[data-shipping-bills]').waitFor();assert.equal(await dialog.getByRole('button',{name:t.returnDetail,exact:true}).count(),0);assert.equal(await dialog.getByRole('button',{name:t.close,exact:true}).count(),1);
+   await dialog.locator('input[name=billNumber]').fill('UNSAVED');await dialog.getByRole('button',{name:t.close,exact:true}).click();assert.equal(await dialog.isVisible(),true);
+   page.removeAllListeners('dialog');page.once('dialog',d=>d.accept());await dialog.getByRole('button',{name:t.close,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(billWrites.length,0);assert.deepEqual(errors,[]);console.log('PASS single close action and unsaved guard',lang,width);await page.close();continue;
+  }
   if(process.argv.includes('--numeric-only')){
    for(const key of ['quantity','weightKg']){
     const input=form.locator('[name='+key+']');await input.fill('0012345.2500');assert.equal(await input.inputValue(),'12,345.2500');assert.equal(await input.evaluate(n=>getComputedStyle(n).textAlign),'right');
