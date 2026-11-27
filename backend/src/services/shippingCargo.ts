@@ -1,9 +1,10 @@
+import {normalizeEditableDecimal} from '../utils/editableDecimal';
 import {validateVolumeFormula} from '../utils/validateVolumeFormula';
 import {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
 import {parseVolumeInput} from '../utils/volumeFormula';
 const fail=():never=>{throw createHttpError(400,'SHIPPING_CARGO_INVALID');};
-const number=(value:any,integer=false)=>{if(typeof value!=='string'||!(integer?/^\d{1,8}$/:/^\d{1,10}(\.\d{1,6})?$/).test(value)||!new Prisma.Decimal(value).gt(0))fail();return value;};
+const number=(value:any,integer=false)=>{if(typeof value!=='string'||!(integer?/^\d{1,8}$/:/^\d{1,10}(\.\d{1,6})?$/).test(value)||!new Prisma.Decimal(value).gt(0))fail();return normalizeEditableDecimal(value);};
 export function validateOogTransition(data:any,previous:any={}){
  if(data.outOfGauge&&data.oogSchemaVersion!==1&&data.oogSchemaVersion!==2&&(!previous.outOfGauge||previous.oogSchemaVersion===1))fail();
  if(data.outOfGauge&&!(Array.isArray(data.containers)&&data.containers.some((row:any)=>['OT','FR'].includes(row?.type)))&&!(previous.outOfGauge&&JSON.stringify(data.containers)===JSON.stringify(previous.containers)))fail();
@@ -32,7 +33,7 @@ export function shippingCargo(data:any,mode:string){
  const declared=['quantity','weightKg','cbm'].every(key=>Number(data[key])>0)&&typeof data.unit==='string'&&Boolean(data.unit.trim());
  for(const key of ['quantity','weightKg','cbm'])if(data[key]!=null&&data[key]!==''){
   if(typeof data[key]!=='string'||!(key==='quantity'?/^\d{1,12}$/:/^\d{1,10}(\.\d{1,6})?$/).test(data[key]))fail();
-  result[key]=data[key];
+  result[key]=normalizeEditableDecimal(data[key]);
  }
  if(data.unit!=null){if(typeof data.unit!=='string'||data.unit.length>30)fail();result.unit=data.unit.trim();}
  if(data.dangerousGoods&&data.dgClass===undefined&&(typeof data.dangerousGoodsDetails!=='string'||!data.dangerousGoodsDetails.trim()||data.dangerousGoodsDetails.length>500))fail();

@@ -17,7 +17,7 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/shipping-work-layout-test.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const lang of ['ko','en','vi'])for(const width of [1440,390])for(const mode of ['FCL','LCL','AIR','EXPRESS']){
-  if(process.argv.includes('--info-layout-only')&&mode!=='FCL')continue;
+  if((process.argv.includes('--info-layout-only')||process.argv.includes('--numeric-only'))&&mode!=='FCL')continue;
   if(process.argv.includes('--shared-sr-only')&&mode!=='FCL')continue;
   if(process.argv.includes('--customer-only')&&mode!=='FCL')continue;
   if(process.argv.includes('--volume-formula-only')&&mode!=='EXPRESS')continue;
@@ -61,6 +61,15 @@ try{
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));assert.deepEqual(errors,[]);await dialog.getByRole('button',{name:t.close,exact:true}).click();console.log('PASS current SR shared cargo/containers edit and save',lang,width);await page.close();continue;
   }
   const form=page.getByTestId('shipping-operations-form');await form.waitFor({timeout:60000});
+  if(process.argv.includes('--numeric-only')){
+   for(const key of ['quantity','weightKg']){
+    const input=form.locator('[name='+key+']');await input.fill('0012345.2500');assert.equal(await input.inputValue(),'12,345.2500');assert.equal(await input.evaluate(n=>getComputedStyle(n).textAlign),'right');
+    await input.fill('0');await input.press('End');await input.pressSequentially('100');assert.equal(await input.inputValue(),'100');await input.fill('12345.2500');
+   }
+   const volume=form.locator('[name=cbm]');await volume.fill('0012345.2500');await form.locator('[name=cargo]').click();assert.equal(await volume.inputValue(),'12,345.25');assert.equal(await volume.evaluate(n=>getComputedStyle(n).textAlign),'right');
+   await Promise.all([page.waitForResponse(r=>r.url().includes('/operation-details')&&r.request().method()==='PUT'),page.locator('.app-page-header').getByRole('button',{name:t.save,exact:true}).click()]);
+   assert.equal(writes.at(-1).fields.quantity,'12345.2500');assert.equal(writes.at(-1).fields.weightKg,'12345.2500');assert.equal(writes.at(-1).fields.cbm,'12345.25');assert.deepEqual(errors,[]);console.log('PASS numeric formatting and raw save',lang,width);await page.close();continue;
+  }
   if(process.argv.includes('--info-layout-only')){
    const summary=form.locator('[data-shipping-work-summary]'),customer=summary.locator('.MuiOutlinedInput-root').nth(0),date=summary.locator('.MuiOutlinedInput-root').nth(1),assignee=form.locator('[data-shipping-work-assignee] .MuiOutlinedInput-root');
    const a=await customer.boundingBox(),b=await date.boundingBox(),c=await assignee.boundingBox();

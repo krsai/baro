@@ -1,3 +1,4 @@
+import DecimalAmountField from './DecimalAmountField';
 import LocalizedDateField from './LocalizedDateField';
 import VolumeInput from './VolumeInput';
 import {parseVolumeInput} from '../utils/volumeFormula.mjs';
@@ -56,7 +57,7 @@ export default function ShippingOperations({job,employees,customers=[],languageC
  const field=(key,label,multiline=false,minRows=3)=><TextField fullWidth size="small" key={key} name={key==='voyage'?'voyageNumber':key} label={label} value={value[key]??''} disabled={blocked} multiline={multiline} minRows={multiline?minRows:undefined} required={['shipper','consignee','origin','destination'].includes(key)} slotProps={{htmlInput:{'aria-label':label,'data-text-case':key==='incoterms'?'preserve':undefined,maxLength:['cargo','remark'].includes(key)?4000:['shipper','consignee','notify','marks'].includes(key)?2000:['origin','destination','placeOfReceipt','placeOfDelivery'].includes(key)?1000:200}}} onChange={ev=>patch(key,ev.target.value)}/>;
  const date=(key,label,scheduleKey)=><LocalizedDateField fullWidth size="small" key={key} name={key} type="date" label={label||(key==='plannedDate'?e.plannedDate:t[key])} value={value[key]||value[scheduleKey]||''} disabled={blocked} slotProps={{inputLabel:{shrink:true}}} onChange={ev=>setValue(old=>({...old,[key]:ev.target.value,...(scheduleKey?{[scheduleKey]:ev.target.value}:{})}))}/>;
  const choice=(key,label,options)=><TextField fullWidth select name={key} label={label} value={value[key]||''} disabled={blocked} onChange={ev=>patch(key,ev.target.value)}><MenuItem value="">—</MenuItem>{[...new Set([...(value[key]?[value[key]]:[]),...options])].map(option=><MenuItem key={option} value={option}>{option}</MenuItem>)}</TextField>;
- const numeric=(key,label)=>key==='cbm'?<VolumeInput label={label} value={value.cbm} formula={value.cbmFormula} quantity={value.quantity} languageCode={languageCode} disabled={blocked} onChange={patch=>setValue(old=>({...old,...patch}))}/>:<TextField fullWidth name={key} label={label} value={value[key]??''} disabled={blocked} slotProps={{htmlInput:{inputMode:'decimal',maxLength:21}}} onChange={ev=>{if(/^\d*(\.\d*)?$/.test(ev.target.value))patch(key,ev.target.value);}}/>;
+ const numeric=(key,label)=>key==='cbm'?<VolumeInput label={label} value={value.cbm} formula={value.cbmFormula} quantity={value.quantity} languageCode={languageCode} disabled={blocked} onChange={patch=>setValue(old=>({...old,...patch}))}/>:<DecimalAmountField fullWidth name={key} label={label} value={value[key]??''} disabled={blocked} decimalScale={4} maxIntegerDigits={16} onValueChange={next=>patch(key,next)}/>;
  const fcl=job.mode==='SEA'&&source.shipmentType==='FCL';
 
  return <Box component="form" id={formId} onSubmit={save} data-testid="shipping-operations-form">

@@ -1,3 +1,4 @@
+import {normalizeEditableDecimal} from '../utils/editableDecimal';
 import {validateVolumeFormula} from '../utils/validateVolumeFormula';
 import {createHttpError} from '../utils/http';
 import {validateBillLogo} from './freightBillSettings';
@@ -10,10 +11,10 @@ export function billData(value:any){
   if(key==='containers'){
    const rows=raw as any[];
    if(!Array.isArray(rows)||rows.length>50||rows.some(r=>!r||typeof r!=='object'||Object.keys(r).some(k=>!['size','type','count'].includes(k))||!['20DC','40DC','40HQ','45HQ','20RF','40RF','40RH','20OT','40OT','40OH','20FR','40FR','40FH','20TK'].includes(String(r.size)+String(r.type))||!/^\d{1,6}$/.test(String(r.count))||Number(r.count)<1))throw createHttpError(400,'FREIGHT_INVALID_INPUT');
-   result.containers=rows.map(r=>({size:String(r.size),type:String(r.type),count:String(r.count)}));continue;
+   result.containers=rows.map(r=>({size:String(r.size),type:String(r.type),count:normalizeEditableDecimal(r.count)}));continue;
   }
   if(typeof raw!=='string'||raw.length>billFieldLimits[key]!)throw createHttpError(400,'FREIGHT_INVALID_INPUT');
-  const text=raw.trim();
+  const text=['quantity','weightKg','cbm','originalCount'].includes(key)?normalizeEditableDecimal(raw.trim()):raw.trim();
   if(key==='logoDataUrl')validateBillLogo(text);
   if(key==='releaseType'&&text&&!['ORIGINAL','SEA_WAYBILL'].includes(text)||key==='surrenderStatus'&&text&&!['NONE','REQUESTED','CONFIRMED'].includes(text)||key==='originalCount'&&text&&!/^(0|[1-9]\d?)$/.test(text))throw createHttpError(400,'FREIGHT_INVALID_INPUT');
   if(['etd','eta','issueDate','onBoardDate','surrenderRequestedAt','surrenderConfirmedAt'].includes(key)&&text&&(!/^\d{4}-\d\d-\d\d$/.test(text)||!Number.isFinite(Date.parse(text))||new Date(text).toISOString().slice(0,10)!==text))throw createHttpError(400,'FREIGHT_INVALID_INPUT');

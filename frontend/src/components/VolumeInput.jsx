@@ -5,9 +5,10 @@ import {parseVolumeInput} from '../utils/volumeFormula.mjs';
 import {reviewVolumeFormula} from '../utils/volumeFormulaReview.mjs';
 import {useAppActions} from '../context/AppContext';
 import {shippingEditorText} from '../constants/shippingEditor';
+import {formatEditableDecimal,normalizeEditableDecimal} from '../utils/editableDecimal.mjs';
 
 export default function VolumeInput({value='',formula='',quantity='',onChange,label,disabled,languageCode,name='cbm',sx,required=false}){
- const display=value==null||value===''?'0':String(value);
+ const display=value==null||value===''?'0':normalizeEditableDecimal(value);
  const [editing,setEditing]=useState(false),[draft,setDraft]=useState(formula||display);
  const {showNotification}=useAppActions(),t=shippingEditorText[languageCode]||shippingEditorText.en;
  const lastReview=useRef('');
@@ -21,9 +22,9 @@ export default function VolumeInput({value='',formula='',quantity='',onChange,la
   showNotification(t.volumeCountWarning.replace('{quantity}',String(review.quantity)).replace('{terms}',String(review.terms)),'warning');
  },[editing,disabled,formula,quantity,t.volumeCountWarning,showNotification]);
  const invalid=parseVolumeInput(editing?draft:formula||display)===null;
- return <TextField fullWidth size="small" name={name} sx={sx} required={required} label={label} disabled={disabled} value={editing?draft:invalid?formula||draft:display} error={invalid}
+ return <TextField fullWidth size="small" name={name} sx={[{'& input':{textAlign:'right',fontVariantNumeric:'tabular-nums'}},...(Array.isArray(sx)?sx:[sx])]} required={required} label={label} disabled={disabled} value={editing?draft:invalid?formula||draft:formatEditableDecimal(display)} error={invalid}
   data-text-case="preserve" slotProps={{inputLabel:{shrink:true},htmlInput:{'aria-label':label,title:formula||'',maxLength:200,'data-text-case':'preserve',spellCheck:false}}}
   onFocus={event=>{flushSync(()=>{setDraft(formula||display);setEditing(true);});event.target.select();}}
-  onChange={event=>{const raw=event.target.value;setDraft(raw);const parsed=parseVolumeInput(raw);onChange(parsed||{cbm:'',cbmFormula:raw});}}
+  onChange={event=>{const input=event.target.value,raw=input.trim().startsWith('=')?input:normalizeEditableDecimal(input.replace(/,/g,''));setDraft(raw);const parsed=parseVolumeInput(raw);onChange(parsed||{cbm:'',cbmFormula:raw});}}
   onBlur={()=>{setEditing(false);if(parseVolumeInput(draft)===null)showNotification(t.volumeInvalid,'error');}}/>;
 }

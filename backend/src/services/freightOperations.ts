@@ -1,3 +1,4 @@
+import {normalizeEditableDecimal} from '../utils/editableDecimal';
 import {prepareSharedJob,syncBillsFromJob} from './shippingSharedData';
 import {validateVolumeFormula} from '../utils/validateVolumeFormula';
 import {directoryShippingParty,recentShippingParties} from './shippingPartyDirectory';
@@ -22,7 +23,7 @@ const member=(v:any,values:string[])=>values.includes(v)?v:fail('FREIGHT_INVALID
 const key=(v:any)=>typeof v==='string'&&/^[a-zA-Z0-9_-]{8,80}$/.test(v)?v:fail('INVALID_TRANSACTION_KEY');
 const hash=(v:any)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 const date=(v:any)=>{const value=optional(v,10);if(value&&(!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value))||new Date(value+'T00:00:00Z').toISOString().slice(0,10)!==value))fail('FREIGHT_INVALID_INPUT');return value;};
-const decimal=(v:any,precision=4)=>{const s=String(v??'0');if(!new RegExp(precision?'^\\d{1,12}(?:\\.\\d{1,'+precision+'})?$':'^\\d{1,12}$').test(s))fail('FREIGHT_INVALID_INPUT');return s;};
+const decimal=(v:any,precision=4)=>{const s=String(v??'0');if(!new RegExp(precision?'^\\d{1,12}(?:\\.\\d{1,'+precision+'})?$':'^\\d{1,12}$').test(s))fail('FREIGHT_INVALID_INPUT');return normalizeEditableDecimal(s);};
 const canonical=(v:any)=>{const s=String(v).replace(/^0+(?=\d)/,'');return s.includes('.')?s.replace(/0+$/,'').replace(/\.$/,''):s;};
 export async function freightActor(db:any,orgId:number,actorId:number){
  const actor=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']}},select:{id:true,name:true,orgRole:true}});
