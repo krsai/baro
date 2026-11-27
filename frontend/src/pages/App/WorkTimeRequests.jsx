@@ -24,7 +24,7 @@ import {emitWorkspaceDataChanged} from '../../utils/workspaceDataEvents';
 import {workTimeText} from '../../constants/workTime';
 import AnnualLeaveManager from './holiday/AnnualLeaveManager';
 
-const kinds=['HALF_DAY','ANNUAL','BUSINESS_TRIP'];
+const kinds=['HALF_DAY','ANNUAL'];
 const defaults=()=>({start:dayjs().subtract(11,'month').startOf('month'),end:dayjs().endOf('month')});
 const tone={APPROVED:'success',REJECTED:'error',PENDING:'info',CANCELLED:'warning',WITHDRAWN:'default'};
 const errorText=(t,e)=>t.errors[e?.message]||t.error;

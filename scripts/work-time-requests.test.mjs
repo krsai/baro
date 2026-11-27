@@ -10,6 +10,23 @@ const {resolveSalaryAttendanceParameters:attendance}=require('../backend/dist/em
 const {loadPayrollLeaves,grantEmployeeLeave}=require('../backend/dist/employees/employeeLeave');
 const {saveApprovalActionBatch}=require('../backend/dist/services/approvalActions');
 
+test('leave API allows only annual and half days while preserving historical cancellation',async()=>{
+ const f=await fixture();try{
+  const handlers={};const app=Object.fromEntries(['get','put','post'].map(method=>[method,(path,handler)=>{handlers[method+path]=handler;}]));
+  registerWorkTimeRoutes(app,f.db,{requireOrgRole:async()=>({organization:{id:f.org}}),actorId:()=>f.worker.id});
+  const post=async body=>{let result;await handlers['post/work-time/requests']({body},{json:value=>{result=value;}});return result;};
+  for(const kind of ['OVERTIME','SPECIAL','PAID','UNPAID','BUSINESS_TRIP'])await assert.rejects(post(f.request({kind})),/WORK_TIME_INVALID_INPUT/);
+  const annual=await post(f.request({kind:'ANNUAL',startDate:'2026-10-05',endDate:'2026-10-06'}));assert.equal(annual.days.length,2);
+  for(const kind of ['ANNUAL_AM','ANNUAL_PM']){
+   const half=await post(f.request({kind,startDate:'2026-10-07',endDate:'2026-10-07'}));assert.equal(half.days[0].portion,0.5);
+  }
+  const old=await submit(f.db,f.org,f.worker.id,f.request({startDate:'2026-10-08',endDate:'2026-10-08'}));
+  await decide(f.db,f.org,f.p.senior.id,old.id,{revision:0,decision:'APPROVED',approvedMinutes:120});
+  await decide(f.db,f.org,f.p.lead.id,old.id,{revision:1,decision:'APPROVED',approvedMinutes:120});
+  const cancellation=await post(f.request({cancelsRequestId:old.id}));assert.equal(cancellation.cancelsRequestId,old.id);
+ }finally{await f.close();}
+});
+
 test('central approval settings use the existing work-time policy and roll back mixed changes atomically',async()=>{
  const f=await fixture();try{
   const {db,p,org}=f,original=await db.systemSetting.findUnique({where:{key:`WORK_TIME_POLICY:${org}`}});

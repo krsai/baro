@@ -179,7 +179,11 @@ export function registerWorkTimeRoutes(app:any,db:any,gates:any){
  route('put','/policy',(o:number,a:number,r:any)=>saveWorkTimePolicy(db,o,a,r.body));
  route('get','/leave-balance',async(o:number,a:number,r:any)=>{const actor=await workTimeActor(db,o,a);if(actor.orgRole!=='ADMIN')fail('WORK_TIME_ACCESS_DENIED',403);const id=Number(r.query.employeeId),year=Number(r.query.year);if(!Number.isSafeInteger(id)||!Number.isInteger(year)||year<1900||year>2200)fail('WORK_TIME_INVALID_INPUT');return employeeLeaveBalance(db,o,id,year);});
  route('post','/leave-grants',async(o:number,a:number,r:any)=>{const actor=await workTimeActor(db,o,a);if(actor.orgRole!=='ADMIN')fail('WORK_TIME_ACCESS_DENIED',403);if(!Number.isInteger(r.body?.expectedGranted))fail('WORK_TIME_INVALID_INPUT');return grantEmployeeLeave(db,o,Number(r.body.employeeId),a,r.body);});
- route('post','/requests',(o:number,a:number,r:any)=>submitWorkTimeRequest(db,o,a,r.body));
+ route('post','/requests',(o:number,a:number,r:any)=>{
+  // Keep historical requests and cancellations; new leave requests are annual leave only.
+  if(!r.body?.cancelsRequestId&&!['ANNUAL','ANNUAL_AM','ANNUAL_PM'].includes(r.body?.kind))fail('WORK_TIME_INVALID_INPUT');
+  return submitWorkTimeRequest(db,o,a,r.body);
+ });
  route('get','/requests/:id',(o:number,a:number,r:any)=>readWorkTimeRequest(db,o,a,r.params.id));
  route('post','/requests/:id/decision',(o:number,a:number,r:any)=>decideWorkTimeRequest(db,o,a,r.params.id,r.body));
 }
