@@ -22,7 +22,9 @@ try{
   if(process.argv.includes('--preview-only')&&(lang!=='ko'||width!==1440||mode!=='FCL'))continue;
   if(process.argv.includes('--date-sync-only')&&(lang!=='ko'||width!==1440||mode!=='FCL'))continue;
   if(process.argv.includes('--scope-only')&&(lang!=='ko'||width!==1440||mode!=='LCL'))continue;
-  const page=await browser.newPage({viewport:{width,height:1050}}),errors=[],writes=[],billWrites=[],chargeWrites=[],t=shippingOperationText[lang],b=shippingBillText[lang],w=shippingWorkbenchText[lang];
+  if(process.argv.includes('--route-colors-only')&&mode!=='FCL')continue;
+  const page=await browser.newPage({viewport:{width,height:1050},timezoneId:'Asia/Ho_Chi_Minh'}),errors=[],writes=[],billWrites=[],chargeWrites=[],t=shippingOperationText[lang],b=shippingBillText[lang],w=shippingWorkbenchText[lang];
+  if(process.argv.includes('--route-colors-only'))await page.clock.install({time:new Date('2026-11-27T05:00:00Z')});
   page.setDefaultTimeout(15000);page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});page.on('dialog',d=>d.dismiss());
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:7,activeOrgType:"SERVICE"});'}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`import React from '/node_modules/.vite/deps/react.js';export const LanguageContext=React.createContext({languageCode:'${lang}'});export const useLanguage=()=>({languageCode:'${lang}'});`}));
@@ -33,6 +35,7 @@ try{
   if(mode==='LCL')job.data.workScope={start:'ORIGIN_TERMINAL',end:'DESTINATION_TERMINAL'};
   if(mode==='AIR')job.data.workScope={start:'ORIGIN_DOOR',end:'DESTINATION_TERMINAL'};
   if(mode==='LCL')job.bills=[{id:'shared-master',jobId:'source-job',kind:'MASTER',number:'M-001',data:{}},{id:'own-house',jobId:'job1',kind:'HOUSE',number:'H-001',data:{}}];
+  if(process.argv.includes('--route-colors-only'))Object.assign(job.data,{plannedDate:'2026-11-26',etd:'2026-11-27',routeDateDESTINATION_TERMINAL:'2026-11-28',routeDateDESTINATION_DOOR:''});
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'},charges=[];
   await page.route('**/freight/**',async route=>{const req=route.request();if(req.method()==='OPTIONS')return route.fulfill({headers});const key=new URL(req.url()).pathname.split('/freight/')[1];let json;
    if(key==='options')json=[customer];else if(key==='transport-jobs/options')json={forwarder:{id:7,name:'DEX LOGIS'},employees:[],currencies:[{code:'USD'}]};else if(key==='transport-jobs/job1')json=job;
@@ -44,6 +47,19 @@ try{
    else if(key==='job1/charges')json={rows:charges,currencies:[{code:'USD'}],parties:[customer]};else json=[];return route.fulfill({headers,json});});
   await page.goto(`http://127.0.0.1:${port}/shipping-work-layout-test.html?theme=${width===390?'standard':'compact'}`);
   const form=page.getByTestId('shipping-operations-form');await form.waitFor();
+  if(process.argv.includes('--route-colors-only')){
+   const sourceBefore=structuredClone(job.data),summary=form.locator('[data-shipping-work-summary] > div'),assignee=await form.locator('[data-shipping-work-assignee]').boundingBox();
+   const customer=await summary.nth(0).boundingBox(),sr=await summary.nth(1).boundingBox();assert.ok(Math.abs(customer.y-sr.y)<1);assert.ok(sr.x>=customer.x+customer.width);assert.ok(assignee.y>=Math.max(customer.y+customer.height,sr.y+sr.height));
+   const markers=form.locator('[data-route-complete]'),passed=()=>markers.evaluateAll(nodes=>nodes.map(node=>node.dataset.routeComplete==='true'));
+   assert.deepEqual(await passed(),[true,false,false,false]);
+   const terminal=form.locator('[data-shipping-route-step="ORIGIN_TERMINAL"]'),circle=terminal.locator('[data-route-complete] > div'),beforeColor=await circle.evaluate(node=>getComputedStyle(node).backgroundColor);
+   await terminal.evaluate(node=>node.scrollIntoView({block:'center',behavior:'instant'}));await terminal.getByRole('button').click();await page.clock.runFor(500);await page.locator('.MuiPickersDay-root').filter({hasText:/^25$/}).first().click();
+   await page.waitForFunction(()=>document.querySelector('[data-shipping-route-step="ORIGIN_TERMINAL"] [data-route-complete]')?.dataset.routeComplete==='true');assert.notEqual(await circle.evaluate(node=>getComputedStyle(node).backgroundColor),beforeColor);assert.equal(writes.length,0);
+   await terminal.evaluate(node=>node.scrollIntoView({block:'center',behavior:'instant'}));await terminal.getByRole('button').click();await page.clock.runFor(500);await page.locator('.MuiPickersDay-root').filter({hasText:/^27$/}).first().click();await page.waitForFunction(()=>document.querySelector('[data-shipping-route-step="ORIGIN_TERMINAL"] [data-route-complete]')?.dataset.routeComplete==='false');
+   await page.clock.fastForward(24*60*60*1000);await page.waitForFunction(()=>document.querySelector('[data-shipping-route-step="ORIGIN_TERMINAL"] [data-route-complete]')?.dataset.routeComplete==='true');assert.deepEqual(await passed(),[true,true,false,false]);
+   assert.equal(writes.length,0);assert.deepEqual(job.data,sourceBefore);assert.deepEqual(errors,[]);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+   if(lang==='ko'&&width===1440)await page.screenshot({path:'logs/shipping-summary-route-colors-preview.png',fullPage:true});console.log('PASS customer/SR row, assignee below, live date colors, ETD fallback and midnight rollover',lang,width);await page.close();continue;
+  }
   const reject=page.locator('[data-shipping-reject]'),rejectBox=await reject.boundingBox(),formBox=await form.boundingBox();assert.ok(rejectBox.y>=formBox.y+formBox.height-1);assert.ok(rejectBox.width>=formBox.width-1);let rejectedRequests=0;page.on('request',req=>{if(req.method()==='POST'&&new URL(req.url()).pathname.endsWith('/shipping-requests/job1'))rejectedRequests++;});const confirmation=page.waitForEvent('dialog');await reject.click();assert.ok((await confirmation).message().includes(job.number));assert.equal(rejectedRequests,0);
   if(mode==='FCL')for(const hint of ['CARGO READY','ETD/ATD','ETA/ATA','DELIVERY'])assert.ok(await form.locator('[data-shipping-work-route]').innerText().then(text=>text.includes(hint)));
   if(process.argv.includes('--date-sync-only')){
