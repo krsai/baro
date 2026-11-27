@@ -19,6 +19,7 @@ try{
   assert.equal(await page.locator('table,input[type="date"]').count(),0);assert.equal(queries[0].start,undefined);assert.equal(queries[0].end,undefined);
   assert.equal(await page.getByText('2026-11',{exact:true}).count(),0);
   const filter=page.locator('#approval-overview-status');assert.ok((await filter.boundingBox()).width<=162);const title=await page.getByText(t.overview,{exact:true}).boundingBox(),field=await filter.boundingBox();assert.ok(Math.abs(title.y+title.height/2-field.y-field.height/2)<2,'filter shares the title row');
+  assert.deepEqual(await page.locator('[data-list-pagination] button').allTextContents(),{ko:['\uC774\uC804','\uB2E4\uC74C'],en:['Previous','Next'],vi:['Tr\u01B0\u1EDBc','Ti\u1EBFp']}[lang]);
   assert.equal(queries[0].status,'UNAPPROVED');assert.equal(await page.locator('[data-dashboard-card]').count(),3);
   assert.deepEqual(await page.locator('[data-dashboard-card-actions] .MuiChip-label').allTextContents(),Array(3).fill(t.overviewStatuses.UNAPPROVED),'requested, in-review and unknown share one visible status');
   for(const item of await page.locator('[data-dashboard-card]').all()){

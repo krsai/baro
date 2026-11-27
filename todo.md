@@ -1,3 +1,5 @@
+- 대시보드 페이지 이동 문구: 결재 현황 등 위젯의 previousLabel/nextLabel 재지정을 제거해 공통 ListPagination의 이전/다음 및 한영베 번역을 사용한다. 관련 한영베 PC/모바일 브라우저·번역/인코딩 확인 / 운영 배포·인수 미확인.
+
 - Invoice production review checkbox removed: implementation and frontend build/i18n/encoding verified; ko/en/vi desktop/mobile targeted browser check passed. Quantity differences, validation, issue confirmation and bank confirmation remain. Production deployment/acceptance unverified.
 
 - 갱신·회귀 복구·생산 동기화 안정화: 구현 완료 / 로컬 통합 408개 및 추가 회귀 검증 통과 / 운영 migration·배포·실계정 인수 미확인. 공통 갱신 실패의 pending 보존·창 복귀 재시도·조회별 탭 변경 표시, 공장 설정 알림 누락·수량 검토의 잘못된 저장 알림, 휴일 변경의 배정 초안 보호, 급여 이전 자료/최근 성공 시각/명시 재시도를 반영했다. 일반·외주 실적과 같은 트랜잭션의 회사/배정 FK revision 및 서버 재시도 worker를 추가했으며 원본·완료/확정 snapshot·급여·원장 보정은 하지 않았다. 공통 선택 버튼의 테마 중복 정의로 사라진 포커스 표시도 복구했다. 전용 검수는 `test:workspace-refresh-recovery`, `test:assignment-progress-retry`다.
