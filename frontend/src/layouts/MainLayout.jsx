@@ -795,6 +795,7 @@ const MainLayout = () => {
             icon: <GroupIcon />,
             path: '/employee-system',
           },
+          ...(activeProfile?.entryType==='ORG'&&activeProfile?.orgRole==='ADMIN'?[{label:getUiMessage('menu.employeeFeedback','Warnings And Praise',languageCode),icon:<GroupIcon/>,path:'/employee-system/feedback'}]:[]),
           {
             label: getUiMessage('menu.salarySystem', '급여 설정', languageCode),
             icon: <AccountBalanceWalletIcon />,
@@ -907,6 +908,8 @@ const MainLayout = () => {
     ], languageCode, key => getUiMessage(key, key, languageCode));
   }, [
     accountingOpen,
+    activeProfile?.entryType,
+    activeProfile?.orgRole,
     accountsOpen,
     adminOpen,
     attributeOpen,

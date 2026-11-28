@@ -114,6 +114,7 @@ export const UI_MESSAGES = {
     approvalDefaults: { ko: '결재선 기본 설정', en: 'Approval defaults', vi: 'Phê duyệt mặc định' },
     personalSettings: { ko: '개인 설정', en: 'Personal Settings', vi: 'Cài đặt cá nhân' },
     employeeSystem: { ko: '직원 체계', en: 'Employee Structure', vi: 'Hệ thống nhân viên' },
+    employeeFeedback: { ko: '경고·칭찬', en: 'Warnings And Praise', vi: 'Cảnh Báo Và Khen Ngợi' },
     salarySystem: { ko: '급여 설정', en: 'Salary Settings', vi: 'Thiết lập lương' },
     business: { ko: '사업체', en: 'Business', vi: 'Doanh nghiệp' },
     factoryScope: { ko: '공장', en: 'Factory', vi: 'Nhà máy' },

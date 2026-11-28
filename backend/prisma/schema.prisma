@@ -519,6 +519,8 @@ model PartnerContact {
 }
 
 model Organization {
+  feedbackRules EmployeeFeedbackRule[]
+  feedbackDrafts EmployeeFeedbackDraft[]
   evidenceAttachments EvidenceAttachment[]
   evidenceAttachmentLinks EvidenceAttachmentLink[]
   ledgerDocuments BankLedgerDocument[]
@@ -1121,6 +1123,7 @@ model OrganizationSubscription {
 }
 
 model Factory {
+  feedbackRules EmployeeFeedbackRule[]
   id                           Int       @id @default(autoincrement())
   orgId                        Int
   name                         String
@@ -1217,6 +1220,11 @@ model Warehouse {
 
 
 model Employee {
+  assignedFeedbackRules EmployeeFeedbackRule[] @relation("FeedbackRuleEmployee")
+  createdFeedbackRules EmployeeFeedbackRule[] @relation("FeedbackRuleCreator")
+  receivedFeedbackDrafts EmployeeFeedbackDraft[] @relation("FeedbackDraftEmployee")
+  createdFeedbackDrafts EmployeeFeedbackDraft[] @relation("FeedbackDraftCreator")
+  feedbackEvents EmployeeFeedbackEvent[]
   uploadedEvidence EvidenceAttachment[]
   handledPolicies PartnerHandledPolicy[]
   handledAudits PartnerHandledAudit[]
@@ -3751,6 +3759,61 @@ model ChangeApprovalDecision {
  createdAt DateTime @default(now())
  @@unique([requestId,position])
  @@index([orgId,employeeId,createdAt])
+}
+
+model EmployeeFeedbackRule {
+ id String @id
+ orgId Int
+ employeeId Int
+ factoryId Int?
+ definition Json
+ version Int @default(1)
+ createdByEmployeeId Int
+ createdAt DateTime @default(now()) @db.Timestamp(3)
+ updatedAt DateTime @default(now()) @db.Timestamp(3)
+ organization Organization @relation(fields:[orgId],references:[id],onDelete:Restrict,map:"FeedbackRule_org_fkey")
+ employee Employee @relation("FeedbackRuleEmployee",fields:[employeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackRule_employee_fkey")
+ creator Employee @relation("FeedbackRuleCreator",fields:[createdByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackRule_actor_fkey")
+ factory Factory? @relation(fields:[factoryId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackRule_factory_fkey")
+ drafts EmployeeFeedbackDraft[]
+ events EmployeeFeedbackEvent[]
+ @@unique([id,orgId])
+ @@index([orgId,updatedAt(sort:Desc),id],map:"FeedbackRule_company_idx")
+}
+model EmployeeFeedbackDraft {
+ id String @id
+ orgId Int
+ employeeId Int
+ ruleId String?
+ content Json
+ state String @default("DRAFT")
+ version Int @default(1)
+ createdByEmployeeId Int
+ createdAt DateTime @default(now()) @db.Timestamp(3)
+ updatedAt DateTime @default(now()) @db.Timestamp(3)
+ organization Organization @relation(fields:[orgId],references:[id],onDelete:Restrict,map:"FeedbackDraft_org_fkey")
+ employee Employee @relation("FeedbackDraftEmployee",fields:[employeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackDraft_employee_fkey")
+ creator Employee @relation("FeedbackDraftCreator",fields:[createdByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackDraft_actor_fkey")
+ rule EmployeeFeedbackRule? @relation(fields:[ruleId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackDraft_rule_fkey")
+ events EmployeeFeedbackEvent[]
+ @@unique([id,orgId])
+ @@index([orgId,updatedAt(sort:Desc),id],map:"FeedbackDraft_company_idx")
+}
+model EmployeeFeedbackEvent {
+ id String @id
+ orgId Int
+ ruleId String?
+ draftId String?
+ actorId Int
+ version Int
+ action String
+ snapshot Json
+ createdAt DateTime @default(now()) @db.Timestamp(3)
+ rule EmployeeFeedbackRule? @relation(fields:[ruleId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackEvent_rule_fkey")
+ draft EmployeeFeedbackDraft? @relation(fields:[draftId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackEvent_draft_fkey")
+ actor Employee @relation(fields:[actorId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackEvent_actor_fkey")
+ @@unique([ruleId,version])
+ @@unique([draftId,version])
 }
 
 model DashboardWorkRequest {
