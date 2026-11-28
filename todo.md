@@ -55,3 +55,5 @@
 - 과거 420개 중 34미통과 기록은 `83f73a7a`의 회귀 복구·408개 통합 통과 기록과 구분했다. 34건을 그대로 현재 장애로 올리거나 전체가 해결됐다고 단정하지 않는다. 현재 재현된 운송 브라우저 실패는 실행 순서 1에 모았다.
 - 재고/BOM/수익성의 옛 상세 설계와 반복 완료 기록은 [정리 전 전체 진행표](https://github.com/krsai/baro/blob/b00846ea/todo.md), 더 이른 원문은 [49a5a676 상태표](https://github.com/krsai/baro/blob/49a5a676/todo.md)에서 찾는다. 현재 우선순위나 실행 승인으로 해석하지 않는다.
 - 현재 구현 구조와 유지할 기준은 [AGENTS.md](AGENTS.md), 상세 업무 제약은 [개발 참고 자료](docs/development-reference.md), 보존 도메인 원문은 [업무별 참고 자료](docs/domain-reference.md), UI 계약은 [공통 UI 기준](frontend/src/theme/README.md)을 따른다. 상세 변경 근거는 Git 커밋으로 남긴다.
+
+- [ ] 회사 로고는 로컬 서버 파일 업로드 방식으로 준비한다. 현재 사업체 기본 정보 내 로고 영역은 미리보기만 제공하며 파일 선택·업로드는 보류한다.

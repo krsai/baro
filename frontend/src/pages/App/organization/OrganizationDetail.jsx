@@ -265,8 +265,8 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
     <Container {...(embedded ? {sx:{minWidth:0,width:'100%'}} : {title:text.title,titleActions:saveAction})}>
       <PageContentStack component="fieldset" disabled={isSaving} sx={{border:0,p:0,m:0,minWidth:0}}>
       {profileError&&<Alert severity="error" action={<Button onClick={()=>setProfileReload(v=>v+1)}>{industryText.retry}</Button>}>{text.saveError}</Alert>}
-      <CompanyLogoField key={activeOrgId} value={formData.companyLogo.logoDataUrl} languageCode={languageCode} disabled={isSaving||profileError||!organizationId||!industryProfile?.canEdit} onBusyChange={setLogoReading} onChange={logoDataUrl=>setFormData(current=>({...current,companyLogo:{...current.companyLogo,logoDataUrl}}))}/>
       <EntityDetailSection title={(businessLegalFormText[languageCode]||businessLegalFormText.en).title}>
+        <Box data-company-profile-layout sx={{display:"grid",gridTemplateColumns:{xs:"minmax(0,1fr)",md:"minmax(0,1fr) 200px"},gap:2,alignItems:"start"}}>
         <Grid container spacing={2}>
 
 
@@ -330,6 +330,10 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
             <Stack spacing={2} data-testid="company-industry-settings">{industryError&&<Alert severity="error" action={<Button onClick={()=>setIndustryReload(value=>value+1)}>{industryText.retry}</Button>}>{industryError}</Alert>}{industryProfile&&<PartnerClassificationFields inline value={classification} onChange={setClassification} orgId={activeOrgId} languageCode={languageCode} disabled={isSaving||!industryProfile.canEdit} onReady={setIndustryReady}/>}</Stack>
           </Grid>
         </Grid>
+        <Box sx={{minWidth:0,p:2,border:1,borderColor:"divider",borderRadius:1,bgcolor:"background.default"}}>
+          <CompanyLogoField key={activeOrgId} value={formData.companyLogo.logoDataUrl} languageCode={languageCode} uploadDeferred/>
+        </Box>
+        </Box>
       </EntityDetailSection>
 
 

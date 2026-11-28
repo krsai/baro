@@ -7,7 +7,7 @@ export const companyLogoText={
  en:{title:'Company Logo',choose:'Choose Logo',remove:'Remove Logo',invalid:'Choose A PNG/JPEG Logo Up To 200KB.',manage:'Manage Company Logo',apply:'Apply Company Logo',missing:'No Logo Is Registered For This Company.'},
  vi:{title:'Logo Công Ty',choose:'Chọn Logo',remove:'Xóa Logo',invalid:'Chọn Logo PNG/JPEG Không Quá 200KB.',manage:'Quản Lý Logo Công Ty',apply:'Áp Dụng Logo Công Ty',missing:'Công Ty Chưa Đăng Ký Logo.'},
 };
-export default function CompanyLogoField({value='',onChange,disabled,languageCode,onBusyChange}){
+export default function CompanyLogoField({value='',onChange,disabled,languageCode,onBusyChange,uploadDeferred=false}){
  const t=companyLogoText[languageCode]||companyLogoText.en,input=useRef(null),live=useRef(true);
  const [error,setError]=useState(false),[reading,setReading]=useState(false);
  useEffect(()=>{live.current=true;return()=>{live.current=false;onBusyChange?.(false);};},[onBusyChange]);
@@ -18,6 +18,11 @@ export default function CompanyLogoField({value='',onChange,disabled,languageCod
   try{const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});if(live.current)onChange(data);}catch{if(live.current)setError(true);}
   finally{if(live.current){setReading(false);onBusyChange?.(false);}}
  };
+ if(uploadDeferred)return <Stack spacing={1} data-company-logo data-upload-deferred>
+  <Typography variant="subtitle2">{t.title}</Typography>
+  {value&&<Box component="img" src={value} alt={t.title} sx={{width:"100%",height:80,objectFit:"contain"}}/>}
+  <Button variant="outlined" disabled>{t.choose}</Button>
+ </Stack>;
  return <Stack spacing={1} data-company-logo>
   <Typography variant="subtitle2">{t.title}</Typography>
   {value&&<Box component="img" src={value} alt={t.title} sx={{maxWidth:'100%',width:240,height:80,objectFit:'contain',alignSelf:'flex-start'}}/>}
