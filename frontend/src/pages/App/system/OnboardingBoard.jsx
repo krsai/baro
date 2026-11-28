@@ -1,3 +1,4 @@
+import {TableActionsHeader} from '../../../components/TableActions';
 import {rowActionsText} from '../../../constants/rowActions.js';
 import {RecordMenuButton} from '../../../components/RecordInteraction';
 import {isRecordActionTarget} from '../../../utils/recordInteraction.mjs';
@@ -274,10 +275,10 @@ const OnboardingBoard = () => {
               </Box>
             ) : (
               <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
-                <Table size="small" sx={{ width: '100%' }}>
+                <Table data-table-kind="entry" size="small" sx={{ width: '100%' }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell>{text.requestDate}</TableCell><TableCell>{text.industry}</TableCell><TableCell>{text.company}</TableCell><TableCell>{text.name}</TableCell><TableCell>{text.phone}</TableCell><TableCell>{text.subscription}</TableCell><TableCell align="right">{text.action}</TableCell>
+                    <TableCell>{text.requestDate}</TableCell><TableCell>{text.industry}</TableCell><TableCell>{text.company}</TableCell><TableCell>{text.name}</TableCell><TableCell>{text.phone}</TableCell><TableCell>{text.subscription}</TableCell><TableActionsHeader languageCode={languageCode} align="right">{text.action}</TableActionsHeader>
                   </TableRow>
                 </TableHead>
                 <TableBody>

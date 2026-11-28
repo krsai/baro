@@ -1,3 +1,4 @@
+import {TableActionsHeader} from '../../../components/TableActions';
 import {rowActionsText} from '../../../constants/rowActions';
 import LocalizedDateField from '../../../components/LocalizedDateField';
 import EntityCountryPhoneFields from '../../../components/EntityCountryPhoneFields';
@@ -342,23 +343,28 @@ const OrganizationSubscriptionBoard = () => {
             </Box>
           ) : (
             <TableContainer>
-              <Table size="small">
+              <Table data-table-kind="entry" size="small">
                 <TableHead>
-                  <TableRow>
+                  <TableRow><TableCell>{getPageMessage('status', languageCode)}</TableCell>
                     <TableCell>ID</TableCell>
                     <TableCell>{getPageMessage('companyName', languageCode)}</TableCell>
                     <TableCell>{getPageMessage('companyType', languageCode)}</TableCell>
-                    <TableCell>{getPageMessage('status', languageCode)}</TableCell>
+
                     <TableCell>{getPageMessage('serviceContactEmail', languageCode)}</TableCell>
                     <TableCell>{getPageMessage('billingEmail', languageCode)}</TableCell>
                     <TableCell>{getPageMessage('activeEndsAt', languageCode)}</TableCell>
-                    <TableCell align="right">{getPageMessage('actions', languageCode)}</TableCell>
+                    <TableActionsHeader languageCode={languageCode} align="right">{getPageMessage('actions', languageCode)}</TableActionsHeader>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {organizations.map((organization) => (
                     <React.Fragment key={organization.id}>
-                      <TableRow hover>
+                      <TableRow hover><TableCell>
+                          <SubscriptionChip
+                            status={organization.subscription?.status}
+                            languageCode={languageCode}
+                          />
+                        </TableCell>
                         <TableCell sx={{ color: 'text.secondary' }}>{organization.id}</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>{organization.name}</TableCell>
                         <TableCell>
@@ -369,12 +375,7 @@ const OrganizationSubscriptionBoard = () => {
                             languageCode
                           )}
                         </TableCell>
-                        <TableCell>
-                          <SubscriptionChip
-                            status={organization.subscription?.status}
-                            languageCode={languageCode}
-                          />
-                        </TableCell>
+
                         <TableCell sx={{ color: 'text.secondary' }}>
                           {getSubscriptionServiceContactEmail(organization.subscription) ||
                             getPageMessage('emptyCell', languageCode)}

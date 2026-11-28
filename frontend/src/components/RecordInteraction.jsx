@@ -1,11 +1,13 @@
 import React, {createContext, useContext, useState} from 'react';
-import {Button, IconButton, TableBody, TableRow, Tooltip} from '@mui/material';
+import {Box, Button, IconButton, TableBody, TableRow, Tooltip} from '@mui/material';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import {keyboardAction, openContextMenuFor} from '../utils/keyboardPolicy.mjs';
 import {isRecordActionTarget} from '../utils/recordInteraction.mjs';
 import {getUiMessage} from '../constants/uiMessages';
 
 const SelectionContext = createContext(null);
+export const RecordActionContext = createContext(null);
 
 // One selection per list. The scope never calls an edit/save/navigation action.
 export function RecordInteractionScope({as: Component = TableBody, children, ...props}) {
@@ -38,11 +40,16 @@ export function RecordRow({as: Component = TableRow, recordKey, onOpen, disabled
         event.preventDefault(); event.stopPropagation(); select();
       }
     }}
-    {...(typeof Component === 'string' ? {} : {sx})}>{children}</Component>;
+    {...(typeof Component === 'string' ? {} : {sx})}><RecordActionContext.Provider value={{onOpen,disabled}}>{children}</RecordActionContext.Provider></Component>;
+}
+
+export function RecordText({children,title,sx}){
+  return <Box component="span" title={title} sx={sx}>{children}</Box>;
 }
 
 // Child actions consume both clicks of a double-click; they never open the row.
-export function RecordOpenButton({onOpen, children, sx, ...props}) {
+export function RecordOpenButton({onOpen, children, sx, iconOnly=false, ...props}) {
+  if(iconOnly)return <Tooltip disableInteractive title={props['aria-label']}><span><IconButton size="small" {...props} data-record-action="open" onClick={event=>{event.stopPropagation();if(event.detail<=1)onOpen?.(event);}} onDoubleClick={event=>event.stopPropagation()}><VisibilityOutlinedIcon fontSize="small"/></IconButton></span></Tooltip>;
   return <Button {...props} data-record-action="open" onClick={event => {
     event.stopPropagation();
     if (event.detail <= 1) onOpen?.(event);

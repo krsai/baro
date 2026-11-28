@@ -1,6 +1,6 @@
 import SplitActionTab from './SplitActionTab';
 import AddActionButton from './AddActionButton';
-import {RecordOpenButton} from './RecordInteraction';
+import {RecordOpenButton,RecordText} from './RecordInteraction';
 import {billWorkflowText} from '../constants/billWorkflow';
 import React,{useEffect,useRef,useState} from 'react';
 import {Box,Button,DialogActions,DialogContent,DialogTitle,Stack,Typography} from '@mui/material';
@@ -44,7 +44,7 @@ export default function ShippingWorkDocuments({job,orgId,languageCode,forwarder,
  };
  const blocked=busy||working||uncertain;
  const entry=(row,kind)=><Stack key={row.id} direction="row" useFlexGap flexWrap="wrap" alignItems="center" gap={1} sx={{py:1,borderBottom:1,borderColor:'divider'}}>
-  <Box sx={{flex:1,minWidth:140}}><RecordOpenButton disabled={blocked} onOpen={()=>onOpen(row.id)}>{row.number}</RecordOpenButton><Typography variant="caption" display="block" color="text.secondary">{kind==='MASTER'?[row.issuer,row.linkedJobCount>1?t.sharedCount.replace('{count}',row.linkedJobCount):''].filter(Boolean).join(' · '):row.masterId?masters.find(master=>master.id===row.masterId)?.number:t.standaloneHouse}</Typography></Box>
+  <Box sx={{flex:1,minWidth:140}}><RecordText>{row.number}</RecordText><Typography variant="caption" display="block" color="text.secondary">{kind==='MASTER'?[row.issuer,row.linkedJobCount>1?t.sharedCount.replace('{count}',row.linkedJobCount):''].filter(Boolean).join(' · '):row.masterId?masters.find(master=>master.id===row.masterId)?.number:t.standaloneHouse}</Typography></Box>
   {kind==='MASTER'&&<Box sx={{flexBasis:'100%',order:2}}><Typography variant="body2">{[row.data?.vessel,row.data?.voyage].filter(Boolean).join(' · ')}</Typography><Typography variant="caption" color="text.secondary">{[row.data?.etd&&`${t.etd}: ${row.data.etd}`,row.data?.eta&&`${t.eta}: ${row.data.eta}`].filter(Boolean).join(' · ')}</Typography></Box>}
   <RecordOpenButton disabled={blocked} onOpen={()=>onOpen(row.id)}>{t.openDocument}</RecordOpenButton>{kind==='MASTER'&&canEdit&&<AddActionButton disabled={blocked} showLabel title={flow.addHouse} onClick={()=>onCreate('HOUSE',row.id)}/>}{kind==='MASTER'&&canEdit&&<Button type="button" size="small" disabled={blocked} onClick={()=>act(row,true)}>{t.unlink}</Button>}
  </Stack>;

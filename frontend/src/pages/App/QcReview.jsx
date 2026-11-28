@@ -1,3 +1,4 @@
+import {TableActionsHeader} from '../../components/TableActions';
 import {rowActionsText} from '../../constants/rowActions.js';
 import LocalizedDateField from '../../components/LocalizedDateField';
 import TableStatusRow from '../../components/TableStatusRow';
@@ -957,7 +958,7 @@ const QcReview = () => {
 
         <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
           <TableContainer sx={{ maxHeight: 'calc(100vh - 300px)' }}>
-            <Table stickyHeader size="small">
+            <Table data-table-kind="matrix" stickyHeader size="small">
               <TableHead>
                 <TableRow>
                   <TableCell>{copy.status}</TableCell>
@@ -966,7 +967,7 @@ const QcReview = () => {
                   <TableCell align="right">{copy.orderQuantity}</TableCell>
                   <TableCell align="right">{copy.producedQuantity}</TableCell>
                   <TableCell align="right">{copy.passedTotal}</TableCell>
-                  <TableCell align="right">{copy.actions}</TableCell>
+                  <TableActionsHeader languageCode={languageCode} align="right">{copy.actions}</TableActionsHeader>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -1147,7 +1148,7 @@ const QcReview = () => {
                                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
                                       {copy.order} {detail.orderNumber || row.orderNo || '-'} · {copy.style} {row.styleCode || row.styleId || '-'}
                                     </Typography>
-                                    <Table size="small" sx={{ bgcolor: 'white' }}>
+                                    <Table data-table-kind="entry" size="small" sx={{ bgcolor: 'white' }}>
                                       <TableHead>
                                         <TableRow>
                                           <TableCell sx={{ minWidth: 160 }}>{copy.colorGender}</TableCell>
@@ -1239,29 +1240,22 @@ const QcReview = () => {
                                         {copy.emptyHistory}
                                       </Typography>
                                     ) : (
-                                      <Table size="small">
+                                      <Table data-table-kind="review" size="small">
                                         <TableHead>
-                                          <TableRow>
+                                          <TableRow><TableCell>{copy.status}</TableCell>
                                             <TableCell>{copy.inspectedOn}</TableCell>
                                             <TableCell>{copy.detail}</TableCell>
                                             <TableCell align="right">{copy.quantity}</TableCell>
                                             <TableCell>{copy.note}</TableCell>
-                                            <TableCell>{copy.status}</TableCell>
-                                            <TableCell align="right">{copy.actions}</TableCell>
+
+                                            <TableActionsHeader languageCode={languageCode} align="right">{copy.actions}</TableActionsHeader>
                                           </TableRow>
                                         </TableHead>
                                         <TableBody>
                                           {history.map((eventRow) => {
                                             const isCancelled = Boolean(eventRow?.cancelledAt);
                                             return (
-                                              <TableRow key={`${row.id}:history:${eventRow.id}`} data-cancelled={isCancelled}>
-                                                <TableCell>{eventRow.inspectedOn || '-'}</TableCell>
-                                                <TableCell>
-                                                  {[eventRow.colorName, eventRow.sizeKey].filter(Boolean).join(' / ') || copy.totalEntry}
-                                                </TableCell>
-                                                <TableCell align="right">{formatInt(eventRow.passedQuantity)}</TableCell>
-                                                <TableCell>{eventRow.note || '-'}</TableCell>
-                                                <TableCell>
+                                              <TableRow key={`${row.id}:history:${eventRow.id}`} data-cancelled={isCancelled}><TableCell>
                                                   <Chip
                                                     size="small"
                                                     label={isCancelled ? copy.cancelled : copy.active}
@@ -1269,6 +1263,13 @@ const QcReview = () => {
                                                     variant={isCancelled ? 'outlined' : 'filled'}
                                                   />
                                                 </TableCell>
+                                                <TableCell>{eventRow.inspectedOn || '-'}</TableCell>
+                                                <TableCell>
+                                                  {[eventRow.colorName, eventRow.sizeKey].filter(Boolean).join(' / ') || copy.totalEntry}
+                                                </TableCell>
+                                                <TableCell align="right">{formatInt(eventRow.passedQuantity)}</TableCell>
+                                                <TableCell>{eventRow.note || '-'}</TableCell>
+
                                                 <TableCell align="right">
                                                   {!isCancelled ? (
                                                     <SaveButton

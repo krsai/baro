@@ -160,7 +160,7 @@
     "check:encoding": "node scripts/collect-logs.mjs --check && node scripts/check-encoding.mjs && node --test scripts/check-encoding.test.mjs",
     "check:i18n": "node scripts/check-ui-message-keys.mjs",
     "check:ui-notices": "node scripts/check-ui-notices.mjs",
-    "check:ui-consistency": "node scripts/check-ui-consistency.mjs && node --test scripts/record-interaction-policy.test.mjs",
+    "check:ui-consistency": "node scripts/check-ui-consistency.mjs && node --test scripts/record-interaction-policy.test.mjs scripts/table-structure-policy.test.mjs",
     "test:ui-consistency": "node scripts/ui-consistency.test.mjs && node scripts/ui-status-browser.test.mjs",
     "test:access-policy": "node --test scripts/access-policy-regression.test.mjs",
     "test:security-boundaries": "node --test scripts/security-boundaries-regression.test.mjs",

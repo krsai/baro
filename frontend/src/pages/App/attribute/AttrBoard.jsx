@@ -1,3 +1,4 @@
+import {TableActionsCell,TableActionsHeader} from '../../../components/TableActions';
 import {useLanguage} from '../../../context/LanguageContext';
 import {getRowActionsLabel} from '../../../constants/rowActions';
 import Dialog from '../../../components/AppDialog';
@@ -348,9 +349,9 @@ const AttributeRow = memo(function AttributeRow({
           </TableCell>
         );
       })}
-      <TableCell sx={{ textAlign: 'center' }}>
+      <TableActionsCell sx={{ textAlign: 'center' }}>
         <DeleteActionButton size="small" onClick={() => onDeleteRow(sectionKey, row.id)} />
-      </TableCell>
+      </TableActionsCell>
     </TableRow>
   );
 });
@@ -442,7 +443,7 @@ const AttributeSection = memo(function AttributeSection({
           borderRadius: 1.5,
         }}
       >
-        <Table size="small" stickyHeader>
+        <Table data-table-kind="summary" size="small" stickyHeader>
           <TableHead>
             <TableRow>
               {config.columns.map((col) => (
@@ -450,7 +451,7 @@ const AttributeSection = memo(function AttributeSection({
                   {col.label}
                 </TableCell>
               ))}
-              <TableCell sx={{ width: '10%', textAlign: 'center' }}>{getRowActionsLabel(languageCode)}</TableCell>
+              <TableActionsHeader languageCode={languageCode} sx={{ width: '10%', textAlign: 'center' }}>{getRowActionsLabel(languageCode)}</TableActionsHeader>
             </TableRow>
           </TableHead>
           <TableBody>

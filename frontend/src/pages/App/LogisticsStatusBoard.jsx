@@ -1,8 +1,9 @@
+import {TableActionsCell,TableActionsHeader} from '../../components/TableActions';
 import {rowActionsText} from '../../constants/rowActions';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {Box,Button,LinearProgress,MenuItem,Paper,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import {RecordInteractionScope,RecordRow,RecordOpenButton} from '../../components/RecordInteraction';
+import {RecordInteractionScope,RecordRow,RecordOpenButton, RecordText} from '../../components/RecordInteraction';
 import AppPageContainer from '../../components/AppPageContainer';
 import PageContentStack from '../../components/PageContentStack';
 import PageActions from '../../components/PageActions';
@@ -68,18 +69,18 @@ function Board({orgId}){
    {!loading&&!error&&data?.rows.length===0&&<Paper variant="outlined" sx={{p:4,textAlign:'center'}}><Typography>{t.empty}</Typography></Paper>}
    <RecordInteractionScope>
    {data?.rows.length>0&&<Box component="section" aria-label={t.title}>
-    <TableContainer component={Paper} variant="outlined"><Table size="small" data-table-layout="wide" aria-label={t.title} sx={{tableLayout:'fixed',width:'100%'}}>
-     <colgroup>{[10,18,10,10,10,10,14,18].map((width,index)=><col key={index} style={{width:width+'%'}}/>)}</colgroup>
-     <TableHead><TableRow>{[t.status,t.customer,'CGO','ETD','ETA','DLV',t.information,t.remark].map(title=><TableCell key={title}>{title}</TableCell>)}</TableRow></TableHead>
+    <TableContainer component={Paper} variant="outlined"><Table data-table-kind="records" size="small" data-table-layout="wide" aria-label={t.title} sx={{tableLayout:'fixed',width:'100%'}}>
+     <colgroup>{[10,18,10,10,10,10,14,10,8].map((width,index)=><col key={index} style={{width:width+'%'}}/>)}</colgroup>
+     <TableHead><TableRow>{[t.status,t.customer,'CGO','ETD','ETA','DLV',t.information,t.remark].map(title=><TableCell key={title}>{title}</TableCell>)}<TableActionsHeader languageCode={languageCode}/></TableRow></TableHead>
      <TableBody>{data.rows.map(row=><RecordRow key={row.id} recordKey={row.id} disabled={loading||!canOpen} onOpen={()=>navigateToPath('/shipping/'+encodeURIComponent(row.id))} data-logistics-row={row.id}>
       <TableCell sx={{whiteSpace:'nowrap'}}><StatusLabel label={statusText[row.status==='DRAFT'?'ACCEPTED':row.status]||row.status} tone={shippingStatusTone(row.status)}/></TableCell>
-      <TableCell><RecordOpenButton disabled={loading||!canOpen} onOpen={()=>navigateToPath('/shipping/'+encodeURIComponent(row.id))}>{label(row.customer,languageCode)}</RecordOpenButton></TableCell>
+      <TableCell><RecordText  >{label(row.customer,languageCode)}</RecordText></TableCell>
       <TableCell sx={{whiteSpace:'nowrap'}}>{date(row.cargoReadyDate)}</TableCell>
       {['etd','eta'].map(key=><TableCell key={key} sx={{whiteSpace:'nowrap'}}>{(row.schedules||[]).map((schedule,index)=><Box key={schedule.id||index}>{date(schedule[key])}{row.schedules.length>1&&<Typography variant="caption" component="div" color="text.secondary" sx={{whiteSpace:'normal',overflowWrap:'anywhere'}}>{schedule.number}</Typography>}</Box>)}</TableCell>)}
       <TableCell sx={{whiteSpace:'nowrap'}}>{date(row.deliveryDate)}</TableCell>
       <TableCell>{information({...row,vehicleUnit:languageCode==='ko'?'대':languageCode==='vi'?'Xe':'Vehicles'})}</TableCell>
       <TableCell sx={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{row.remark||'—'}</TableCell>
-     </RecordRow>)}</TableBody>
+     <TableActionsCell languageCode={languageCode}/></RecordRow>)}</TableBody>
     </Table></TableContainer>
    </Box>}
    </RecordInteractionScope>

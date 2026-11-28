@@ -650,7 +650,7 @@ const StyleTimeMatrix = ({
 
       {/* 테이블 */}
       <TableContainer sx={{ overflowX: 'auto' }}>
-        <Table
+        <Table data-table-kind="matrix"
           size="small"
           sx={{
             minWidth: PROCESS_CELL_W + METRIC_CELL_W + visibleBuckets.length * (ST_CELL_W + 8),

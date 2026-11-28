@@ -1,4 +1,5 @@
-import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
+import {TableActionsCell,TableActionsHeader} from '../../../components/TableActions';
+import {RecordInteractionScope, RecordRow, RecordOpenButton, RecordText} from '../../../components/RecordInteraction';
 import Dialog from '../../../components/AppDialog';
 
 import {workplaceText} from '../../../utils/serviceCompany.mjs';
@@ -746,7 +747,7 @@ const AttendanceList = () => {
 
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2 }}>
         <TableContainer>
-          <Table size="small">
+          <Table data-table-kind="records" size="small">
             <TableHead>
               <TableRow>
                 <TableCell>{text(TEXT.workDate, languageCode, 'Work Date')}</TableCell>
@@ -762,7 +763,7 @@ const AttendanceList = () => {
                 <TableCell align="right">
                   {text(TEXT.noteCount, languageCode, 'Notes')}
                 </TableCell>
-                <TableCell align="right">&nbsp;</TableCell>
+                <TableActionsHeader languageCode={languageCode} align="right">&nbsp;</TableActionsHeader>
               </TableRow>
             </TableHead>
             <RecordInteractionScope>
@@ -808,10 +809,10 @@ const AttendanceList = () => {
                           : {}),
                       }}
                     >
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}><RecordOpenButton onOpen={() => handleOpenDetail(row)}>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}><RecordText >
                         {dateText}
                         {weekdayText ? ` ${weekdayText}` : ''}
-                      </RecordOpenButton></TableCell>
+                      </RecordText></TableCell>
                       <TableCell sx={{ whiteSpace: 'nowrap' }}>{workTypeText}</TableCell>
                       <TableCell align="right">
                         <Tooltip describeChild title={formatTemplate(text(TEXT.workerCountMeaning, languageCode), { entered: row.enteredWorkerCount, target: row.activeWorkerCount })}>
@@ -822,7 +823,7 @@ const AttendanceList = () => {
                         {toAverageHoursTextFromRow(row, languageCode)}
                       </TableCell>
                       <TableCell align="right">{toCountTextOrDash(row.noteCount)}</TableCell>
-                      <TableCell align="right">
+                      <TableActionsCell languageCode={languageCode} align="right">
                         <Tooltip title={getUiMessage('common.delete', '삭제', languageCode)}>
                           <span>
                             <DeleteActionButton
@@ -836,7 +837,7 @@ const AttendanceList = () => {
                              />
                           </span>
                         </Tooltip>
-                      </TableCell>
+                      </TableActionsCell>
                     </RecordRow>
                   );
                 })
@@ -881,7 +882,7 @@ const AttendanceList = () => {
               )}
             </Typography>
             <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 360 }}>
-              <Table size="small" stickyHeader>
+              <Table data-table-kind="summary" size="small" stickyHeader>
                 <TableHead>
                   <TableRow>
                     <TableCell>{text(TEXT.importReviewColumnCode, languageCode, 'Code (Excel)')}</TableCell>

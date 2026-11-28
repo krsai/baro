@@ -116,7 +116,7 @@ function MovementForm({orgId,onClose,onSaved}){
   </Stack></DocumentEntryHeader>
   <Box sx={{p:2}}><Stack spacing={2}>
   {(!items||!employees)&&!error&&<LinearProgress/>}
-  <TableContainer data-testid="inventory-entry-lines"><Table size="small" data-table-layout="wide" sx={{minWidth:1000,tableLayout:'fixed','& th,& td':{px:1},'& td':{verticalAlign:'top'},'& .MuiFormControl-root':{minWidth:0}}}>
+  <TableContainer data-testid="inventory-entry-lines"><Table data-table-kind="entry" size="small" data-table-layout="wide" sx={{minWidth:1000,tableLayout:'fixed','& th,& td':{px:1},'& td':{verticalAlign:'top'},'& .MuiFormControl-root':{minWidth:0}}}>
    <colgroup><col style={{width:216}}/><col style={{width:132}}/><col/>{colorMode!=='HIDDEN'&&<col style={{width:180}}/>}<col style={{width:140}}/><col style={{width:100}}/></colgroup>
    <TableHead><TableRow>{[e.user,e.direction,e.material,...(colorMode!=='HIDDEN'?[t.color]:[]),qty,t.unit].map(label=><TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead>
    <TableBody><TableRow>
@@ -164,7 +164,7 @@ export function InventoryRows({view,keyword='',start='',end=''}){
  useWorkspaceRefreshOnEvent({orgId,topics:[history?'inventory-movements':'inventory-stock'],isBlocked:Boolean(classifying),onRefresh:()=>setReload(n=>n+1)});
  const columns=[...(history?[dateLabel,(inventoryEntryText[languageCode]||inventoryEntryText.en).user]:[]),masterLabels[languageCode]||masterLabels.en,itemLabel,qty,t.unit,...(history?[a.purchase,remarkLabel,a.status,a.actions]:[t.color,a.actions])];
  const displayed=rows?.filter(row=>(!history||(!start||row.date>=start)&&(!end||row.date<=end))&&[row.master.baseSnapshot.code,materialItemName(row.master,languageCode),variantName(row.attributes,languageCode),row.remark,row.userSnapshot?.name,row.userSnapshot?.employeeNo].join(' ').toLowerCase().includes(keyword.trim().toLowerCase()));
- return <Stack spacing={2}>{error&&<AppNotice severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{t.failed}</AppNotice>}{history&&<InventoryApprovalPanel onChanged={()=>setReload(n=>n+1)}/>}{!history&&<><StockColorHistory orgId={orgId} languageCode={languageCode}/>{rows?.some(row=>row.colorMissing)&&<AppNotice severity="warning">{c.missing}</AppNotice>}</>}<TableContainer component={Paper} variant="outlined" aria-busy={loading}><Table size="small">
+ return <Stack spacing={2}>{error&&<AppNotice severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{t.failed}</AppNotice>}{history&&<InventoryApprovalPanel onChanged={()=>setReload(n=>n+1)}/>}{!history&&<><StockColorHistory orgId={orgId} languageCode={languageCode}/>{rows?.some(row=>row.colorMissing)&&<AppNotice severity="warning">{c.missing}</AppNotice>}</>}<TableContainer component={Paper} variant="outlined" aria-busy={loading}><Table data-table-kind="summary" size="small">
   <TableHead><TableRow>{columns.map((column,index)=><TableCell key={column} sx={history&&index===columns.length-1?{position:'sticky',right:0,bgcolor:'background.paper'}:undefined}>{column}</TableCell>)}</TableRow></TableHead>
   <TableBody>{displayed?.map(row=><TableRow key={row.id}>
    {history&&<><TableCell>{row.date}</TableCell><TableCell>{row.userSnapshot?[row.userSnapshot.employeeNo,row.userSnapshot.name].filter(Boolean).join(' / '):'\u2014'}</TableCell></>}<TableCell>{materialItemName(row.master,languageCode)}</TableCell>

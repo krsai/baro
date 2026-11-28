@@ -1,4 +1,5 @@
-import {RecordInteractionScope, RecordRow, RecordOpenButton} from './RecordInteraction';
+import {TableActionsCell,TableActionsHeader} from './TableActions';
+import {RecordInteractionScope, RecordRow, RecordOpenButton, RecordText} from './RecordInteraction';
 import {titleCaseWords} from '../utils/humanTextCase.mjs';
 import SearchPanel from './SearchPanel';
 import {PARTY_KIND_TEXT} from '../constants/partyKind';
@@ -29,23 +30,23 @@ export default function PartnerDirectory({embedded=false,title,rows,loading,erro
  const filtered=useMemo(()=>{const term=search.trim().toLocaleLowerCase();const rank=row=>({CORPORATE:0,INDIVIDUAL:1}[row.source?.partyKind]??2);const ordered=[...rows].sort((a,b)=>rank(a)-rank(b));return term?ordered.filter(row=>[row.source?.linkedCompany?.code,row.code,row.name,row.subtitle,row.contactName,row.phone,row.email,row.searchText,getStaticOptionLabel('country',row.country,row.country||'',languageCode)].filter(Boolean).join(' ').toLocaleLowerCase().includes(term)):ordered;},[rows,search,languageCode]);
  return <Container title={title} titleActions={<Button variant="contained" disabled={!canAdd} onClick={onAdd}>{labels.add}</Button>} toolbar={<SearchPanel title={title} onReset={()=>setSearch('')} search={<SearchInput value={search} onChange={event=>setSearch(event.target.value)} placeholder={labels.search}/>} />}>
   <Paper variant="outlined" sx={{width:'100%',minWidth:0,overflow:'hidden',borderRadius:2}}><TableContainer>
-   <Table size="small" sx={{minWidth:1040,tableLayout:'fixed'}} data-testid="partner-directory">
-    <colgroup>{[100,75,190,80,100,125,150,95,110,220].map((width,index)=><col key={index} style={{width}}/>)}</colgroup>
-    <TableHead><TableRow><TableCell>{partyText.label}</TableCell>{['code','name','country','contact','phone','email','status','registered','actions'].map(key=><TableCell key={key} align={key==='actions'?'right':'left'}>{labels[key]}</TableCell>)}</TableRow></TableHead>
+   <Table data-table-kind="records" size="small" sx={{minWidth:1040,tableLayout:'fixed'}} data-testid="partner-directory">
+    <colgroup>{[95,100,75,190,80,100,125,150,110,220].map((width,index)=><col key={index} style={{width}}/>)}</colgroup>
+    <TableHead><TableRow><TableCell>{labels.status}</TableCell><TableCell>{partyText.label}</TableCell>{['code','name','country','contact','phone','email','registered','actions'].map(key=><TableActionsHeader languageCode={languageCode} when={key==='actions'} key={key} align={key==='actions'?'right':'left'}>{labels[key]}</TableActionsHeader>)}</TableRow></TableHead>
     <RecordInteractionScope>
-     {loading?<TableStatusRow colSpan={10} state="loading"/>:error||!filtered.length?<TableStatusRow colSpan={10} state={error?'error':'empty'} onRetry={onRetry}/>:filtered.map(row=><RecordRow key={row.id} hover recordKey={row.id} onOpen={()=>canOpen&&onOpen(row.source)} disabled={!canOpen} sx={{cursor:canOpen?'pointer':'default','& td':{py:1,overflowWrap:'anywhere'}}}>
+     {loading?<TableStatusRow colSpan={10} state="loading"/>:error||!filtered.length?<TableStatusRow colSpan={10} state={error?'error':'empty'} onRetry={onRetry}/>:filtered.map(row=><RecordRow key={row.id} hover recordKey={row.id} onOpen={()=>canOpen&&onOpen(row.source)} disabled={!canOpen} sx={{cursor:canOpen?'pointer':'default','& td':{py:1,overflowWrap:'anywhere'}}}><TableCell><StatusLabel tone={row.isActive===false?'gray':'green'} label={row.isActive===false?labels.inactive:labels.active}/></TableCell>
       <TableCell>{partyText[row.source?.partyKind]||partyText.legacy}</TableCell>
       <TableCell>{row.source?.linkedCompany?.code||row.code||'-'}</TableCell>
       <TableCell>
        <Stack direction="row" alignItems="center" spacing={.75}>
-        <RecordOpenButton disabled={!canOpen} onOpen={()=>onOpen(row.source)}>{row.name||'-'}</RecordOpenButton>
+        <RecordText  >{row.name||'-'}</RecordText>
         {row.attentionLabel && <NotificationIndicator label={row.attentionLabel} />}
        </Stack>
        {row.subtitle && <Typography variant="caption" color="text.secondary">{row.subtitle}</Typography>}
       </TableCell>
       <TableCell>{row.country?getStaticOptionLabel('country',row.country,row.country,languageCode):'-'}</TableCell><TableCell>{titleCaseWords(row.contactName)||'-'}</TableCell><TableCell>{row.phone||'-'}</TableCell><TableCell>{row.email||'-'}</TableCell>
-      <TableCell><StatusLabel tone={row.isActive===false?'gray':'green'} label={row.isActive===false?labels.inactive:labels.active}/></TableCell><TableCell>{registeredDate(row.registeredAt,languageCode)}</TableCell>
-      <TableCell align="right" data-table-actions><Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center" onDoubleClick={event=>event.stopPropagation()}><RecordOpenButton variant="outlined" sx={{px:1}} disabled={!canOpen} onOpen={()=>onOpen(row.source)}>{labels.detail}</RecordOpenButton>{renderActions?.(row.source)}</Stack></TableCell>
+      <TableCell>{registeredDate(row.registeredAt,languageCode)}</TableCell>
+      <TableActionsCell languageCode={languageCode} align="right" data-table-actions><Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center" onDoubleClick={event=>event.stopPropagation()}>{renderActions?.(row.source)}</Stack></TableActionsCell>
      </RecordRow>)}
     </RecordInteractionScope>
    </Table>

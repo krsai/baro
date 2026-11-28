@@ -1,5 +1,6 @@
+import {TableActionsCell,TableActionsHeader} from '../../../components/TableActions';
 import {rowActionsText} from '../../../constants/rowActions.js';
-import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
+import {RecordInteractionScope, RecordRow, RecordOpenButton, RecordText} from '../../../components/RecordInteraction';
 import Dialog from '../../../components/AppDialog';
 import GlobalNotice from "../../../components/AppNotice";
 
@@ -489,8 +490,8 @@ const PayrollBoard = () => {
 
       <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
           <TableContainer>
-            <Table stickyHeader size="small">
-              <TableHead><TableRow>
+            <Table data-table-kind="records" stickyHeader size="small">
+              <TableHead><TableRow><TableCell sx={{ fontWeight: 700 }} align="center">{text.status}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>{text.month}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>{isService?({ko:'사업장',en:'Workplace',vi:'Nơi làm việc'})[languageCode]:resolveText(languageCode, 'factory')}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.people}</TableCell>
@@ -498,12 +499,12 @@ const PayrollBoard = () => {
                 {!isService&&<TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.fixedOutputPayroll}</TableCell>}
                 {!isService&&<TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.outputPayroll}</TableCell>}
                 <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.totalPayroll}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }} align="center">{text.status}</TableCell>
+
                 <TableCell sx={{ fontWeight: 700 }} align="center">{payrollSummaryText.lock}</TableCell>
-              </TableRow></TableHead>
+              <TableActionsHeader languageCode={languageCode}/></TableRow></TableHead>
               <RecordInteractionScope>
-                {loading ? <TableStatusRow colSpan={isService?7:9} state="loading" />
-                  : queryFailed || filteredMonthFactoryRows.length === 0 ? <TableStatusRow colSpan={isService?7:9} state={queryFailed ? 'error' : 'empty'} onRetry={() => load()} />
+                {loading ? <TableStatusRow colSpan={(isService?7:9)+1} state="loading" />
+                  : queryFailed || filteredMonthFactoryRows.length === 0 ? <TableStatusRow colSpan={(isService?7:9)+1} state={queryFailed ? 'error' : 'empty'} onRetry={() => load()} />
                     : filteredMonthFactoryRows.map((row) => {
                       const { month, factory, snapshot } = row;
                       const key = rowKey(month, factory.id);
@@ -536,15 +537,7 @@ const PayrollBoard = () => {
                           key={key} hover sx={{ cursor: snapshot ? 'pointer' : 'default' }}
 
                           recordKey={key} onOpen={() => snapshot && navigateToPath(`/payroll/${month}?factoryId=${factory.id}`, { label: `${text.title} ${month} · ${factoryLabel}` })} disabled={!snapshot}
-                        >
-                          <TableCell sx={{ fontWeight: 700 }}><RecordOpenButton onOpen={() => snapshot && navigateToPath(`/payroll/${month}?factoryId=${factory.id}`, { label: `${text.title} ${month} · ${factoryLabel}` })} disabled={!snapshot}>{month}{snapshot?.payableDocument?.managementNumber&&<Typography variant="caption" display="block">{snapshot.payableDocument.managementNumber}</Typography>}</RecordOpenButton></TableCell>
-                          <TableCell>{factoryLabel || '-'}</TableCell>
-                          <TableCell align="right">{summaryEmployees.length}{text.peopleSuffix}{!isService&&`(${generalEmployees.length}, ${fixedOutputEmployees.length}, ${outputEmployees.length})`}</TableCell>
-                          <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? generalPayroll || '-' : payrollSummaryText.pending}</TableCell>
-                          {!isService&&<TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? fixedOutputPayroll || '-' : payrollSummaryText.pending}</TableCell>}
-                          {!isService&&<TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? outputPayroll || '-' : payrollSummaryText.pending}</TableCell>}
-                          <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary', fontWeight: 700 }}>{snapshot ? totalPayroll || '-' : payrollSummaryText.pending}</TableCell>
-                          <TableCell align="center">
+                        ><TableCell align="center">
                             <Stack direction="row" spacing={0.75} justifyContent="center" alignItems="center">
                               <Tooltip title={lockedBasisChanged?(workTimeText[languageCode]||workTimeText.en).locked:readinessDescription}><Chip
                                 size="small"
@@ -557,6 +550,14 @@ const PayrollBoard = () => {
                             </Stack>
                             {rowNeedsRecalculation&&readinessDescription&&<GlobalNotice severity="warning">{readinessDescription}</GlobalNotice>}
                           </TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}><RecordText  >{month}{snapshot?.payableDocument?.managementNumber&&<Typography variant="caption" display="block">{snapshot.payableDocument.managementNumber}</Typography>}</RecordText></TableCell>
+                          <TableCell>{factoryLabel || '-'}</TableCell>
+                          <TableCell align="right">{summaryEmployees.length}{text.peopleSuffix}{!isService&&`(${generalEmployees.length}, ${fixedOutputEmployees.length}, ${outputEmployees.length})`}</TableCell>
+                          <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? generalPayroll || '-' : payrollSummaryText.pending}</TableCell>
+                          {!isService&&<TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? fixedOutputPayroll || '-' : payrollSummaryText.pending}</TableCell>}
+                          {!isService&&<TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? outputPayroll || '-' : payrollSummaryText.pending}</TableCell>}
+                          <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary', fontWeight: 700 }}>{snapshot ? totalPayroll || '-' : payrollSummaryText.pending}</TableCell>
+
                           <TableCell align="center">
                             <LockToggleSwitch
                               checked={Boolean(snapshot && !snapshot.isProvisional)}
@@ -566,7 +567,7 @@ const PayrollBoard = () => {
                               ariaLabel={`${resolveText(languageCode, 'lock')} ${month} ${factoryLabel}`}
                             />
                           </TableCell>
-                        </RecordRow>
+                        <TableActionsCell languageCode={languageCode}/></RecordRow>
                       );
                     })}
               </RecordInteractionScope>

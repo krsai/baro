@@ -1,3 +1,4 @@
+import {TableActionsHeader,TableActionsCell} from '../../../components/TableActions';
 import {getRowActionsLabel} from '../../../constants/rowActions';
 import TableStatusRow from '../../../components/TableStatusRow';
 import ListDetailLayout from '../../../components/ListDetailLayout';
@@ -459,7 +460,7 @@ const ProcessMasterSection = ({
       </Box>
 
       <ListDetailLayout breakpoint="xl" listWidth="minmax(0,1.3fr)" sx={{flex:1,minHeight:0}} listSx={{display:'flex',flexDirection:'column'}} list={<TableContainer sx={buildProcessMasterTableContainerSx(maxHeight)}>
-        <Table data-table-layout="wide" size="small" stickyHeader sx={{minWidth:detailRow?1040:undefined}}>
+        <Table data-table-kind="entry" data-table-layout="wide" size="small" stickyHeader sx={{minWidth:detailRow?1040:undefined}}>
           <TableHead>
             <TableRow>
               {isSelectable ? (
@@ -471,7 +472,7 @@ const ProcessMasterSection = ({
               <TableCell sx={{ width: '21%', fontWeight: 700 }}>베트남어</TableCell>
               <TableCell sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>스타일 공정 참조</TableCell>
               <TableCell sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>중복</TableCell>
-              <TableCell sx={{ width: '5%', textAlign: 'center', fontWeight: 700 }}>{getRowActionsLabel(languageCode)}</TableCell>
+              <TableActionsHeader languageCode={languageCode} sx={{ width: '5%', textAlign: 'center', fontWeight: 700 }}>{getRowActionsLabel(languageCode)}</TableActionsHeader>
             </TableRow>
           </TableHead>
           <TableBody onFocusCapture={handleFocusWithinTable} onBlurCapture={handleBlurWithinTable}>
@@ -597,7 +598,7 @@ const ProcessMasterSection = ({
                         {isDuplicateCode ? '중복' : '-'}
                       </Typography>
                     </TableCell>
-                    <TableCell sx={{ textAlign: 'center' }}>
+                    <TableActionsCell languageCode={languageCode} sx={{ textAlign: 'center' }}>
                       {usageConflict ? (
                         <Tooltip title="스타일 공정에 연결되어 삭제할 수 없습니다.">
                           <span>
@@ -613,7 +614,7 @@ const ProcessMasterSection = ({
                           }}
                          />
                       )}
-                    </TableCell>
+                    </TableActionsCell>
                   </TableRow>
 
                 </React.Fragment>
@@ -999,7 +1000,7 @@ const ProcessMasterLinkedSpecSection = ({
       </Stack>
 
       <TableContainer sx={buildProcessMasterTableContainerSx(maxHeight)}>
-        <Table size="small" stickyHeader>
+        <Table data-table-kind="entry" size="small" stickyHeader>
           <TableHead>
             <TableRow>
               <TableCell sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>해제</TableCell>
@@ -1009,7 +1010,7 @@ const ProcessMasterLinkedSpecSection = ({
               <TableCell sx={{ width: '20%', fontWeight: 700 }}>베트남어</TableCell>
               <TableCell sx={{ width: '7%', textAlign: 'center', fontWeight: 700 }}>스타일 공정 참조</TableCell>
               <TableCell sx={{ width: '7%', textAlign: 'center', fontWeight: 700 }}>중복</TableCell>
-              <TableCell sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>{getRowActionsLabel(languageCode)}</TableCell>
+              <TableActionsHeader languageCode={languageCode} sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>{getRowActionsLabel(languageCode)}</TableActionsHeader>
             </TableRow>
           </TableHead>
           <TableBody onFocusCapture={handleFocusWithinTable} onBlurCapture={handleBlurWithinTable}>
@@ -1107,7 +1108,7 @@ const ProcessMasterLinkedSpecSection = ({
                       {isDuplicateCode ? '중복' : '-'}
                     </Typography>
                   </TableCell>
-                  <TableCell sx={{ textAlign: 'center' }}>
+                  <TableActionsCell languageCode={languageCode} sx={{ textAlign: 'center' }}>
                     {usageConflict ? (
                       <Tooltip title="스타일 공정에 연결되어 삭제할 수 없습니다.">
                         <span>
@@ -1123,7 +1124,7 @@ const ProcessMasterLinkedSpecSection = ({
                         }}
                        />
                     )}
-                  </TableCell>
+                  </TableActionsCell>
                 </TableRow>
               );
             })}

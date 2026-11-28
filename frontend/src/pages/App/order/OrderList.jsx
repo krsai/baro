@@ -1,10 +1,11 @@
+import {TableActionsCell,TableActionsHeader} from '../../../components/TableActions';
 import {getStyleGroupPastelStyle} from '../../../utils/orderItemPresentation';
 import {orderShipmentText} from '../../../constants/orderShipments';
 import {canAccessPath} from '../../../utils/accessControl';
 import {getRowActionsLabel,orderInvoiceNavigationText} from '../../../constants/rowActions';
 import ManagementTargetSettingsButton from '../../../components/ManagementTargetSettingsButton';
 import OrderWorkflowInformationButton from '../../../components/OrderWorkflowInformationButton';
-import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
+import {RecordInteractionScope, RecordRow, RecordOpenButton, RecordText} from '../../../components/RecordInteraction';
 import LocalizedDateField from '../../../components/LocalizedDateField';
 import Dialog from '../../../components/AppDialog';
 
@@ -3099,7 +3100,7 @@ const OrderList = () => {
       >
         <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden' }}>
           <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
-            <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', minWidth: 980 }}>
+            <Table data-table-kind="records" stickyHeader size="small" sx={{ tableLayout: 'fixed', minWidth: 980 }}>
               <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.progress }}>
@@ -3144,7 +3145,7 @@ const OrderList = () => {
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.productionProgress, textAlign: 'right' }}>
                     {orderPageText.productionProgress}
                   </TableCell>
-                  <TableCell
+                  <TableActionsHeader languageCode={languageCode}
                     sx={{
                       fontWeight: 'bold',
                       width: ORDER_LIST_COLUMN_WIDTHS.actions,
@@ -3152,7 +3153,7 @@ const OrderList = () => {
                     }}
                   >
                     {orderPageText.actions}
-                  </TableCell>
+                  </TableActionsHeader>
                 </TableRow>
               </TableHead>
               <RecordInteractionScope>
@@ -3177,7 +3178,7 @@ const OrderList = () => {
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
                           <StatusLabel label={progressStageLabel} tone={ORDER_WORKFLOW_TONES[order.workflowStatus]} />
                         </TableCell>
-                        <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}><RecordOpenButton onOpen={()=>handleEdit(order)}>{order.orderNumber}</RecordOpenButton></TableCell>
+                        <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}><RecordText >{order.orderNumber}</RecordText></TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
                           {resolveCustomerDisplayName(
                             { name: order.buyerOrgName || order.customerName || order.customer, nameKo: order.buyerOrgNameKo, nameVi: order.buyerOrgNameVi },
@@ -3230,7 +3231,7 @@ const OrderList = () => {
                               : `${Number(order.producedQuantity).toLocaleString()} / ${Number(order.totalQuantity || 0).toLocaleString()}`}
                           </Typography>
                         </TableCell>
-                        <TableCell data-table-actions sx={{ textAlign: 'center',whiteSpace:'nowrap' }}>
+                        <TableActionsCell languageCode={languageCode} data-table-actions sx={{ textAlign: 'center',whiteSpace:'nowrap' }}>
                           {authState.activeOrgType==='MANUFACTURER'&&['ADMIN','OPERATOR','ACCOUNTANT'].includes(activeProfile?.orgRole)&&Number(order.sellerOrgId)===Number(activeOrgId)&&<Tooltip title={order.shippingManagementExcluded?(orderShipmentText[languageCode]||orderShipmentText.en).excluded:(orderShipmentText[languageCode]||orderShipmentText.en).title}><span><IconButton size="small" aria-label={(orderShipmentText[languageCode]||orderShipmentText.en).title} disabled={order.shippingManagementExcluded===true} onClick={event=>{event.stopPropagation();navigateToPath('/order/'+order.dbId+'/shipments');}}><span aria-hidden="true">📦</span></IconButton></span></Tooltip>}
                           <Tooltip title={(orderInvoiceNavigationText[languageCode]||orderInvoiceNavigationText.en).view}><span><IconButton size="small" aria-label={(orderInvoiceNavigationText[languageCode]||orderInvoiceNavigationText.en).view} disabled={!order.issuedInvoiceCount||!canAccessPath('/invoices',authState)} onClick={event=>{event.stopPropagation();navigateToPath('/invoices?orderId='+encodeURIComponent(order.id));}}>
                             <span aria-hidden="true">🧾</span>
@@ -3243,7 +3244,7 @@ const OrderList = () => {
                               handleDeleteOrder(order);
                             }}
                           />
-                        </TableCell>
+                        </TableActionsCell>
                       </RecordRow>
                     );
                   })
@@ -3282,7 +3283,7 @@ const OrderList = () => {
             <Alert severity="info" sx={{ mb: 2 }}>{orderValueDetailText.multipleScopes}</Alert>
           )}
           <TableContainer>
-            <Table size="small">
+            <Table data-table-kind="summary" size="small">
               <TableHead>
                 <TableRow>
                   <TableCell>{orderValueDetailText.style}</TableCell>
@@ -3342,7 +3343,7 @@ const OrderList = () => {
         <DialogContent dividers>
 
           <TableContainer sx={{ maxHeight: 420 }}>
-            <Table size="small" stickyHeader>
+            <Table data-table-kind="summary" size="small" stickyHeader>
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{orderPageText.saveIssueLocation}</TableCell>
@@ -3617,7 +3618,7 @@ const OrderList = () => {
               }}
             >
               {detailViewMode === ORDER_DETAIL_VIEW_MODES.VERTICAL ? (
-                <Table data-table-layout="wide"
+                <Table data-table-kind="matrix" data-table-layout="wide"
                 size="small"
                 sx={{
                   width: '100%',
@@ -3651,7 +3652,7 @@ const OrderList = () => {
                   ))}
                   <TableCell sx={{ fontWeight: 'bold', width: '8%', textAlign: 'right' }}>{orderPageText.total}</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: '8%', textAlign: 'right' }}>{orderPageText.styleSubtotal}</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: '4%', textAlign: 'center' }}>{getRowActionsLabel(languageCode)}</TableCell>
+                  <TableActionsHeader languageCode={languageCode} sx={{ fontWeight: 'bold', width: '4%', textAlign: 'center' }}>{getRowActionsLabel(languageCode)}</TableActionsHeader>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -3949,9 +3950,9 @@ const OrderList = () => {
                         >
                           {isFirstRow ? formatQuantityDisplay(groupSubtotalQuantity) : ''}
                         </TableCell>
-                        <TableCell sx={{ textAlign: 'center' }}>
+                        <TableActionsCell languageCode={languageCode} sx={{ textAlign: 'center' }}>
                           <DeleteActionButton size="small" onClick={() => handleRemoveItem(item.id)} />
-                        </TableCell>
+                        </TableActionsCell>
                       </OrderColorDropRow>
                     );
                   });
@@ -3959,7 +3960,7 @@ const OrderList = () => {
               </TableBody>
             </Table>
               ) : (
-                <Table data-table-layout="wide"
+                <Table data-table-kind="matrix" data-table-layout="wide"
                   size="small"
                   sx={{
                     viewTransitionName: 'order-gender-table',
@@ -4063,12 +4064,12 @@ const OrderList = () => {
                       >
                         {orderPageText.styleSubtotal}
                       </TableCell>
-                      <TableCell
+                      <TableActionsHeader languageCode={languageCode}
                         rowSpan={2}
                         sx={{ fontWeight: 'bold', width: 64, textAlign: 'center' }}
                       >
                         {getRowActionsLabel(languageCode)}
-                      </TableCell>
+                      </TableActionsHeader>
                     </TableRow>
                     <TableRow>
                       {currentHorizontalGenderCodes.map((genderCode, genderIndex) =>
@@ -4392,13 +4393,13 @@ const OrderList = () => {
                                 ? formatQuantityDisplay(group.styleSubtotalQuantity)
                                 : ''}
                             </TableCell>
-                            <TableCell sx={{ textAlign: 'center' }}>
+                            <TableActionsCell languageCode={languageCode} sx={{ textAlign: 'center' }}>
                               <DeleteActionButton
                                 size="small"
                                 onClick={() => handleRemoveItem(colorTargetIds)}
                                 disabled={!colorTargetIds.length}
                                />
-                            </TableCell>
+                            </TableActionsCell>
                           </OrderColorDropRow>
                         );
                       });
@@ -4429,7 +4430,7 @@ const OrderList = () => {
       <DialogContent dividers>
 
         <TableContainer sx={{ maxHeight: 420 }}>
-          <Table size="small" stickyHeader>
+          <Table data-table-kind="summary" size="small" stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell sx={{ whiteSpace: 'nowrap' }}>{orderPageText.saveIssueLocation}</TableCell>

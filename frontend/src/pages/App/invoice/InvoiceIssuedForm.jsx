@@ -19,7 +19,7 @@ export default function InvoiceIssuedForm({invoice,languageCode}){
   return <InvoiceSheet>
     <InvoiceFormHeader fields={fields} languageCode={languageCode} readOnly/>
     <Typography className="invoice-section-title">{ui.details} · {invoiceNumber(rows.length)}{invoice.status!=='ISSUED'&&<Box component="span" sx={{float:'right',color:'error.main'}}>{invoice.status==='CANCELLED'?ui.cancelled:ui.superseded}</Box>}</Typography>
-    <Box sx={{overflowX:'auto'}}><Table data-table-layout="document" className="invoice-lines" size="small" sx={{minWidth:760}}><colgroup>{[40,110,null,120,130,160].map((width,index)=><col key={index} style={width?{width}:undefined}/>)}</colgroup>
+    <Box sx={{overflowX:'auto'}}><Table data-table-kind="summary" data-table-layout="document" className="invoice-lines" size="small" sx={{minWidth:760}}><colgroup>{[40,110,null,120,130,160].map((width,index)=><col key={index} style={width?{width}:undefined}/>)}</colgroup>
       <TableHead><TableRow>{[text.row,text.orderNumber,text.style,d.quantity,d.unitPrice,ui.summary].map((label,index)=><TableCell key={index} align={index===0||index>=3?'right':'left'}>{label}</TableCell>)}</TableRow></TableHead>
       <TableBody>{rows.map((group,index)=>{const line=group.lines[0];return <React.Fragment key={group.key}><TableRow key={group.key}><TableCell align="right">{invoiceNumber(index+1)}</TableCell><TableCell>{orders.get(line.orderId)}</TableCell><TableCell>{line.description||line.styleName||'—'}</TableCell>
         <TableCell align="right">{invoiceNumber(group.quantity)}</TableCell><TableCell align="right">{formatInvoiceMoney(line.unitPrice,currency)}</TableCell><TableCell align="right">{formatInvoiceMoney(group.amount,currency)}</TableCell></TableRow></React.Fragment>;})}</TableBody>

@@ -1,4 +1,5 @@
-import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
+import {TableActionsCell,TableActionsHeader} from '../../../components/TableActions';
+import {RecordInteractionScope, RecordRow, RecordOpenButton, RecordText} from '../../../components/RecordInteraction';
 import Dialog from '../../../components/AppDialog';
 
 import SearchPanel from '../../../components/SearchPanel';
@@ -806,7 +807,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
           )}
         </Box>
         <TableContainer sx={{ display: { xs: 'none', sm: 'block' } }}>
-          <Table size="small">
+          <Table data-table-kind="records" size="small">
             <TableHead>
               <TableRow>
                 <TableCell>{resolveText(TEXT.workDate, languageCode, '작업일자')}</TableCell>
@@ -824,7 +825,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                     ? resolveText(TEXT.averageUnitPrice, languageCode, '평균 단가')
                     : resolveText(TEXT.averageCtPerWorker, languageCode, '1인 일 평균 CT')}
                 </TableCell>
-                <TableCell align="right">&nbsp;</TableCell>
+                <TableActionsHeader languageCode={languageCode} align="right">&nbsp;</TableActionsHeader>
               </TableRow>
             </TableHead>
             <RecordInteractionScope>
@@ -849,7 +850,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                       '& td': { verticalAlign: 'middle' },
                     }}
                   >
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}><RecordOpenButton onOpen={() => handleOpen(log)}>{formatWorkLogDateRangeLabel(log)}</RecordOpenButton></TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}><RecordText >{formatWorkLogDateRangeLabel(log)}</RecordText></TableCell>
                     <TableCell>{log.factoryName || '-'}</TableCell>
                     <TableCell align="right">
                       {isOutsourcingMode ? log.partnerCount || 0 : log.workerCount || 0}
@@ -867,7 +868,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                               languageCode
                             )}
                     </TableCell>
-                    <TableCell align="right">
+                    <TableActionsCell languageCode={languageCode} align="right">
                       <Tooltip title={getUiMessage('common.delete', '삭제', languageCode)}>
                         <span>
                           <DeleteActionButton
@@ -879,7 +880,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                            />
                         </span>
                       </Tooltip>
-                    </TableCell>
+                    </TableActionsCell>
                   </RecordRow>
                 ))
               )}
@@ -907,7 +908,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
         <DialogContent dividers>
 
           <TableContainer sx={{ maxHeight: 420 }}>
-            <Table size="small" stickyHeader>
+            <Table data-table-kind="summary" size="small" stickyHeader>
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>

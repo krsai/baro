@@ -23,7 +23,7 @@ const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label
         {label('공정별 수량', 'Quantity by process', 'Số lượng theo công đoạn')}
       </Typography>
       <TableContainer component={Paper} variant="outlined">
-        <Table size="small">
+        <Table data-table-kind="summary" size="small">
           <TableHead>
             <TableRow>
               <TableCell>{label('공정', 'Process', 'Công đoạn')}</TableCell>
@@ -74,7 +74,7 @@ const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label
                   {expanded ? (
                     <TableRow>
                       <TableCell colSpan={4} sx={{ p: 0, backgroundColor: '#fafcff' }}>
-                        <Table size="small" aria-label={label('연결된 작업기록', 'Linked work records', 'Nhật ký công việc liên kết')}>
+                        <Table data-table-kind="summary" size="small" aria-label={label('연결된 작업기록', 'Linked work records', 'Nhật ký công việc liên kết')}>
                           <TableHead>
                             <TableRow>
                               <TableCell sx={{ pl: 6 }}>{label('작업일', 'Work date', 'Ngày làm')}</TableCell>

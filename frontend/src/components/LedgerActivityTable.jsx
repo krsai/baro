@@ -1,4 +1,5 @@
-import {RecordInteractionScope, RecordRow, RecordOpenButton} from './RecordInteraction';
+import {TableActionsCell,TableActionsHeader} from './TableActions';
+import {RecordInteractionScope, RecordRow, RecordOpenButton, RecordText} from './RecordInteraction';
 import TableStatusRow from './TableStatusRow';
 import GlobalNotice from "./AppNotice";
 import {ledgerAccountingSummary} from '../utils/ledgerAccountingSummary.mjs';
@@ -18,25 +19,25 @@ export default function LedgerActivityTable({rows=[],loading,text:t,labels:l,cur
  const flow=ledgerFlowText[languageCode]||ledgerFlowText.en;
  const change=changeApprovalText[languageCode]||changeApprovalText.en;
  const amountWidth=Math.max(112,...rows.map(row=>formatLedgerAmount(row.amount,row.currencyCode).length*7+16));
- const columns=[{title:t.transactionDate,width:96},{title:flow.from,width:'15%'},{title:flow.to,width:'15%'},{title:(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,width:88},{title:l.codeDescription,width:'18%'},{title:currencyLabel,width:56,numeric:true},{title:t.IN,width:'12%',numeric:true},{title:t.OUT,width:'12%',numeric:true},{title:t.createdBy,width:'8%'},{title:'',width:44}];
+ const columns=[{title:t.transactionDate,width:96},{title:flow.from,width:'15%'},{title:flow.to,width:'15%'},{title:(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,width:88},{title:l.codeDescription,width:'18%'},{title:currencyLabel,width:56,numeric:true},{title:t.IN,width:'12%',numeric:true},{title:t.OUT,width:'12%',numeric:true},{title:t.createdBy,width:'8%'},{title:'',width:104}];
  const interaction=row=>({'data-cancelled':!!row.voidedAt,hover:!row.voidedAt,disabled:loading||!!row.voidedAt,sx:{cursor:row.voidedAt?'default':'pointer'}});
- return <TableContainer><Table size="small" data-testid="ledger-activity-table" data-table-layout="columns" sx={{minWidth:0,width:'100%',tableLayout:'auto','& [data-ledger-amount]':{minWidth:amountWidth}}}>
+ return <TableContainer><Table data-table-kind="records" size="small" data-testid="ledger-activity-table" data-table-layout="columns" sx={{minWidth:0,width:'100%',tableLayout:'auto','& [data-ledger-amount]':{minWidth:amountWidth}}}>
   <colgroup>{columns.map((column,index)=><col key={index} style={column.width?{width:column.width}:undefined}/>)}</colgroup>
-  <TableHead><TableRow>{columns.map((column,index)=><TableCell key={index} align={column.numeric?'right':'left'}>{column.title}</TableCell>)}</TableRow></TableHead>
+  <TableHead><TableRow>{columns.map((column,index)=><TableActionsHeader languageCode={languageCode} when={index===columns.length-1} key={index} align={column.numeric?'right':'left'}>{column.title}</TableActionsHeader>)}</TableRow></TableHead>
   <RecordInteractionScope>
    {!rows.length&&<TableStatusRow colSpan={columns.length} languageCode={languageCode} state={loading?"loading":"empty"}/>}
    {rows.map(row=>{const summary=ledgerAccountingSummary(row,languageCode);return <React.Fragment key={row.id}>
     <RecordRow recordKey={row.id} onOpen={()=>onEdit(row)} {...interaction(row)}>
-     <TableCell sx={{whiteSpace:'nowrap'}}><RecordOpenButton disabled={loading||!!row.voidedAt} onOpen={()=>onEdit(row)}>{row.transactionDate}</RecordOpenButton>{row.voidedAt&&<Typography variant="caption" display="block">{l.deleted}</Typography>}</TableCell>
+     <TableCell sx={{whiteSpace:'nowrap'}}><RecordText  >{row.transactionDate}</RecordText>{row.voidedAt&&<Typography variant="caption" display="block">{l.deleted}</Typography>}</TableCell>
      <TableCell sx={{overflowWrap:'anywhere'}}>{row.direction==='OUT'?row.accountName:row.evidenceType==='ADJUSTMENT'?'—':row.currentCounterpartyName||row.counterpartyName||'—'}</TableCell><TableCell sx={{overflowWrap:'anywhere'}}>{row.direction==='IN'?row.accountName:row.evidenceType==='ADJUSTMENT'?'—':row.currentCounterpartyName||row.counterpartyName||'—'}</TableCell><TableCell title={summary.codeTitle}>{summary.code}{warning(row.accountingCode,row.direction)}</TableCell><TableCell title={summary.descriptionTitle} sx={{overflowWrap:'anywhere'}}>{summary.description}{row.voidedAt&&<Typography variant="caption" display="block">{row.voidReason}</Typography>}</TableCell><TableCell align="right">{row.currencyCode}</TableCell>
      {['IN','OUT'].map(direction=><TableCell key={direction} data-ledger-amount={direction} align="right" sx={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{row.direction===direction?formatLedgerAmount(row.amount,row.currencyCode):'—'}</TableCell>)}
 
      <NameCell>{row.createdByName||'—'}</NameCell>
-     <TableCell data-table-actions onDoubleClick={event=>event.stopPropagation()}>{!row.voidedAt&&<DeleteActionButton stopPropagation disabled={row.changePending} aria-label={change.requestDelete} title={row.changePending?change.pendingDeletionBlocked:change.requestDelete} onDoubleClick={event=>event.stopPropagation()} onClick={()=>onDelete(row)}/>}</TableCell>
+     <TableActionsCell languageCode={languageCode} data-table-actions onDoubleClick={event=>event.stopPropagation()}>{!row.voidedAt&&<DeleteActionButton stopPropagation disabled={row.changePending} aria-label={change.requestDelete} title={row.changePending?change.pendingDeletionBlocked:change.requestDelete} onDoubleClick={event=>event.stopPropagation()} onClick={()=>onDelete(row)}/>}</TableActionsCell>
     </RecordRow>
     {row.settlementLines?.map(detail=><RecordRow key={detail.id} recordKey={row.id} onOpen={()=>onEdit(row)} {...interaction(row)} sx={{...interaction(row).sx,bgcolor:'action.hover'}}>
      <TableCell>{'↳'}</TableCell><TableCell>{row.accountName}</TableCell><TableCell>{row.currentCounterpartyName||row.counterpartyName||'—'}</TableCell><TableCell>{detail.accountingCode?.code||'—'}{warning(detail.accountingCode,'OUT')}</TableCell>
-     <TableCell><Stack direction="row" spacing={1} justifyContent="space-between"><Typography variant="body2">{accountingCodeDescription(detail.accountingCode,languageCode)||l[detail.kind]}</Typography><Typography variant="body2" sx={{whiteSpace:'nowrap'}}>{formatLedgerAmount(detail.amount,row.currencyCode)}</Typography></Stack><Typography variant="caption" color="text.secondary">{l.noncash}</Typography></TableCell><TableCell>{row.currencyCode}</TableCell><TableCell align="right">{'—'}</TableCell><TableCell align="right">{'—'}</TableCell><NameCell>{detail.createdByName||'—'}</NameCell><TableCell/>
+     <TableCell><Stack direction="row" spacing={1} justifyContent="space-between"><Typography variant="body2">{accountingCodeDescription(detail.accountingCode,languageCode)||l[detail.kind]}</Typography><Typography variant="body2" sx={{whiteSpace:'nowrap'}}>{formatLedgerAmount(detail.amount,row.currencyCode)}</Typography></Stack><Typography variant="caption" color="text.secondary">{l.noncash}</Typography></TableCell><TableCell>{row.currencyCode}</TableCell><TableCell align="right">{'—'}</TableCell><TableCell align="right">{'—'}</TableCell><NameCell>{detail.createdByName||'—'}</NameCell><TableActionsCell languageCode={languageCode}/>
     </RecordRow>)}
    </React.Fragment>;})}
   </RecordInteractionScope>

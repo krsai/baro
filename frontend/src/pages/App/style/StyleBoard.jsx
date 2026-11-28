@@ -1,4 +1,5 @@
-import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
+import {TableActionsCell,TableActionsHeader} from '../../../components/TableActions';
+import {RecordInteractionScope, RecordRow, RecordOpenButton, RecordText} from '../../../components/RecordInteraction';
 import Dialog from '../../../components/AppDialog';
 import TableStatusRow from '../../../components/TableStatusRow';
 import useChangeDrivenEffect from '../../../hooks/useChangeDrivenEffect';
@@ -663,7 +664,7 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
       {loadError && <AppNotice severity="error" action={<Button onClick={()=>refreshStyles({forceRefresh:true})}>{languageCode === 'ko' ? '\uB2E4\uC2DC \uC870\uD68C' : languageCode === 'vi' ? 'T\u1EA3i l\u1EA1i' : 'Reload'}</Button>}>{getUiMessage('styleBoard.fetchError', '', languageCode)}</AppNotice>}
       <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
         <TableContainer>
-          <Table
+          <Table data-table-kind="records"
             stickyHeader
             aria-label={getUiMessage('styleBoard.tableAriaLabel', 'Style list table', languageCode)}
             size="small"
@@ -686,9 +687,9 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
                 {canViewProcessSummary ? (
                   <TableCell sx={{ width: 160 }}>{formatTimeReferenceColumnLabel('AT')}</TableCell>
                 ) : null}
-                <TableCell align="center" sx={{ width: isBrand ? 64 : 96 }}>
+                <TableActionsHeader languageCode={languageCode} align="center" sx={{ width: isBrand ? 96 : 128 }}>
                   {getUiMessage('styleBoard.action', '작업', languageCode)}
-                </TableCell>
+                </TableActionsHeader>
               </TableRow>
             </TableHead>
             <RecordInteractionScope>
@@ -711,7 +712,7 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
                       {resolveCustomerDisplayName({ name: style.customer, nameKo: style.customerNameKo, nameVi: style.customerNameVi }, languageCode) || '-'}
                     </TableCell>
                     <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={style.name || ''}>
-                      <RecordOpenButton onOpen={() => handleRowDoubleClick(style)}>{style.name || '-'}</RecordOpenButton>
+                      <RecordText >{style.name || '-'}</RecordText>
                     </TableCell>
                     {canViewProcessSummary ? (
                       <TableCell>
@@ -763,7 +764,7 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
                         </Box>
                       </TableCell>
                     ) : null}
-                    <TableCell align="center" onDoubleClick={event => event.stopPropagation()}>
+                    <TableActionsCell languageCode={languageCode} align="center" onDoubleClick={event => event.stopPropagation()}>
                       <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, whiteSpace: 'nowrap'}}>
                       <Tooltip title={getUiMessage('styleBoard.orderHistory', '주문 내역', languageCode)}>
                         <IconButton size="small" color="primary" aria-label={getUiMessage('styleBoard.orderHistory', '주문 내역', languageCode)} onClick={event => { event.stopPropagation(); setHistoryStyle(style); }}>
@@ -785,7 +786,7 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
                         </span>
                       </Tooltip>}
                       </Box>
-                    </TableCell>
+                    </TableActionsCell>
                   </RecordRow>
                 );
               })}
@@ -803,7 +804,7 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
             </Box>
           ) : (
             <TableContainer>
-              <Table size="small">
+              <Table data-table-kind="summary" size="small">
                 <TableHead><TableRow>
                   {['orderHistoryNumber', 'orderHistoryDate', 'orderHistoryDue', 'orderHistoryQuantity'].map(key => (
                     <TableCell key={key} align={key === 'orderHistoryQuantity' ? 'right' : 'left'} sx={{ whiteSpace: 'nowrap' }}>{getUiMessage(`styleBoard.${key}`, '', languageCode)}</TableCell>

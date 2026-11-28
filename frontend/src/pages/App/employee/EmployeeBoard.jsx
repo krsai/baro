@@ -1,4 +1,5 @@
-import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
+import {TableActionsCell,TableActionsHeader} from '../../../components/TableActions';
+import {RecordInteractionScope, RecordRow, RecordOpenButton, RecordText} from '../../../components/RecordInteraction';
 import LocalizedDateField from '../../../components/LocalizedDateField';
 import PersonalPhoneField from '../../../components/PersonalPhoneField';
 import {titleCaseWords} from '../../../utils/humanTextCase.mjs';
@@ -1752,7 +1753,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
             </Typography>
 
             <TableContainer>
-              <Table size="small">
+              <Table data-table-kind="entry" size="small">
                 <TableHead>
                   <TableRow>
                     <TableCell>{tenantText('nameColumn', languageCode)}</TableCell>
@@ -1858,9 +1859,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         <Paper variant="outlined" sx={{ p: 3, width: '100%' }}>
           <Typography variant="h6" sx={{ mb: 2 }}>{tenantText('activeListTitle', languageCode)}</Typography>
           <TableContainer>
-            <Table size="small">
+            <Table data-table-kind="records" size="small">
               <TableHead>
-                <TableRow>
+                <TableRow><TableCell>{tenantText('statusLabel', languageCode)}</TableCell>
                   <TableCell>{tenantText('nameColumn', languageCode)}</TableCell>
                   <TableCell>{tenantText('employeeNoColumn', languageCode)}</TableCell>
                   <TableCell>{tenantText('emailOrCodeColumn', languageCode)}</TableCell>
@@ -1869,15 +1870,15 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   <TableCell>{tenantText('jobLabel', languageCode)}</TableCell>
                   <TableCell>{tenantText('gradeLabel', languageCode)}</TableCell>
                   <TableCell>{tenantText('payTypeColumn', languageCode)}</TableCell>
-                  <TableCell>{tenantText('statusLabel', languageCode)}</TableCell>
+
                   <TableCell>{tenantText('joinedAtColumn', languageCode)}</TableCell>
                   <TableCell>{tenantText('leftAtColumn', languageCode)}</TableCell>
-                </TableRow>
+                <TableActionsHeader languageCode={languageCode}/></TableRow>
               </TableHead>
               <RecordInteractionScope>
                 {sortedActiveMembers.length === 0 ? (
                   <TableStatusRow
-                    colSpan={11}
+                    colSpan={(11)+1}
                     message={
                       searchTerm
                         ? tenantText('noSearchResult', languageCode)
@@ -1920,8 +1921,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
                         recordKey={member.id} onOpen={canManageMembers ? () => openEditDrawer(member) : undefined} disabled={!canManageMembers}
                         sx={{ cursor: canManageMembers ? 'pointer' : 'default' }}
-                      >
-                        <TableCell><RecordOpenButton onOpen={canManageMembers ? () => openEditDrawer(member) : undefined} disabled={!canManageMembers}>{displayName}</RecordOpenButton></TableCell>
+                      ><TableCell>{getEmployeeStatusLabel(member.status, languageCode)}</TableCell>
+                        <TableCell><RecordText  >{displayName}</RecordText></TableCell>
                         <TableCell sx={{ fontWeight: 'bold', letterSpacing: 1, color: 'text.secondary' }}>
                           {employee?.employeeNo || '-'}
                         </TableCell>
@@ -1931,10 +1932,10 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                         <TableCell>{jobRoleLabel}</TableCell>
                         <TableCell>{getEmployeeGradeLabel(employee, languageCode)}</TableCell>
                         <TableCell>{payTypeLabel}</TableCell>
-                        <TableCell>{getEmployeeStatusLabel(member.status, languageCode)}</TableCell>
+
                         <TableCell>{formatDate(employee?.joinedAt || member.approvedAt)}</TableCell>
                         <TableCell>{formatDate(employee?.leftAt)}</TableCell>
-                      </RecordRow>
+                      <TableActionsCell languageCode={languageCode}/></RecordRow>
                     );
                   })
                 )}

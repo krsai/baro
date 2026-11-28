@@ -1,3 +1,4 @@
+import {TableActionsCell} from './TableActions';
 import {getRowActionsLabel} from '../constants/rowActions';
 import {ledgerEntryText} from '../constants/ledgerEntry';
 import React,{useEffect,useRef,useState} from 'react';
@@ -31,7 +32,7 @@ export default function AccountingOpeningPanel({orgId,balanceDate,languageCode,l
  return <Stack spacing={2} data-accounting-opening>
   {error&&<Alert severity="error" action={<Button disabled={locked} onClick={()=>setRefresh(v=>v+1)}>{t.reload}</Button>}>{error}</Alert>}
   {busy&&<CircularProgress size={22}/>}
-  <TableContainer ref={manualSection}><Table size="small" sx={{minWidth:1080}}><TableHead><TableRow>{[t.party,t.side,t.code,t.currency,t.amount,t.billNumber,getRowActionsLabel(languageCode)].map((label,i)=><TableCell key={i}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{manual.map(row=><TableRow key={row.key} data-opening-input>
+  <TableContainer ref={manualSection}><Table data-table-kind="entry" size="small" sx={{minWidth:1080}}><TableHead><TableRow>{[t.party,t.side,t.code,t.currency,t.amount,t.billNumber,getRowActionsLabel(languageCode)].map((label,i)=><TableCell key={i}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{manual.map(row=><TableRow key={row.key} data-opening-input>
    <TableCell sx={{minWidth:210}}><LedgerCounterpartyField row={{entryKind:'BANK',counterparty:row.counterparty}} options={data?.parties||[]} languageCode={languageCode} disabled={locked||busy||!!error} onChange={counterparty=>edit(row.key,{counterparty})}/></TableCell>
    <TableCell><TextField select size="small" value={row.side} disabled={locked} onChange={e=>edit(row.key,{side:e.target.value})}>{['AR','AP'].map(side=><MenuItem key={side} value={side}>{t[side]}</MenuItem>)}</TextField></TableCell>
    <TableCell sx={{minWidth:150}}><AccountingCodeField codes={codes} value={row.accountingCodeId} onChange={accountingCodeId=>edit(row.key,{accountingCodeId})} languageCode={languageCode} disabled={locked||busy} direction={row.side==='AR'?'IN':'OUT'}/></TableCell>
@@ -43,7 +44,7 @@ export default function AccountingOpeningPanel({orgId,balanceDate,languageCode,l
     const counterparty=data?.parties.find(p=>p.kind===bill.counterparty?.kind&&p.id===bill.counterparty?.id)||bill.counterparty;
     edit(row.key,{bill,side:bill.side,counterparty:counterparty?{...counterparty,name:counterparty.name||bill.party}:null,accountingCodeId:bill.accountingCodeId||null,currencyCode:bill.currencyCode,amount:bill.remaining});
    }}/></TableCell>
-   <TableCell data-table-actions><AddActionButton aria-label={t.add} disabled={locked||busy||!!error} onClick={add}/><DeleteActionButton aria-label={t.remove} disabled={locked||busy||!!error} onClick={()=>setManual(rows=>rows.length===1?[emptyRow()]:rows.filter(r=>r.key!==row.key))}/></TableCell>
+   <TableActionsCell languageCode={languageCode} data-table-actions><AddActionButton aria-label={t.add} disabled={locked||busy||!!error} onClick={add}/><DeleteActionButton aria-label={t.remove} disabled={locked||busy||!!error} onClick={()=>setManual(rows=>rows.length===1?[emptyRow()]:rows.filter(r=>r.key!==row.key))}/></TableActionsCell>
   </TableRow>)}{reasonField&&<TableRow><TableCell colSpan={7}>{reasonField}</TableCell></TableRow>}</TableBody></Table></TableContainer>
  </Stack>;
 }

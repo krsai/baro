@@ -1,3 +1,4 @@
+import {TableActionsHeader} from '../../../../components/TableActions';
 import {rowActionsText} from '../../../../constants/rowActions.js';
 import TableStatusRow from '../../../../components/TableStatusRow';
 import GlobalNotice from "../../../../components/AppNotice";
@@ -3538,7 +3539,7 @@ const StyleProcess = ({
       <Paper variant="outlined" sx={{ borderRadius: 2 }}>
         <TableContainer>
           <DragDropContext onDragEnd={onDragEnd}>
-            <Table data-table-layout="wide" stickyHeader size="small" sx={{ tableLayout: 'fixed', width: '100%' }}>
+            <Table data-table-kind="summary" data-table-layout="wide" stickyHeader size="small" sx={{ tableLayout: 'fixed', width: '100%' }}>
               <colgroup>
                 <col style={{ width: 70 }} />
                 <col style={{ width: `${PRODUCTION_STAGE_COLUMN_WIDTH}px` }} />
@@ -3633,9 +3634,9 @@ const StyleProcess = ({
                       )}
                     </Stack>
                   </TableCell>
-                  <TableCell align="center" sx={{ width: PROCESS_ACTION_COLUMN_WIDTH }}>
+                  <TableActionsHeader languageCode={languageCode} align="center" sx={{ width: PROCESS_ACTION_COLUMN_WIDTH }}>
                     {getStyleProcessMessage(languageCode, 'actionColumn')}
-                  </TableCell>
+                  </TableActionsHeader>
                 </TableRow>
               </TableHead>
 

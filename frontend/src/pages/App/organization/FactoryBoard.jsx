@@ -1,4 +1,5 @@
-import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../../components/RecordInteraction';
+import {TableActionsCell,TableActionsHeader} from '../../../components/TableActions';
+import {RecordInteractionScope, RecordRow, RecordOpenButton, RecordText} from '../../../components/RecordInteraction';
 
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
@@ -259,7 +260,7 @@ const FactoryList = ({ embedded = false }) => {
     >
       <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
         <TableContainer>
-          <Table stickyHeader size="small">
+          <Table data-table-kind="records" stickyHeader size="small">
             <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
               <TableRow>
                 <TableCell sx={{ fontWeight: 'bold' }}>{text.columnName}</TableCell>
@@ -271,9 +272,9 @@ const FactoryList = ({ embedded = false }) => {
                   {text.columnStartDate}
                 </TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>{text.columnWagePerSecond}</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', width: 80, textAlign: 'center' }}>
+                <TableActionsHeader languageCode={languageCode} sx={{ fontWeight: 'bold', width: 104, textAlign: 'center' }}>
                   {text.columnAction}
-                </TableCell>
+                </TableActionsHeader>
               </TableRow>
             </TableHead>
             <RecordInteractionScope>
@@ -309,13 +310,13 @@ const FactoryList = ({ embedded = false }) => {
                           ) : null}
                         </Stack>
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', color: 'primary.main' }}><RecordOpenButton onOpen={() => handleRowDoubleClick(factory)}>{factory.factoryCode || '-'}</RecordOpenButton></TableCell>
+                      <TableCell sx={{ fontWeight: 'bold' }}><RecordText >{factory.factoryCode || '-'}</RecordText></TableCell>
                       <TableCell>{factory.address || '-'}</TableCell>
                       <TableCell>{formatFactoryContact(factory)}</TableCell>
                       <TableCell>{resolveFactoryManagerLabel(factory)}</TableCell>
                       <TableCell>{resolveScopedFactoryManagementStartDateKey({ factory, factories })}</TableCell>
                       <TableCell>{Number.isFinite(wage) ? wage.toFixed(2) : '-'}</TableCell>
-                      <TableCell sx={{ textAlign: 'center' }}>
+                      <TableActionsCell languageCode={languageCode} sx={{ textAlign: 'center' }}>
                         <Tooltip title={text.deleteFactory}>
                           <span>
                             <DeleteActionButton
@@ -326,7 +327,7 @@ const FactoryList = ({ embedded = false }) => {
                              />
                           </span>
                         </Tooltip>
-                      </TableCell>
+                      </TableActionsCell>
                     </RecordRow>
                   );
                 })

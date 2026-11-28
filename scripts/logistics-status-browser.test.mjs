@@ -12,7 +12,7 @@ const vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/logistics-status-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
- for(const language of ['ko','en','vi'])for(const width of [1024,1440,1920])for(const theme of ['standard','compact']){
+ for(const language of ['ko','en','vi'])for(const width of (process.argv.includes('--desktop-smoke')?[1440]:[1024,1440,1920]))for(const theme of ['standard','compact']){
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],requests=[];let failed=false;
   page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});page.setDefaultTimeout(15000);
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useAuth=()=>({activeOrgId:7,activeOrgType:'SERVICE',isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'SERVICE',orgRole:'ADMIN'}});`}));
@@ -33,7 +33,7 @@ try{
   await page.locator('[data-logistics-row="job-1"]').waitFor({timeout:60000});await page.getByRole('progressbar').waitFor({state:'hidden'});
   const labels=await page.evaluate(async language=>(await import('/src/pages/App/LogisticsStatusBoard.jsx')).logisticsBoardText[language],language);
   assert.deepEqual(await page.evaluate(async()=>{const {information:f}=await import('/src/pages/App/LogisticsStatusBoard.jsx');return [f({mode:'SEA',shipmentType:'LCL',cbm:'2.5'}),f({mode:'AIR',chargeableWeightKg:'100'}),f({service:'EXPRESS',chargeableWeightKg:'12'}),f({mode:'ROAD',vehicleCount:2,vehicleUnit:'Vehicles'}),f({mode:'AIR',weightKg:100})];}),['2.5 CBM','100 CWT','12 CWT','2 Vehicles','—']);
-  assert.equal(await page.locator('thead').first().getByRole('columnheader').count(),8);assert.ok(await page.locator('[data-logistics-row="job-1"]').innerText().then(text=>text.includes("20x40'HQ")&&text.includes('MBL-2')&&!text.includes('0 PKG')));
+  assert.equal(await page.locator('thead').first().getByRole('columnheader').count(),9);assert.ok(await page.locator('[data-logistics-row="job-1"]').innerText().then(text=>text.includes("20x40'HQ")&&text.includes('MBL-2')&&!text.includes('0 PKG')));
   assert.ok(await page.locator('[data-logistics-row="job-1"] td').nth(5).innerText().then(text=>text==='—'));
   assert.equal(await page.getByRole('columnheader',{name:'CGO',exact:true}).count(),1);assert.equal(await page.locator('[data-logistics-row="job-1"] td').nth(2).innerText(),'2026-11-19');assert.equal(await page.locator('[data-logistics-row="job-2"] td').nth(2).innerText(),String.fromCharCode(8212));
   const checkDates=async()=>{const geometry=await page.locator('table').first().evaluate(table=>({table:table.getBoundingClientRect().width,widths:[...table.querySelectorAll('tr')].flatMap(row=>[...row.children].slice(2,6).map(cell=>cell.getBoundingClientRect().width))}));assert.ok(geometry.widths.length>=8);assert.ok(geometry.widths.every(width=>Math.abs(width-geometry.table/10)<1),JSON.stringify(geometry));};await checkDates();const completion=page.getByRole('combobox').first();await completion.click();await page.getByRole('option').last().click();await page.locator('[data-logistics-row="job-3"]').waitFor();
@@ -43,7 +43,7 @@ try{
   const attempts=requests.length;await page.waitForTimeout(500);assert.equal(requests.length,attempts);failed=false;await page.getByRole('button',{name:labels.retry,exact:true}).click();await page.getByRole('progressbar').waitFor({state:'hidden'});
   if(language==='en'&&width===1440&&theme==='standard'){mkdirSync('logs',{recursive:true});await page.screenshot({path:'logs/logistics-status-preview.png',fullPage:true});}
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
-  await page.locator('[data-logistics-row="job-1"]').getByRole('button',{name:'BARO - THE SAN'}).click();assert.equal(await page.evaluate(()=>window.openedPath),'/shipping/job-1');assert.deepEqual(errors,[]);
+  await page.locator('[data-logistics-row="job-1"]').locator('[data-record-action="open"]').click();assert.equal(await page.evaluate(()=>window.openedPath),'/shipping/job-1');assert.deepEqual(errors,[]);
   await page.close();console.log('PASS logistics board filters, MBL dates, retry, retained rows, navigation',language,width,theme);
  }
 }finally{await browser?.close();vite.kill();if(existsSync(file))unlinkSync(file);}

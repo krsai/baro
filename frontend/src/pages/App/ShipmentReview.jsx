@@ -582,7 +582,7 @@ const ShipmentReviewMonth = ({month,searchText,filterMode}) => {
 
         <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
           <TableContainer sx={{ maxHeight: 'calc(100vh - 320px)' }}>
-            <Table stickyHeader size="small">
+            <Table data-table-kind="entry" stickyHeader size="small">
               <TableHead>
                 <TableRow>
                   <TableCell>{text('table.status')}</TableCell>

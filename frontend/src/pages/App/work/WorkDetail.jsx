@@ -1,3 +1,4 @@
+import {TableActionsHeader,TableActionsCell} from '../../../components/TableActions';
 import GlobalNotice from "../../../components/AppNotice";
 import {canFocus} from '../../../utils/formFocus.mjs';
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
@@ -3310,7 +3311,7 @@ const WorkDetail = ({
                       overflowY: 'visible',
                     }}
                   >
-                  <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', '& th:last-child, & td:last-child': { boxShadow: 'none !important' } }}>
+                  <Table data-table-kind="entry" stickyHeader size="small" sx={{ tableLayout: 'fixed', '& th:last-child, & td:last-child': { boxShadow: 'none !important' } }}>
                     <TableHead>
                       <TableRow>
                         <TableCell sx={{ width: 56 }} align="center">
@@ -3331,7 +3332,7 @@ const WorkDetail = ({
                         <TableCell sx={{ width: '10%' }} align="right">{LABELS.ctSeconds}</TableCell>
                         <TableCell sx={{ width: '9%' }} align="right">{LABELS.quantity}</TableCell>
                         <TableCell sx={{ width: '12%' }} align="right">{LABELS.quantityCtTotal}</TableCell>
-                        <TableCell sx={{ width: 148 }} align="right">&nbsp;</TableCell>
+                        <TableActionsHeader languageCode={languageCode} sx={{ width: 148 }} align="right">&nbsp;</TableActionsHeader>
                       </TableRow>
                     </TableHead>
                     <Droppable droppableId="work-detail-rows-desktop">
@@ -3750,7 +3751,7 @@ const WorkDetail = ({
                               {totalCtValue}
                             </Typography>
                           </TableCell>
-                          <TableCell align="right" sx={{ py: 0.75, verticalAlign: 'middle' }}>
+                          <TableActionsCell languageCode={languageCode} align="right" sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             <Stack
                               direction="row"
                               spacing={0.5}
@@ -3783,7 +3784,7 @@ const WorkDetail = ({
                                    />
                                 </span>
                             </Stack>
-                          </TableCell>
+                          </TableActionsCell>
                         </TableRow>
                         )}
                         </Draggable>

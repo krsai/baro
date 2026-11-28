@@ -113,7 +113,7 @@ const StaticOptionBoard = () => {
               </Stack>
             </Box>
             <TableContainer>
-              <Table size="small">
+              <Table data-table-kind="summary" size="small">
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ width: '16%' }}>

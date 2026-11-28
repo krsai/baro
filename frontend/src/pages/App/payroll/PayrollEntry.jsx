@@ -740,7 +740,7 @@ const PayrollEntry = () => {
               </Stack>
             </Box>
             <TableContainer>
-              <Table size="small">
+              <Table data-table-kind="summary" size="small">
                 <TableHead>
                   <TableRow>
                     <TableCell>{text.employee}</TableCell>
@@ -885,7 +885,7 @@ const PayrollEntry = () => {
               </Stack>;
             })()}
             <Divider />
-            <Table size="small" sx={{ "& .MuiTableCell-root": { fontSize: 13, py: 0.75 } }}>
+            <Table data-table-kind="summary" size="small" sx={{ "& .MuiTableCell-root": { fontSize: 13, py: 0.75 } }}>
               <TableHead>
                 <TableRow>
                   <TableCell>{unifiedPayrollText.item}</TableCell>
@@ -933,7 +933,7 @@ const PayrollEntry = () => {
               </Stack>
               {(payslipEmployee.processes || []).length > 0 ? (
                 <TableContainer component={Paper} variant="outlined">
-                  <Table size="small" sx={{ "& .MuiTableCell-root": { fontSize: 13, py: 0.9 } }}>
+                  <Table data-table-kind="summary" size="small" sx={{ "& .MuiTableCell-root": { fontSize: 13, py: 0.9 } }}>
                     <TableHead>
                       <TableRow>
                         <TableCell>{payslipInfoText.styleName}</TableCell>
