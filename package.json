@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:invoice-excel": "node --test scripts/invoice-excel.test.mjs && node scripts/invoice-excel-browser.test.mjs",
     "test:employee-grade-deletion": "npm --prefix backend run build && node --test scripts/employee-grade-deletion.test.mjs && node scripts/employee-grade-deletion-browser.test.mjs",
     "test:shipping-shared-data": "npm --prefix backend run build && node --test scripts/shipping-shared-data.test.mjs scripts/shipping-operations.test.mjs scripts/shipping-requests.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/shipping-work-layout-browser.test.mjs --shared-sr-only && node scripts/bill-workflow-browser.test.mjs && node scripts/bill-workflow-browser.test.mjs --shared-containers-only && node scripts/bill-form-print-browser.test.mjs",
     "test:bill-workflow": "npm --prefix backend run build && node --test scripts/bill-workflow.test.mjs scripts/shipping-bill-hierarchy.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/bill-workflow-browser.test.mjs && node scripts/bill-form-print-browser.test.mjs",

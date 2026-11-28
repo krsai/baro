@@ -35,6 +35,7 @@ import InvoiceEditor from './InvoiceEditor';
 import GeneralInvoiceEditor from './GeneralInvoiceEditor';
 import {generalInvoiceText} from '../../../constants/generalInvoice';
 import InvoicePdfIcon from '../../../components/InvoicePdfIcon';
+import FileDownloadOutlined from '@mui/icons-material/FileDownloadOutlined';
 
 
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
@@ -54,6 +55,21 @@ export default function InvoiceList({ orgId, languageCode, invoiceId,sourceOrder
   const [issued, setIssued] = useState({ rows: [], hasMore: false });
   const [page, setPage] = useState(0), [reload, setReload] = useState(0);
   const [loading, setLoading] = useState(false), [error, setError] = useState('');
+  const [excelBusy,setExcelBusy]=useState(false),excelRequest=useRef(0);
+  useEffect(()=>()=>{excelRequest.current++;},[orgId,invoiceId]);
+  const downloadExcel=async row=>{
+    if(excelBusy)return;
+    const request=++excelRequest.current;
+    setExcelBusy(true);setError('');
+    try{
+      const invoice=await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}${buildQueryString({orgId})}`,{skipCache:true});
+      const {buildIssuedInvoiceExcelBlob,downloadInvoiceExcel}=await import('../../../utils/issuedInvoiceExcel.mjs');
+      const blob=await buildIssuedInvoiceExcelBlob(invoice);
+      if(request===excelRequest.current)downloadInvoiceExcel(blob,invoice);
+    }catch{if(request===excelRequest.current)setError(ui.failed);}
+    finally{if(request===excelRequest.current)setExcelBusy(false);}
+  };
+
 
   useWorkspaceRefreshOnEvent({ orgId, isBlocked:requesting||Boolean(invoiceId&&detail?.status==='ISSUED'), topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES],
      onRefresh: () => setReload(value => value + 1) });
@@ -97,7 +113,7 @@ export default function InvoiceList({ orgId, languageCode, invoiceId,sourceOrder
         <TableCell align="right">{row.currencyBalances?row.currencyBalances.map(total=><div key={total.currencyCode}>{amount(total.receivedAmount,total.currencyCode)}</div>):amount(row.receivedAmount,row.currencyCode)}</TableCell>
         <TableCell align="right" title={row.openingSettlementKind?`${(accountingOpeningText[languageCode]||accountingOpeningText.en)[row.openingSettlementKind]}: ${amount(row.openingSettlementAmount,row.currencyCode)}`:''}>{row.currencyBalances?row.currencyBalances.map(total=><div key={total.currencyCode}>{amount(total.balanceAmount,total.currencyCode)}</div>):amount(row.familyBalanceAmount,row.currencyCode)}</TableCell>
         <TableCell>{row.issuedByName||'\u2014'}</TableCell><TableCell><StatusLabel tone={row.status==='ISSUED'?'blue':'gray'} label={{ISSUED:ui.issued,CANCELLED:ui.cancelled,SUPERSEDED:ui.superseded}[row.status]||row.status}/></TableCell>
-        <TableCell data-table-actions sx={{whiteSpace:'nowrap'}}><DeleteActionButton aria-label={change.requestDelete} disabled={loading||requesting||!['ISSUED','CANCELLED'].includes(row.status)} onClick={event=>{event.stopPropagation();deleteInvoice(row);}}/><Button aria-label={d.pdf} disabled={pdfBusy} onDoubleClick={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();printIssued(row);}}><InvoicePdfIcon/></Button></TableCell>
+        <TableCell data-table-actions sx={{whiteSpace:'nowrap'}}><DeleteActionButton aria-label={change.requestDelete} disabled={loading||requesting||!['ISSUED','CANCELLED'].includes(row.status)} onClick={event=>{event.stopPropagation();deleteInvoice(row);}}/><Button aria-label={d.pdf} disabled={pdfBusy} onDoubleClick={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();printIssued(row);}}><InvoicePdfIcon/></Button><Button aria-label={d.excel} title={d.excel} disabled={excelBusy||loading||requesting} onClick={()=>downloadExcel(row)}><FileDownloadOutlined sx={{color:'#217346',fontSize:24}}/></Button></TableCell>
       </RecordRow>)}
     </RecordInteractionScope></Table></Box>
     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{p:1.5}}><Typography variant="caption" color="text.secondary">{ui.count}: {issued.rows.length}</Typography><ListPagination languageCode={languageCode} onPrevious={()=>setPage(v=>v-1)} onNext={()=>setPage(v=>v+1)} previousDisabled={!page||loading} nextDisabled={!issued.hasMore||loading} previousLabel={common.previous} nextLabel={common.next}><Typography variant="caption">{page+1}</Typography></ListPagination></Stack>
