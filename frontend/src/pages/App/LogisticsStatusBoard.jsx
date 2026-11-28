@@ -68,13 +68,14 @@ function Board({orgId}){
    {!loading&&!error&&data?.rows.length===0&&<Paper variant="outlined" sx={{p:4,textAlign:'center'}}><Typography>{t.empty}</Typography></Paper>}
    <RecordInteractionScope>
    {data?.rows.length>0&&<Box component="section" aria-label={t.title}>
-    <TableContainer component={Paper} variant="outlined"><Table size="small" data-table-layout="wide" aria-label={t.title}>
+    <TableContainer component={Paper} variant="outlined"><Table size="small" data-table-layout="wide" aria-label={t.title} sx={{tableLayout:'fixed',minWidth:1140}}>
+     <colgroup><col style={{width:100}}/><col style={{width:180}}/>{['CGO','ETD','ETA','DLV'].map(key=><col key={key} style={{width:120}}/>)}<col style={{width:140}}/><col/></colgroup>
      <TableHead><TableRow>{[t.status,t.customer,'CGO','ETD','ETA','DLV',t.information,t.remark].map(title=><TableCell key={title}>{title}</TableCell>)}</TableRow></TableHead>
      <TableBody>{data.rows.map(row=><RecordRow key={row.id} recordKey={row.id} disabled={loading||!canOpen} onOpen={()=>navigateToPath('/shipping/'+encodeURIComponent(row.id))} data-logistics-row={row.id}>
       <TableCell sx={{whiteSpace:'nowrap'}}><StatusLabel label={statusText[row.status==='DRAFT'?'ACCEPTED':row.status]||row.status} tone={shippingStatusTone(row.status)}/></TableCell>
       <TableCell sx={{minWidth:160}}><RecordOpenButton disabled={loading||!canOpen} onOpen={()=>navigateToPath('/shipping/'+encodeURIComponent(row.id))}>{label(row.customer,languageCode)}</RecordOpenButton></TableCell>
       <TableCell sx={{whiteSpace:'nowrap'}}>{date(row.cargoReadyDate)}</TableCell>
-      {['etd','eta'].map(key=><TableCell key={key} sx={{whiteSpace:'nowrap'}}>{(row.schedules||[]).map((schedule,index)=><Box key={schedule.id||index}>{date(schedule[key])}{row.schedules.length>1&&<Typography variant="caption" component="div" color="text.secondary">{schedule.number}</Typography>}</Box>)}</TableCell>)}
+      {['etd','eta'].map(key=><TableCell key={key} sx={{whiteSpace:'nowrap'}}>{(row.schedules||[]).map((schedule,index)=><Box key={schedule.id||index}>{date(schedule[key])}{row.schedules.length>1&&<Typography variant="caption" component="div" color="text.secondary" sx={{whiteSpace:'normal',overflowWrap:'anywhere'}}>{schedule.number}</Typography>}</Box>)}</TableCell>)}
       <TableCell sx={{whiteSpace:'nowrap'}}>{date(row.deliveryDate)}</TableCell>
       <TableCell sx={{minWidth:140}}>{information({...row,vehicleUnit:languageCode==='ko'?'대':languageCode==='vi'?'Xe':'Vehicles'})}</TableCell>
       <TableCell sx={{minWidth:240,whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{row.remark||'—'}</TableCell>
