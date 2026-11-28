@@ -751,6 +751,7 @@ const MainLayout = () => {
             path: '/holiday',
           },
           {label:getUiMessage('menu.workTime','Work and leave requests',languageCode),icon:<CalendarMonthIcon/>,path:'/work-time'},
+          ...(activeProfile?.entryType==='ORG'?[{label:getUiMessage('menu.myFeedback','Received Warnings And Praise',languageCode),icon:<GroupIcon/>,path:'/my-feedback'}]:[]),
           ...(isSystemAdminProfile
             ? [
                 {

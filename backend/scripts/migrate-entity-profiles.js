@@ -8,6 +8,7 @@ const versions = ['20261020200000_entity_bank_accounts','20261020210000_industry
 versions.push('20261127040000_shipping_charge_financial_links','20261128010000_nas_evidence_attachments');
 versions.push('20261128020000_daily_work_log_roster');
 versions.push('20261128030000_employee_feedback_preparation');
+versions.push('20261128040000_employee_feedback_delivery');
 const literal = s => `'${s.replaceAll("'", "''")}'`;
 const migrations = () => versions.map(version => {
   const sql = fs.readFileSync(path.join(__dirname,'../prisma/migrations',version,'migration.sql'),'utf8').replace(/\r\n/g,'\n');

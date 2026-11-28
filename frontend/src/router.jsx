@@ -26,6 +26,7 @@ const Organization = lazyImportWithRetry(() => import('./pages/App/Organization'
 const Employee = lazyImportWithRetry(() => import('./pages/App/Employee'));
 const EmployeeSystem = lazyImportWithRetry(() => import('./pages/App/EmployeeSystem'));
 const EmployeeFeedback = lazyImportWithRetry(() => import('./pages/App/EmployeeFeedback'));
+const EmployeeFeedbackInbox = lazyImportWithRetry(() => import('./pages/App/EmployeeFeedbackInbox'));
 const SalarySystem = lazyImportWithRetry(() => import('./pages/App/SalarySystem'));
 const Permission = lazyImportWithRetry(() => import('./pages/App/Permission'));
 const Holiday = lazyImportWithRetry(() => import('./pages/App/Holiday'));
@@ -261,6 +262,7 @@ const router = createBrowserRouter([
             element: <EmployeeSystem />,
           },
           { path: 'employee-system/feedback', element: <EmployeeFeedback /> },
+          { path: 'my-feedback', element: <EmployeeFeedbackInbox /> },
           {
             path: 'salary-system',
             element: <SalarySystem />,

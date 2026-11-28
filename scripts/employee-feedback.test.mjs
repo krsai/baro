@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import feedback from '../backend/dist/services/employeeFeedback.js';
-import {prismaPGlite} from './helpers/prisma-pglite.mjs';
+import {feedbackDeliveryFixture} from './helpers/feedback-delivery-fixture.mjs';
 import {resolvePageNaming} from '../frontend/src/utils/pageNaming.mjs';
 const {feedbackRuleInput,previewEmployeeFeedback,saveEmployeeFeedback,listEmployeeFeedback,registerEmployeeFeedbackRoutes}=feedback;
 const definition={name:'Daily Work Logs',kind:'WARNING',task:'WORK_LOG_ENTRY',timeZone:'Asia/Ho_Chi_Minh',effectiveFrom:'2026-11-01',dueAfterDays:1,deadlineTime:'09:00',threshold:2,weekdays:[0,1,2,3,4,5,6],message:'Please Review The Entry Deadline.',automaticDelivery:false};
@@ -33,22 +33,13 @@ test('unknown evidence and outages are held; excluded days and historical period
  assert.equal(previewEmployeeFeedback(definition,{...sample,excludedDay:true},now).result,'NOT_APPLICABLE');
  assert.equal(previewEmployeeFeedback({...definition,effectiveFrom:'2026-11-27'},sample,now).result,'NOT_APPLICABLE');
  assert.equal(previewEmployeeFeedback({...definition,weekdays:[1]},sample,now).result,'NOT_APPLICABLE');
- assert.throws(()=>feedbackRuleInput({...definition,automaticDelivery:true}),/PREPARATION_ONLY/);
+ assert.equal(feedbackRuleInput({...definition,automaticDelivery:true}).automaticDelivery,true);
+ assert.throws(()=>feedbackRuleInput({...definition,task:'OTHER',automaticDelivery:true}),/UNSUPPORTED/);
  assert.throws(()=>feedbackRuleInput({...definition,effectiveFrom:'2026-02-30'}),/INVALID/);
  assert.throws(()=>previewEmployeeFeedback(definition,{...sample,submittedAt:'2026-12-01T00:00:00Z'},now),/INVALID/);
 });
 
-async function fixture(){
- const f=await prismaPGlite();
- await f.pg.exec(`CREATE TYPE "OrgUserRole" AS ENUM ('ADMIN','WORKER','ACCOUNTANT','OPERATOR');CREATE TYPE "OrgMembershipStatus" AS ENUM ('ACTIVE','SUSPENDED','TERMINATED');
- CREATE TABLE "Organization"(id INT PRIMARY KEY,"isActive" BOOL DEFAULT true,"ownerOrgId" INT);
- CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,"orgRole" "OrgUserRole",status "OrgMembershipStatus",name TEXT,"employeeNo" TEXT,UNIQUE(id,"orgId"));
- CREATE TABLE "Factory"(id INT PRIMARY KEY,"orgId" INT,name TEXT,UNIQUE(id,"orgId"));
- INSERT INTO "Organization"(id) VALUES(1),(2);INSERT INTO "Factory" VALUES(1,1,'HANOI'),(2,2,'OTHER');
- INSERT INTO "Employee" VALUES(1,1,'ADMIN','ACTIVE','Admin','A1'),(2,1,'WORKER','ACTIVE','Worker','W1'),(3,2,'ADMIN','ACTIVE','Other Admin','A2'),(4,1,'ADMIN','SUSPENDED','Former Admin','A3');`);
- await f.pg.exec(readFileSync('backend/prisma/migrations/20261128030000_employee_feedback_preparation/migration.sql','utf8'));
- return f;
-}
+const fixture=feedbackDeliveryFixture;
 test('stored rules and draft reviews are company scoped, versioned, idempotent and audited without delivery',async()=>{
  const f=await fixture();try{
  const saved=await saveEmployeeFeedback(f.db,1,1,'rules','rule-test-001',rule());
@@ -66,17 +57,17 @@ test('stored rules and draft reviews are company scoped, versioned, idempotent a
  const reviewed=await saveEmployeeFeedback(f.db,1,1,'drafts',document.id,draft({version:1,ruleId:saved.id,state:'REVIEWED'}));assert.equal(reviewed.state,'REVIEWED');
  await assert.rejects(saveEmployeeFeedback(f.db,1,1,'drafts',document.id,draft({version:2,ruleId:saved.id})),/FINAL_DOCUMENT/);
  await assert.rejects(saveEmployeeFeedback(f.db,1,1,'drafts','draft-send-001',draft({send:true})),/PREPARATION_ONLY/);
- const company=await listEmployeeFeedback(f.db,1,1),other=await listEmployeeFeedback(f.db,2,3);assert.equal(company.mode,'PREPARATION_ONLY');assert.equal(company.drafts.length,1);assert.equal(other.drafts.length,0);
+ const company=await listEmployeeFeedback(f.db,1,1),other=await listEmployeeFeedback(f.db,2,3);assert.equal(company.mode,'CONFIGURED_AUTOMATION');assert.equal(company.drafts.length,1);assert.equal(other.drafts.length,0);
  const count=(await f.pg.query('SELECT count(*)::int n FROM "EmployeeFeedbackEvent"')).rows[0].n;assert.equal(count,4);
  await assert.rejects(f.pg.exec('DELETE FROM "EmployeeFeedbackEvent"'),/HISTORY_IMMUTABLE/);
- await assert.rejects(f.pg.exec(`UPDATE "EmployeeFeedbackRule" SET definition='{"automaticDelivery":true}'`),/preparation_check/);
- await assert.rejects(f.pg.exec(`UPDATE "EmployeeFeedbackRule" SET definition=definition-'automaticDelivery'`),/preparation_check/);
+ await assert.rejects(f.pg.exec(`UPDATE "EmployeeFeedbackRule" SET definition='{"automaticDelivery":true}'`),/armed_check/);
+ await assert.rejects(f.pg.exec(`UPDATE "EmployeeFeedbackRule" SET definition=definition-'automaticDelivery'`),/delivery_mode_check/);
  await assert.rejects(f.pg.exec(`UPDATE "EmployeeFeedbackDraft" SET content='{}' WHERE id='draft-test-001'`),/FINAL_DOCUMENT/);
  await f.pg.exec(readFileSync('backend/prisma/migrations/20261128030000_employee_feedback_preparation/migration.sql','utf8'));
  assert.equal((await listEmployeeFeedback(f.db,1,1)).drafts[0].content.message,document.content.message);
  }finally{await f.close();}
 });
-test('routes offer only preparation operations and enforce active company role plus stored feature and industry gates',async()=>{
+test('rule editing routes enforce active administrator role plus stored feature and industry gates',async()=>{
  const f=await fixture();try{
  const routes=[];const app={get:(path,fn)=>routes.push({method:'GET',path,fn}),put:(path,fn)=>routes.push({method:'PUT',path,fn}),post:(path,fn)=>routes.push({method:'POST',path,fn})};
  let allowed=true,industry=true,actorId=1;

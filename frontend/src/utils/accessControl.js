@@ -208,6 +208,7 @@ export const resolveFeatureByPath = (pathname, orgType = 'SERVICE') => {
   if (path.startsWith('/revenue-forecast')) return FEATURE_KEYS.REVENUE_FORECAST;
   if (path.startsWith('/business')) return FEATURE_KEYS.BUSINESS;
   if (path.startsWith('/employee-system')) return FEATURE_KEYS.EMPLOYEE_SYSTEM;
+  if (path.startsWith('/my-feedback')) return FEATURE_KEYS.DASHBOARD;
   if (path.startsWith('/salary-system')) return FEATURE_KEYS.SALARY_SYSTEM;
   if (path.startsWith('/employee')) return FEATURE_KEYS.EMPLOYEE;
   if (path.startsWith('/customer')) return FEATURE_KEYS.CUSTOMER;

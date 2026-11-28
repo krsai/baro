@@ -519,6 +519,7 @@ model PartnerContact {
 }
 
 model Organization {
+  feedbackAutomation EmployeeFeedbackAutomation?
   feedbackRules EmployeeFeedbackRule[]
   feedbackDrafts EmployeeFeedbackDraft[]
   evidenceAttachments EvidenceAttachment[]
@@ -1220,6 +1221,11 @@ model Warehouse {
 
 
 model Employee {
+  feedbackAutomationPolicies EmployeeFeedbackAutomation[]
+  feedbackAutomationEvents EmployeeFeedbackAutomationEvent[]
+  authorizedFeedbackRules EmployeeFeedbackRule[] @relation("FeedbackRuleAutomation")
+  feedbackDeliveries EmployeeFeedbackDelivery[] @relation("FeedbackDeliveryRecipient")
+  authorizedFeedbackDeliveries EmployeeFeedbackDelivery[] @relation("FeedbackDeliveryAuthorizer")
   assignedFeedbackRules EmployeeFeedbackRule[] @relation("FeedbackRuleEmployee")
   createdFeedbackRules EmployeeFeedbackRule[] @relation("FeedbackRuleCreator")
   receivedFeedbackDrafts EmployeeFeedbackDraft[] @relation("FeedbackDraftEmployee")
@@ -3761,7 +3767,73 @@ model ChangeApprovalDecision {
  @@index([orgId,employeeId,createdAt])
 }
 
+model EmployeeFeedbackAutomation {
+ orgId Int @id
+ enabled Boolean @default(false)
+ version Int @default(1)
+ enabledFrom DateTime? @db.Timestamp(3)
+ actorId Int
+ organization Organization @relation(fields:[orgId],references:[id],onDelete:Restrict)
+ actor Employee @relation(fields:[actorId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackAutomation_actor_fkey")
+ events EmployeeFeedbackAutomationEvent[]
+}
+model EmployeeFeedbackAutomationEvent {
+ orgId Int
+ version Int
+ actorId Int
+ enabled Boolean
+ createdAt DateTime @default(now()) @db.Timestamp(3)
+ automation EmployeeFeedbackAutomation @relation(fields:[orgId],references:[orgId],onDelete:Restrict)
+ actor Employee @relation(fields:[actorId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackAutomationEvent_actor_fkey")
+ deliveries EmployeeFeedbackDelivery[]
+ @@id([orgId,version])
+}
+model EmployeeFeedbackRun {
+ ruleId String @id
+ orgId Int
+ ruleVersion Int
+ automationVersion Int
+ lastWorkDate String?
+ lastAppliedAt DateTime? @db.Timestamp(3)
+ lastSourceId String?
+ matchCount Int @default(0)
+ matchStartDate String?
+ lastError String?
+ lastAttemptAt DateTime @default(now()) @db.Timestamp(3)
+ rule EmployeeFeedbackRule @relation(fields:[ruleId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackRun_rule_fkey")
+ @@unique([ruleId,orgId])
+}
+model EmployeeFeedbackDelivery {
+ id String @id
+ orgId Int
+ employeeId Int
+ ruleId String
+ ruleVersion Int
+ automationVersion Int
+ occurrenceKey String
+ kind String
+ subject String
+ message String
+ periodStartDate String
+ periodEndDate String
+ evidence Json
+ authorizedByEmployeeId Int
+ createdAt DateTime @default(now()) @db.Timestamp(3)
+ readAt DateTime? @db.Timestamp(3)
+ rule EmployeeFeedbackRule @relation(fields:[ruleId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackDelivery_rule_fkey")
+ employee Employee @relation("FeedbackDeliveryRecipient",fields:[employeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackDelivery_employee_fkey")
+ authorizer Employee @relation("FeedbackDeliveryAuthorizer",fields:[authorizedByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackDelivery_actor_fkey")
+ activation EmployeeFeedbackAutomationEvent @relation(fields:[orgId,automationVersion],references:[orgId,version],onDelete:Restrict,map:"FeedbackDelivery_activation_fkey")
+ @@unique([ruleId,ruleVersion,automationVersion,occurrenceKey],map:"FeedbackDelivery_occurrence_key")
+ @@index([orgId,employeeId,createdAt(sort:Desc),id],map:"FeedbackDelivery_inbox_idx")
+}
+
 model EmployeeFeedbackRule {
+ armedAt DateTime? @db.Timestamp(3)
+ automationByEmployeeId Int?
+ automationAuthorizer Employee? @relation("FeedbackRuleAutomation",fields:[automationByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackRule_automation_actor_fkey")
+ run EmployeeFeedbackRun?
+ deliveries EmployeeFeedbackDelivery[]
  id String @id
  orgId Int
  employeeId Int

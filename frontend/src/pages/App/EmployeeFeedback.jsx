@@ -15,17 +15,24 @@ import {useAppActions} from '../../context/AppContext';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import {buildQueryString,requestJSON} from '../../utils/apiClient';
 import {employeeFeedbackText} from '../../constants/employeeFeedback';
+import {feedbackAutomationText} from '../../constants/feedbackAutomation';
+import EmployeeFeedbackInbox from './EmployeeFeedbackInbox';
 
 const emptyRule=()=>({id:crypto.randomUUID(),version:0,employeeId:null,factoryId:null,definition:{name:'',kind:'WARNING',task:'WORK_LOG_ENTRY',effectiveFrom:dayjs().format('YYYY-MM-DD'),dueAfterDays:1,deadlineTime:'09:00',timeZone:'Asia/Ho_Chi_Minh',threshold:1,weekdays:[1,2,3,4,5],message:'',automaticDelivery:false}});
 const emptyDraft=()=>({id:crypto.randomUUID(),version:0,employeeId:null,ruleId:null,state:'DRAFT',content:{kind:'WARNING',subject:'',message:'',basis:''}});
 const snapshot=value=>JSON.stringify(value);
 
 export default function EmployeeFeedback(){
+ const auth=useAuth();
+ return <EmployeeFeedbackBody key={`${auth.activeOrgId}:${auth.activeProfile?.employeeId||''}:${auth.user?.id||''}`}/>;
+}
+function EmployeeFeedbackBody(){
  const {activeOrgId}=useAuth(),{languageCode}=useLanguage(),{showNotification}=useAppActions(),dialogs=usePageDialogs();
- const t=employeeFeedbackText[languageCode]||employeeFeedbackText.en;
+ const t={...(employeeFeedbackText[languageCode]||employeeFeedbackText.en),...(feedbackAutomationText[languageCode]||feedbackAutomationText.en)};
  const [category,setCategory]=useState('rules'),[data,setData]=useState(null),[draft,setDraft]=useState(null),[baseline,setBaseline]=useState(null),[loading,setLoading]=useState(true),[loadError,setLoadError]=useState(false),[saving,setSaving]=useState(false),[retry,setRetry]=useState(0),[result,setResult]=useState(null),[simulating,setSimulating]=useState(false);
  const [sample,setSample]=useState({workDate:dayjs().format('YYYY-MM-DD'),submittedAt:'',evidenceState:'UNKNOWN',matchingCount:1,excludedDay:false});
  const orgRef=useRef(activeOrgId),lock=useRef(false),transition=useRef(null);orgRef.current=activeOrgId;
+ useEffect(()=>{orgRef.current=activeOrgId;return ()=>{orgRef.current=null;};},[activeOrgId]);
  const dirty=Boolean(draft&&snapshot(draft)!==baseline),final=category==='drafts'&&draft?.state!=='DRAFT';
  useUnsavedChanges(dirty);
  useEffect(()=>{
@@ -53,7 +60,7 @@ export default function EmployeeFeedback(){
   finally{if(transition.current===token)transition.current=null;}
  };
  const change=(key,value)=>{setDraft(current=>({...current,[key]:value}));setResult(null);};
- const field=(key,value)=>{const prop=category==='rules'?'definition':'content';setDraft(current=>({...current,[prop]:{...current[prop],[key]:value}}));setResult(null);};
+ const field=(key,value)=>{const prop=category==='rules'?'definition':'content';setDraft(current=>({...current,[prop]:{...current[prop],[key]:value,...(category==='rules'&&key==='task'&&value==='OTHER'?{automaticDelivery:false}:{})}}));setResult(null);};
  const save=async(state)=>{
   if(!draft||lock.current||loading||loadError)return;
   const orgId=activeOrgId,body=state?{...draft,state}:draft;lock.current=true;setSaving(true);
@@ -63,6 +70,17 @@ export default function EmployeeFeedback(){
    setData(current=>({...current,[category]:[saved,...(current?.[category]||[]).filter(row=>row.id!==saved.id)]}));setDraft(saved);setBaseline(snapshot(saved));showNotification(t.saved,'success');
   }catch(error){if(orgRef.current===orgId)showNotification(error?.status===409?t.changed:error?.status===400?t.invalid:t.error,'error');}
   finally{if(orgRef.current===orgId){lock.current=false;setSaving(false);}}
+ };
+ const toggleCompany=async()=>{
+  if(lock.current||transition.current||!data)return;
+  const token={},orgId=activeOrgId,enabled=!data.automation?.enabled;transition.current=token;
+  try{
+   if(!await dialogs.confirm(enabled?t.confirmOn:t.confirmOff)||orgRef.current!==orgId)return;
+   lock.current=true;setSaving(true);
+   const automation=await requestJSON('/employee-feedback/automation'+buildQueryString({orgId}),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled,version:data.automation?.version||0})});
+   if(orgRef.current===orgId){setData(current=>({...current,automation}));showNotification(t.saved,'success');}
+  }catch{if(orgRef.current===orgId)showNotification(t.error,'error');}
+  finally{if(transition.current===token)transition.current=null;if(orgRef.current===orgId){lock.current=false;setSaving(false);}}
  };
  const simulate=async()=>{
   if(!draft||lock.current||simulating)return;const orgId=activeOrgId;setSimulating(true);setResult(null);
@@ -75,16 +93,18 @@ export default function EmployeeFeedback(){
  const values=category==='rules'?draft?.definition:draft?.content,rows=data?.[category]||[],busy=saving||simulating||loading;
  const people=data?.employees||[],factories=data?.factories||[],personName=id=>people.find(person=>person.id===id)?.name||String(id||'');
  const options=(key,keys)=> <TextField select fullWidth size="small" label={t[key]} value={values?.[key]||''} disabled={busy||final} onChange={event=>field(key,event.target.value)}>{keys.map(item=><MenuItem key={item} value={item}>{t[item]||item}</MenuItem>)}</TextField>;
- return <AppPageContainer header={<PageSectionHeader title={t.title} titleComponent="h1" context={<Chip label={t.mode} size="small"/>} actions={<PageActions><Button disabled={!data||busy||loadError} onClick={start}>{t.new}</Button><Button variant="contained" disabled={!draft||!dirty||busy||final||loadError} onClick={()=>save()}>{t.save}</Button></PageActions>}/> }>
+ return <AppPageContainer header={<PageSectionHeader title={t.title} titleComponent="h1" context={<Chip label={data?.automation?.enabled?t.on:t.off} size="small"/>} actions={<PageActions><Button disabled={busy||dirty} onClick={()=>setRetry(value=>value+1)}>{t.refresh}</Button><Button disabled={!data||busy||loadError} onClick={toggleCompany}>{t.companySwitch}</Button>{category!=='sent'&&<><Button disabled={!data||busy||loadError} onClick={start}>{t.new}</Button><Button variant="contained" disabled={!draft||!dirty||busy||final||loadError} onClick={()=>save()}>{t.save}</Button></>}</PageActions>}/> }>
   <QueryFeedback error={loadError} onRetry={()=>setRetry(value=>value+1)}/>
-  <Tabs value={category} onChange={(_event,value)=>switchTo(value)}><Tab value="rules" label={t.rules}/><Tab value="drafts" label={t.drafts}/></Tabs>
+  <Tabs value={category} onChange={(_event,value)=>switchTo(value)} variant="scrollable" scrollButtons="auto"><Tab value="rules" label={t.rules}/><Tab value="sent" label={t.sent}/><Tab value="drafts" label={t.drafts}/></Tabs>
+  {category==='sent'?<EmployeeFeedbackInbox adminView embedded/>:<>
   <Typography variant="caption" color="text.secondary">{t.recent}</Typography>
-  <ListDetailLayout listWidth="minmax(0,0.85fr)" detailWidth="minmax(0,1.5fr)" list={<DialogRecordList rows={rows} columns={[{key:'name',label:t.name,value:row=>row.definition?.name||row.content?.subject},{key:'employee',label:t.employee,value:row=>personName(row.employeeId)},{key:'kind',label:t.kind,value:row=>t[row.definition?.kind||row.content?.kind]}]} selectedKey={draft?.id} onPreview={()=>{}} onSelect={row=>switchTo(category,row)} disabled={busy} loading={loading} error={loadError} loaded={Boolean(data)} onRetry={()=>setRetry(value=>value+1)} languageCode={languageCode}/>}
+  <ListDetailLayout listWidth="minmax(0,0.85fr)" detailWidth="minmax(0,1.5fr)" list={<DialogRecordList rows={rows} columns={[{key:'name',label:t.name,value:row=>row.definition?.name||row.content?.subject},{key:'employee',label:t.employee,value:row=>personName(row.employeeId)},{key:'kind',label:t.kind,value:row=>t[row.definition?.kind||row.content?.kind]},...(category==='rules'?[{key:'run',label:t.runStatus,value:row=>t[row.lastError]||(row.definition?.automaticDelivery?t.ready:t.off)}]:[])]} selectedKey={draft?.id} onPreview={()=>{}} onSelect={row=>switchTo(category,row)} disabled={busy} loading={loading} error={loadError} loaded={Boolean(data)} onRetry={()=>setRetry(value=>value+1)} languageCode={languageCode}/>}
    detail={draft?<Paper variant="outlined" sx={{p:2,minWidth:0}}><Stack spacing={2}>
     {final&&<Chip label={t[draft.state]}/>}
     <SearchableSelect label={t.employee} options={people} getOptionDisabled={person=>person.status!==undefined&&person.status!=='ACTIVE'} value={people.find(person=>person.id===draft.employeeId)||null} getOptionLabel={person=>`${person.employeeNo||''} ${person.name}`} isOptionEqualToValue={(a,b)=>a.id===b.id} disabled={busy||final} onChange={(_event,value)=>change('employeeId',value?.id||null)} textFieldProps={{size:'small',required:true}}/>
     {options('kind',['WARNING','PRAISE'])}
     {category==='rules'?<>
+     <FormControlLabel label={t.ruleSwitch} control={<Checkbox checked={values.automaticDelivery===true} disabled={busy||values.task==='OTHER'} onChange={(_event,checked)=>field('automaticDelivery',checked)}/>}/>
      <TextField label={t.name} value={values.name} disabled={busy} onChange={event=>field('name',event.target.value)} size="small" required/>
      {options('task',['WORK_LOG_ENTRY','LEDGER_ENTRY','OTHER'])}
      <SearchableSelect label={t.factory} options={factories} value={factories.find(factory=>factory.id===draft.factoryId)||null} getOptionLabel={factory=>factory.name} isOptionEqualToValue={(a,b)=>a.id===b.id} disabled={busy} onChange={(_event,value)=>change('factoryId',value?.id||null)} textFieldProps={{size:'small',required:values.task==='WORK_LOG_ENTRY'}}/>
@@ -113,5 +133,6 @@ export default function EmployeeFeedback(){
      <Button disabled={busy} onClick={simulate}>{t.preview}</Button>{result&&<Chip role="status" label={t[result.result]}/>}
     </Stack></Box>}
    </Stack></Paper>:<Typography sx={{p:2}} color="text.secondary">{t.noSelection}</Typography>}/>
+  </>}
  </AppPageContainer>;
 }
