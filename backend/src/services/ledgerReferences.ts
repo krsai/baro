@@ -1,3 +1,4 @@
+import {evidenceDisplayFilename} from './documentEvidence';
 import {legacyExpenseNumber} from './documentNumber';
 
 // Identity and evidence are separate, company-scoped read projections.
@@ -16,6 +17,6 @@ export async function ledgerReferenceDetails(db:any,orgId:number,entries:any[]){
    if(invoice?.invoiceNumber)invoiceNumbers.push(invoice.invoiceNumber);
   }
   const evidence=String(entry.evidenceNumber||'').trim().replace(/^["']|["']$/g,'');
-  return [entry.id,{managementNumber:entry.ledgerDocument?.managementNumber||entry.managementIdentity?.managementNumber||'',expenseRequestNumbers:[...new Set(expenseRequestNumbers)],invoiceNumbers:[...new Set(invoiceNumbers)],evidenceFilename:entry.evidenceType==='FILE'&&!evidence.startsWith('IBT:')?evidence.split(/[\\/]/).pop()||'':''}];
+  return [entry.id,{managementNumber:entry.ledgerDocument?.managementNumber||entry.managementIdentity?.managementNumber||'',expenseRequestNumbers:[...new Set(expenseRequestNumbers)],invoiceNumbers:[...new Set(invoiceNumbers)],evidenceFilename:entry.evidenceType==='FILE'&&!evidence.startsWith('IBT:')?evidenceDisplayFilename(evidence):''}];
  }));
 }

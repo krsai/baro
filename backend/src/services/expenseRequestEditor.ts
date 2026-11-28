@@ -1,3 +1,4 @@
+import {validateAttachmentEvidence} from './evidenceAttachments';
 import {normalizeDocumentEvidence,storedDocumentEvidence} from './documentEvidence';
 import {effectiveApprovalDefault,localApprovalMode} from './approvalDefaults';
 import {paidExpenseEntries} from './paidExpenseCorrection';
@@ -128,6 +129,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${key},true),set_config('baro.expense_editor_timezone',${timeZone},true)`;
   const before = snapshot(source);
   const evidenceFiles=body.evidenceFiles===undefined?undefined:normalizeDocumentEvidence(body.evidenceFiles,storedDocumentEvidence(source.document,source.costs));
+  await validateAttachmentEvidence(tx,orgId,evidenceFiles,'EXPENSE');
   if(source.document&&body.requestDate!==undefined&&body.requestDate!==source.document.requestDate)return fail(409,'EXPENSE_REQUEST_DATE_LOCKED');
   const requestDate = validateCostDate(source.document?.requestDate||source.costs[0]?.transactionDate||(body.automaticRequestDate?expenseApplicationDate():body.requestDate??expenseApplicationDate())), remark = typeof body.remark==='string' ? body.remark.trim() : '';
   // Paid code-only corrections cannot edit the original header.

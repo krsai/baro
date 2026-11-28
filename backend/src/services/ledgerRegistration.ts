@@ -1,3 +1,4 @@
+import {validateAttachmentEvidence} from './evidenceAttachments';
 import {normalizeDocumentEvidence,storedDocumentEvidence} from './documentEvidence';
 import {validEvidencePath} from '../utils/evidencePath';
 import {expensePaymentComparison} from './expensePaymentComparison';
@@ -46,6 +47,7 @@ export async function ledgerRegistrationSource(db:any,orgId:number,input:any,pre
  if(previousEntry?.documentId&&payload.documentVersion!==1)fail('LEDGER_INVALID_BATCH');
  const priorDocument=previousEntry?.documentId?await db.bankLedgerDocument.findFirst({where:{id:previousEntry.documentId,orgId}}):null;
  const evidenceFiles=payload.documentVersion===1?normalizeDocumentEvidence(payload.evidenceFiles,storedDocumentEvidence(priorDocument,previousEntry?.evidenceType==='FILE'?[previousEntry]:[])):undefined;
+  await validateAttachmentEvidence(db,orgId,evidenceFiles,'BANK_LEDGER');
  if(payload.documentVersion!==undefined&&payload.documentVersion!==1)fail('LEDGER_INVALID_BATCH');
  const rows=[],items=[],transferTargets=[],accountSources=[];
  for(const [parentIndex,suppliedRow] of parents.entries()){

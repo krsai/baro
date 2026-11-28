@@ -519,6 +519,8 @@ model PartnerContact {
 }
 
 model Organization {
+  evidenceAttachments EvidenceAttachment[]
+  evidenceAttachmentLinks EvidenceAttachmentLink[]
   ledgerDocuments BankLedgerDocument[]
   materialItemOwnerCosts PartnerTransactionCost[] @relation("MaterialItemOwner")
   handledPolicies PartnerHandledPolicy[] @relation("HandledOwner")
@@ -839,6 +841,7 @@ model BankLedgerEntry {
 }
 
 model BankLedgerDocument {
+  attachmentLinks EvidenceAttachmentLink[]
   organization Organization @relation(fields:[orgId],references:[id],onDelete:Restrict,onUpdate:Restrict,map:"LedgerDocument_org_fkey")
   changeRequest ChangeApprovalRequest @relation(fields:[changeRequestId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"LedgerDocument_approval_fkey")
   changeRequestId String @default("")
@@ -1214,6 +1217,7 @@ model Warehouse {
 
 
 model Employee {
+  uploadedEvidence EvidenceAttachment[]
   handledPolicies PartnerHandledPolicy[]
   handledAudits PartnerHandledAudit[]
   createdCodeItemTypes CodeItemType[]
@@ -2366,6 +2370,7 @@ model ExpenseCostProcess {
 }
 
 model ExpenseRequest {
+  attachmentLinks EvidenceAttachmentLink[]
   evidenceFiles Json?
   paymentSchedule ExpensePaymentSchedule[]
  changeApprovalRequests ChangeApprovalRequest[] @relation("ExpenseChangeSource")
@@ -3673,6 +3678,7 @@ model ExpenseItemReference {
 
 // The immutable SQL migration enforces company/source/employee FKs and lifecycle guards.
 model ChangeApprovalRequest {
+  attachmentLinks EvidenceAttachmentLink[]
   ledgerDocuments BankLedgerDocument[]
  invoice Invoice? @relation("InvoiceChangeSource",fields:[invoiceId,orgId],references:[id,sellerOrgId],onDelete:Restrict,map:"ChangeApprovalRequest_invoice_fkey")
  invoiceId String?
@@ -3967,4 +3973,40 @@ model AssignmentProgressSync {
   syncedAt DateTime? @db.Timestamp(3)
   assignmentPlan AssignmentPlan @relation(fields:[assignmentPlanId,orgId],references:[id,orgId],onDelete:Cascade,onUpdate:Restrict)
   @@id([assignmentPlanId,orgId])
+}
+
+model EvidenceAttachment {
+  id String @id
+  orgId Int
+  createdByEmployeeId Int
+  purpose String
+  originalFileName String
+  contentType String
+  byteSize Int
+  sha256 String
+  storageRoot String
+  storageKey String
+  status String @default("PENDING")
+  createdAt DateTime @default(now())
+  readyAt DateTime?
+  organization Organization @relation(fields:[orgId],references:[id],onDelete:Restrict,onUpdate:Restrict,map:"EvidenceAttachment_org_fkey")
+  uploader Employee @relation(fields:[createdByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"EvidenceAttachment_actor_fkey")
+  links EvidenceAttachmentLink[]
+  @@unique([id,orgId],map:"EvidenceAttachment_scope_key")
+  @@unique([storageRoot,storageKey],map:"EvidenceAttachment_storage_key")
+}
+model EvidenceAttachmentLink {
+  id String @id
+  orgId Int
+  attachmentId String
+  expenseRequestId Int?
+  ledgerDocumentId String?
+  changeRequestId String?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[orgId],references:[id],onDelete:Restrict,onUpdate:Restrict,map:"EvidenceLink_org_fkey")
+  attachment EvidenceAttachment @relation(fields:[attachmentId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"EvidenceLink_attachment_fkey")
+  expenseRequest ExpenseRequest? @relation(fields:[expenseRequestId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"EvidenceLink_expense_fkey")
+  ledgerDocument BankLedgerDocument? @relation(fields:[ledgerDocumentId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"EvidenceLink_ledger_fkey")
+  changeRequest ChangeApprovalRequest? @relation(fields:[changeRequestId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"EvidenceLink_change_fkey")
+  @@index([attachmentId,orgId])
 }

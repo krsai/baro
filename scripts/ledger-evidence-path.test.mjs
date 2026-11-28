@@ -7,7 +7,7 @@ import {ledgerInputIssue} from '../frontend/src/utils/ledgerInputIssue.mjs';
 const require=createRequire(import.meta.url);
 const {resolveEvidence}=require('../backend/dist/services/bankEvidence');
 const {ledgerRegistrationSource}=require('../backend/dist/services/ledgerRegistration');
-const invalid=['','X','receipt.pdf','folder/receipt.pdf','C:receipt.pdf','C:\\','\\\\server\\share','/receipts/','/a/../receipt.pdf','/a/./receipt.pdf','https://example.com/','https://user:pass@example.com/receipt.pdf','https://example.com/bad%xx','javascript:alert(1)','/receipt.pdf\nX','/bad\u0000.pdf'];
+const invalid=['/nas-evidence/550e8400-e29b-41d4-a716-446655440000/receipt.pdf','','X','receipt.pdf','folder/receipt.pdf','C:receipt.pdf','C:\\','\\\\server\\share','/receipts/','/a/../receipt.pdf','/a/./receipt.pdf','https://example.com/','https://user:pass@example.com/receipt.pdf','https://example.com/bad%xx','javascript:alert(1)','/receipt.pdf\nX','/bad\u0000.pdf'];
 const valid=['C:\\Evidence\\receipt.pdf','D:/Evidence/Receipt.pdf','\\\\server\\share\\receipt.pdf','/receipts/receipt.pdf','https://example.com/receipt.pdf?download=1','"C:\\Evidence Files\\receipt.pdf"',"'/receipts/receipt.pdf'"];
 test('full paths only, with matching frontend/backend syntax and no network or filesystem probing',async()=>{
  assert.equal(readFileSync('frontend/src/utils/evidenceReference.mjs','utf8'),readFileSync('backend/src/utils/evidencePath.js','utf8'));

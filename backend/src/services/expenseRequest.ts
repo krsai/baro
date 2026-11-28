@@ -1,3 +1,4 @@
+import {validateAttachmentEvidence} from './evidenceAttachments';
 import {shippingChargeReference,linkShippingCharge} from './shippingChargeDocuments';
 import {normalizeDocumentEvidence,storedDocumentEvidence} from './documentEvidence';
 import {normalizeExpensePaymentSchedule,replaceExpensePaymentSchedule} from './expensePaymentSchedule';
@@ -53,6 +54,7 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   const period = await loadManagementPeriod(tx, orgId);
   assertManagedDate(requestDate, period.startDate);
   const evidenceFiles=body.evidenceFiles===undefined?undefined:normalizeDocumentEvidence(body.evidenceFiles,previous?storedDocumentEvidence(previous,previous.items):[]);
+  await validateAttachmentEvidence(tx,orgId,evidenceFiles,'EXPENSE');
   const paymentSchedule:any[]=[];
   const scheduledPaymentDate=cashScheduleDate(body?.scheduledPaymentDate);
   const remark = typeof body?.remark === 'string' ? body.remark.trim() : '';

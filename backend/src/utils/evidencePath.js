@@ -12,6 +12,8 @@ export function evidenceReference(value){
 export function validEvidencePath(value){
  if(typeof value!=='string')return false;
  const path=evidenceReference(value).trim();
+ // Managed attachments are validated by the document attachment contract.
+ if(/^\/nas-evidence(?:\/|$)/i.test(path))return false;
  if(!path||path.length>500||/[\u0000-\u001f\u007f<>"|*]/.test(path))return false;
  if(/^https?:\/\//i.test(path)){
   try{const url=new URL(path);return Boolean(url.hostname&&!url.username&&!url.password&&url.pathname!=='/'&&!url.pathname.endsWith('/')&&!/\s|\\|%(?![a-f\d]{2})/i.test(path));}catch{return false;}

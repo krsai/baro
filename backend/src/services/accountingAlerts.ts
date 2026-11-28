@@ -1,3 +1,4 @@
+import {evidenceDisplayFilename} from './documentEvidence';
 import {ledgerReferenceDetails} from './ledgerReferences';
 import {legacyExpenseNumber} from './documentNumber';
 import {attachLedgerReportItems,ledgerReportItems} from './ledgerReportItems';
@@ -60,7 +61,7 @@ export async function accountingLedgerReferences(db:any,orgId:number,entries:any
   });
   // FILE evidence stores a path: show its document filename, never the internal UUID.
   const evidence=String(entry.evidenceNumber||'').trim().replace(/^["']|["']$/g,'');
-  const reference=evidence.split(/[\\/]/).pop()||'';
+  const reference=evidenceDisplayFilename(evidence);
   return [entry.id,[...new Set(numbers)].join(' / ')||reference];
  }));
 }

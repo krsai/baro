@@ -1,3 +1,4 @@
+import {validateAttachmentEvidence} from './evidenceAttachments';
 import {normalizeDocumentEvidence} from './documentEvidence';
 import {ledgerReferenceDetails} from './ledgerReferences';
 import {invoiceCurrencyAmount,mixedInvoiceRemaining} from './invoiceCurrencies';
@@ -228,6 +229,7 @@ export async function postLedgerSettlementBatch(db:any,orgId:number,actor:string
   const old=revisesEntryId?await tx.bankLedgerEntry.findFirst({where:{id:revisesEntryId,orgId},include:{ledgerDocument:true}}):null;
   if(old?.documentId&&body.documentVersion!==1)return fail('LEDGER_INVALID_BATCH');
   const evidenceFiles=body.documentVersion===1?normalizeDocumentEvidence(body.evidenceFiles,old?.ledgerDocument?.evidenceFiles||(old?.evidenceType==='FILE'?[{path:old.evidenceNumber,reference:''}]:[])):undefined;
+  await validateAttachmentEvidence(tx,orgId,evidenceFiles,'BANK_LEDGER');
   const document=evidenceFiles?await tx.bankLedgerDocument.create({data:{orgId,managementNumber:'',transactionDate:parents[0].transactionDate,remark:parents[0].remark||parents[0].purpose||'',evidenceFiles,createdBy:actor}}):null;
   const entryIds:string[]=[],posted=new Map<string,any>();
   for(const parent of [...parents.filter((r:any)=>!r.feeForClientKey),...linked]){

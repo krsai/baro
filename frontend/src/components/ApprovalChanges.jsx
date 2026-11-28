@@ -1,3 +1,4 @@
+import {evidenceFileName} from '../utils/evidenceAttachments.mjs';
 import {documentEvidence,documentEvidenceText} from '../utils/documentEvidence.mjs';
 import React from 'react';
 import {Box,Paper,Typography,Tooltip} from '@mui/material';
@@ -30,7 +31,7 @@ export default function ApprovalChanges({detail,languageCode}){
  if(detail.menu==='BANK_LEDGER'){
   const before=detail.before?.entry||{},after=detail.after?.rows?.find(row=>row.entryKind==='BANK')||{},account=detail.before?.account||{},proposed=detail.before?.proposedAccount||account;
   const evidenceLabel=(documentEvidenceText[languageCode]||documentEvidenceText.en).title;
-  const showEvidence=items=>items.map(item=>[item.reference,item.path].filter(Boolean).join(' ? ')).join('\n');
+  const showEvidence=items=>items.map(item=>[item.reference,evidenceFileName(item)].filter(Boolean).join(' ? ')).join('\n');
   add('document-evidence',evidenceLabel,showEvidence(documentEvidence(before.ledgerDocument,before.evidenceType==='FILE'?[before]:[])),showEvidence(documentEvidence(detail.after||{},[])));
   const documentRows=before.documentEntries?.filter(item=>item.documentPosition!=null&&!item.bankFeeParent)||[];
   const nextRows=(detail.after?.rows?.filter(item=>item.entryKind==='BANK')||[]).map(item=>({...item,...detail.before?.proposedRows?.find(row=>row.clientKey===item.clientKey),accountingCode:item.accountingCode}));
@@ -52,7 +53,7 @@ export default function ApprovalChanges({detail,languageCode}){
   add('amount',t.amount,formatInvoiceMoney(String(before.amount||0),currency),formatInvoiceMoney(String(after.amount||0),afterCurrency),currency+':'+canonical(before.amount),afterCurrency+':'+canonical(after.amount));
   if(before.subtotal!=null||after.subtotal!=null){const taxLabels=ledgerEntryText[languageCode]||ledgerEntryText.en;for(const [key,label] of [['subtotal',taxLabels.subtotal],['vatRate',taxLabels.vatRate],['vatAmount',taxLabels.vatAmount]])add(key,label,before[key]==null?null:key==='vatRate'?before[key]+'%':formatInvoiceMoney(String(before[key]),currency),after[key]==null?null:key==='vatRate'?after[key]+'%':formatInvoiceMoney(String(after[key]),afterCurrency),before[key]==null?'':canonical(before[key]),after[key]==null?'':canonical(after[key]));}
   add('purpose',t.purpose,before.remark||before.purpose,after.remark||after.purpose);
-  add('reference',t.reference,evidenceReference(before.evidenceNumber),evidenceReference(after.evidenceNumber));
+  add('reference',t.reference,evidenceFileName({path:evidenceReference(before.evidenceNumber)}),evidenceFileName({path:evidenceReference(after.evidenceNumber)}));
   add('evidenceType',ledgerLabels.evidenceKind,ledgerLabels[before.evidenceType]||before.evidenceType,ledgerLabels[after.evidenceType]||after.evidenceType,before.evidenceType,after.evidenceType);
   const oldTax=detail.before?.taxAllocations||[],newTax=after.expenseItems||[];
   const taxIds=[...new Set([...oldTax.map(item=>item.expenseItemId),...newTax.map(item=>item.itemId)])];
@@ -75,7 +76,7 @@ export default function ApprovalChanges({detail,languageCode}){
  }else if(detail.menu==='EXPENSE'){
   const before=detail.before?.document||{},after=detail.after?.document||{},oldItems=detail.before?.costs||before.items||[],newItems=detail.after?.costs||after.items||[];
   add('date',t.dateTransaction,before.requestDate,after.requestDate);add('party',t.party,before.partner?.name||before.payeeEmployee?.name,after.partner?.name||after.payeeEmployee?.name,before.payeeEmployeeId?'E:'+before.payeeEmployeeId:before.partnerOrgId,after.payeeEmployeeId?'E:'+after.payeeEmployeeId:after.partnerOrgId);add('remark',t.purpose,before.remark,after.remark);
-  const showEvidence=items=>items.map(item=>[item.reference,item.path].filter(Boolean).join(' ? ')).join('\n');
+  const showEvidence=items=>items.map(item=>[item.reference,evidenceFileName(item)].filter(Boolean).join(' ? ')).join('\n');
   add('document-evidence',(documentEvidenceText[languageCode]||documentEvidenceText.en).title,showEvidence(documentEvidence(before,oldItems)),showEvidence(documentEvidence(after,newItems)));
   const summary=expenseSummary[languageCode]||expenseSummary.en;
   const totals=document=>[...(document.currencyTotals||[])].sort((a,b)=>a.currency.localeCompare(b.currency));

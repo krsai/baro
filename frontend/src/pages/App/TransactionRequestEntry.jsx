@@ -92,13 +92,14 @@ export default function TransactionRequestEntry() {
   const documentScope = `${activeOrgId}:${editorPath}:${reload}`;
   const [loadedDocumentScope, setLoadedDocumentScope] = useState(null);
   const documentLoading = editing && loadedDocumentScope !== documentScope;
+  const [attachmentBusy,setAttachmentBusy]=useState(false);
   const [saving, setSaving] = useState(false), [error, setError] = useState(''), [submission, setSubmission] = useState(null), [statuses, setStatuses] = useState({});
   const [validationAttempt,setValidationAttempt]=useState(0),[validation,setValidation]=useState(''),[approvalStatus,setApprovalStatus]=useState(null);
   const [initialSnapshot,setInitialSnapshot] = useState(()=>documentSnapshot(newDocument()));
   const dirty = documentSnapshot(form) !== initialSnapshot;
-  useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['bank-ledger','ledger-entries','expense-requests','expense-approvals'],isActive:isTabActive&&editing,isBlocked:dirty||saving,onRefresh:()=>setReload(value=>value+1)});
-  useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['business-partners','expense-settings','accounting-codes'],isActive:isTabActive,isBlocked:dirty||saving,onRefresh:async()=>{const [partners,codes]=await Promise.all([requestJSON('/expense-payees'+buildQueryString({orgId:activeOrgId}),{skipCache:true}),requestJSON('/transaction-codes'+buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'}),{skipCache:true})]);setData(previous=>({...previous,partners,codes}));}});
-  useUnsavedChanges(dirty);
+  useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['bank-ledger','ledger-entries','expense-requests','expense-approvals'],isActive:isTabActive&&editing,isBlocked:dirty||saving||attachmentBusy,onRefresh:()=>setReload(value=>value+1)});
+  useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['business-partners','expense-settings','accounting-codes'],isActive:isTabActive,isBlocked:dirty||saving||attachmentBusy,onRefresh:async()=>{const [partners,codes]=await Promise.all([requestJSON('/expense-payees'+buildQueryString({orgId:activeOrgId}),{skipCache:true}),requestJSON('/transaction-codes'+buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'}),{skipCache:true})]);setData(previous=>({...previous,partners,codes}));}});
+  useUnsavedChanges(dirty||attachmentBusy);
   useEffect(() => { const draft=newDocument();shippingSource.current=null;setForm(draft);setInitialSnapshot(documentSnapshot(draft));setStatuses({}); setApprovalStatus(null); setSubmission(null); setError(''); setSaving(false); }, [activeOrgId,sourceKind,sourceId,shippingChargeId]);
   useEffect(() => {
     let alive = true; setLoading(true); setLoadError(false);
@@ -176,6 +177,7 @@ export default function TransactionRequestEntry() {
     });
   };
   const save = async () => {
+    if(attachmentBusy)return;
     if (saveLock.current || disabled && !submission || saving || !submission && valid && editing && !dirty) return;
     if(!submission&&!valid){
       setValidationAttempt(value=>value+1);
@@ -250,7 +252,7 @@ export default function TransactionRequestEntry() {
     title={(editing ? EDIT_TITLES : ENTRY_TITLES)[languageCode] || ENTRY_TITLES.en}
     titleActions={<Stack direction="row" spacing={1}>
       <Button disabled={saving} onClick={close}>{labels.cancel}</Button>
-      <SaveButton loading={saving} disabled={loading || loadError || form.readOnly || !submission && valid && editing && !dirty} onClick={save}>
+      <SaveButton loading={saving} disabled={attachmentBusy || loading || loadError || form.readOnly || !submission && valid && editing && !dirty} onClick={save}>
         {submission ? labels.retry : getUiMessage('common.save', 'Save', languageCode)}
       </SaveButton>
     </Stack>}
@@ -263,8 +265,8 @@ export default function TransactionRequestEntry() {
       {form.readOnly && <Alert severity="info">{form.bankReconciled?(ledgerEvidenceErrors[languageCode]||ledgerEvidenceErrors.en).EXPENSE_ALREADY_RECONCILED:LOCKED_TEXT[languageCode] || LOCKED_TEXT.en}</Alert>}
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2.5 }}>
         <DocumentEntryHeader approval={<Stack spacing={1}>
-          <ExpenseApprovalSettings horizontalStages draftDirty={dirty} existingDocument={editing && (documentLoading || Boolean(form.version))} documentLoading={documentLoading} ref={approvalRef} orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} approvalStatus={approvalStatus} drafter={form.version?form.createdByEmployee:null} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} value={form.approvalSelection} onChange={approvalSelection=>update({approvalSelection})} disabled={loading||loadError||saving||Boolean(submission)}/>
-          <ExpenseApprovalActions compact requestId={!documentLoading&&form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} drafter={form.createdByEmployee} onState={setApprovalStatus} disabled={loading||loadError||saving||Boolean(submission)||dirty} dirty={dirty} onRefresh={()=>setReload(value=>value+1)}/>
+          <ExpenseApprovalSettings horizontalStages draftDirty={dirty} existingDocument={editing && (documentLoading || Boolean(form.version))} documentLoading={documentLoading} ref={approvalRef} orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} approvalStatus={approvalStatus} drafter={form.version?form.createdByEmployee:null} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} value={form.approvalSelection} onChange={approvalSelection=>update({approvalSelection})} disabled={loading||loadError||saving||attachmentBusy||Boolean(submission)}/>
+          <ExpenseApprovalActions compact requestId={!documentLoading&&form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} drafter={form.createdByEmployee} onState={setApprovalStatus} disabled={loading||loadError||saving||attachmentBusy||Boolean(submission)||dirty} dirty={dirty} onRefresh={()=>setReload(value=>value+1)}/>
         </Stack>}>
           <Stack spacing={1.5}>
           <ExpensePayeePicker data-entry-field="payee" orgId={activeOrgId} languageCode={languageCode} options={data.partners} value={partner} disabled={disabled||form.paidCorrectionOnly} lockSelection={form.items.some(line=>line.productionLocked)}
@@ -276,7 +278,7 @@ export default function TransactionRequestEntry() {
           </Stack>
         </DocumentEntryHeader>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}><Typography variant="subtitle2">{lookup.details} · {form.items.length} {labels.count}</Typography>{loading && <CircularProgress size={20} />}</Stack>
-        <DocumentEvidenceFiles value={form.evidenceFiles||[]} previous={form.originalEvidenceFiles||[]} onChange={evidenceFiles=>update({evidenceFiles})} disabled={disabled} languageCode={languageCode} managementNumber={form.managementNumber}/>
+        <DocumentEvidenceFiles orgId={activeOrgId} purpose="EXPENSE" onBusyChange={setAttachmentBusy} value={form.evidenceFiles||[]} previous={form.originalEvidenceFiles||[]} onChange={evidenceFiles=>update({evidenceFiles})} disabled={disabled} languageCode={languageCode} managementNumber={form.managementNumber}/>
         <DragDropContext onBeforeCapture={() => {
           dragColumnWidths.current = Array.from(tableContainerRef.current?.querySelector('[data-testid="expense-line"]')?.cells || []).map(cell => cell.getBoundingClientRect().width);
         }} onDragEnd={reorderLines}>

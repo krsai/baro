@@ -16,7 +16,7 @@ import { TRANSACTION_TEXT, serviceName } from './OutsourcingServiceDialog';
 import { formatCurrency } from '../utils/currencyFormat';
 
 export const expenseRequestNumber = document => document?.managementNumber || `EXP-${String(document?.id ?? document).padStart(6, '0')}`;
-export function ExpenseRequestContent({ document, languageCode }) {
+export function ExpenseRequestContent({ document, languageCode, orgId }) {
   const labels = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
   const common = TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko;
   const money = (value, currency = document?.currency) => formatCurrency(value, { currencyCode: currency, languageCode });
@@ -24,7 +24,7 @@ export function ExpenseRequestContent({ document, languageCode }) {
   const unitPrice = value => Number(value).toLocaleString(languageCode === 'ko' ? 'ko-KR' : languageCode === 'vi' ? 'vi-VN' : 'en-US', { maximumFractionDigits: 4 });
   return document && <Stack spacing={2}>
       <Typography variant="subtitle1">{labels.numbering}: {expenseRequestNumber(document)}</Typography>
-      <DocumentEvidenceFiles value={documentEvidence(document,document.items||[])} languageCode={languageCode} managementNumber={expenseRequestNumber(document)}/>
+      <DocumentEvidenceFiles orgId={orgId||document.orgId} value={documentEvidence(document,document.items||[])} languageCode={languageCode} managementNumber={expenseRequestNumber(document)}/>
       <Typography variant="h6">{expenseRequestSummary(document,languageCode)}</Typography>
       {document.remark && <Typography>REMARK: {document.remark}</Typography>}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>{[[labels.payee,document.payeeEmployee?.name||document.partner?.name],[labels.date,document.requestDate],[(cashScheduleText[languageCode]||cashScheduleText.en).payment,document.scheduledPaymentDate],[labels.applicant,document.createdByEmployee?.name]].map(([label,value]) => <Box key={label}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography>{value || '—'}</Typography></Box>)}</Box>
