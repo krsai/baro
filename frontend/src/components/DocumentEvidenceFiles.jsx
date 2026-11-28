@@ -7,7 +7,7 @@ import AddActionButton from './AddActionButton';
 import DeleteActionButton from './DeleteActionButton';
 import {documentEvidenceText,normalizeEvidencePath,validDocumentEvidence} from '../utils/documentEvidence.mjs';
 
-export default function DocumentEvidenceFiles({value=[],previous=[],onChange,disabled=false,languageCode,managementNumber,orgId,purpose,onBusyChange}){
+export default function DocumentEvidenceFiles({value=[],previous=[],onChange,disabled=false,languageCode,managementNumber,orgId,purpose,onBusyChange,attachmentOnly=false,title}){
  const t=documentEvidenceText[languageCode]||documentEvidenceText.en;
  const a=evidenceAttachmentText[languageCode]||evidenceAttachmentText.en;
  const [storage,setStorage]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[retry,setRetry]=useState(0),[pending,setPending]=useState(null);
@@ -34,17 +34,17 @@ export default function DocumentEvidenceFiles({value=[],previous=[],onChange,dis
  const download=async item=>{if(lock.current)return;const started=live.current;lock.current=started;setBusy(true);setError('');try{const file=await requestJSON('/evidence-attachments/'+item.path.split('/')[2]+'/content'+buildQueryString({orgId}),{skipCache:true});if(live.current===started)downloadEvidenceFile(file);}catch{if(live.current===started)setError(a.failed);}finally{if(lock.current===started)lock.current=false;if(live.current===started)setBusy(false);}};
  const change=(index,patch)=>onChange(value.map((item,i)=>i===index?{...item,...patch}:item));
  return <Stack spacing={1.5} sx={{p:2,borderBottom:1,borderColor:'divider'}} data-document-evidence>
-  <Stack direction="row" alignItems="center" spacing={1} useFlexGap flexWrap="wrap"><Typography fontWeight={600} sx={{flex:1}}>{t.title}{managementNumber?' · '+managementNumber:''}</Typography>{onChange&&<>
+  <Stack direction="row" alignItems="center" spacing={1} useFlexGap flexWrap="wrap"><Typography fontWeight={600} sx={{flex:1}}>{title||t.title}{managementNumber?' · '+managementNumber:''}</Typography>{onChange&&<>
    {orgId&&purpose&&<><input ref={input} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" hidden onChange={choose}/><Button variant="outlined" disabled={disabled||busy||Boolean(pending)||!storage?.configured||value.length>=50} onClick={()=>input.current.click()}>{busy?a.uploading:a.attach}</Button>
     {!storage&&<Typography variant="caption">{a.loading}</Typography>}{storage&&!storage.configured&&!storage.failed&&<Typography variant="caption">{a.notConfigured}</Typography>}
     {storage?.failed&&<AppNotice severity="error" action={<Button disabled={busy} onClick={()=>setRetry(n=>n+1)}>{a.retry}</Button>}>{a.failed}</AppNotice>}</>}
-   <AddActionButton showLabel aria-label={t.add} disabled={disabled||busy||Boolean(pending)||value.length>=50} onClick={()=>onChange([...value,{reference:'',path:''}])}/>
+   {!attachmentOnly&&<AddActionButton showLabel aria-label={t.add} disabled={disabled||busy||Boolean(pending)||value.length>=50} onClick={()=>onChange([...value,{reference:'',path:''}])}/>}
   </>}</Stack>
   {error&&<AppNotice severity="error" action={pending?<Button disabled={disabled||busy} onClick={()=>upload(pending)}>{a.retry}</Button>:undefined}>{error}</AppNotice>}
-  {value.map((item,index)=><Box key={index} sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr) auto',sm:'minmax(120px,1fr) minmax(0,3fr) auto'},gap:1,alignItems:'start'}}>
-   <TextField data-text-case="preserve" size="small" label={t.reference} value={item.reference} disabled={disabled||busy||Boolean(pending)||!onChange} inputProps={{maxLength:500,'data-text-case':'preserve'}} onChange={event=>change(index,{reference:event.target.value})}/>
-   {nasEvidence(item)?<Stack direction="row" alignItems="center" spacing={1} sx={{minWidth:0,gridColumn:{xs:1,sm:'auto'},gridRow:{xs:2,sm:'auto'}}}><Typography sx={{overflowWrap:'anywhere',flex:1}}>{evidenceFileName(item)}</Typography><Button disabled={busy||!orgId} onClick={()=>download(item)}>{a.download}</Button></Stack>:<TextField data-text-case="preserve" size="small" label={t.path} value={normalizeEvidencePath(item.path)} disabled={disabled||busy||Boolean(pending)||!onChange} error={Boolean(onChange)&&!validDocumentEvidence([item],previous)} inputProps={{maxLength:500,'data-text-case':'preserve'}} sx={{gridColumn:{xs:1,sm:'auto'},gridRow:{xs:2,sm:'auto'}}} onChange={event=>change(index,{path:normalizeEvidencePath(event.target.value)})}/>}
-   {onChange&&<DeleteActionButton aria-label={t.remove} title={t.remove} disabled={disabled||busy||Boolean(pending)} sx={{gridColumn:{xs:2,sm:3},gridRow:{xs:'1 / span 2',sm:'auto'}}} onClick={()=>onChange(value.filter((_,i)=>i!==index))}/>}
+  {value.map((item,index)=><Box key={index} sx={{display:'grid',gridTemplateColumns:attachmentOnly?'minmax(0,1fr) auto':{xs:'minmax(0,1fr) auto',sm:'minmax(120px,1fr) minmax(0,3fr) auto'},gap:1,alignItems:'start'}}>
+   {!attachmentOnly&&<TextField data-text-case="preserve" size="small" label={t.reference} value={item.reference} disabled={disabled||busy||Boolean(pending)||!onChange} inputProps={{maxLength:500,'data-text-case':'preserve'}} onChange={event=>change(index,{reference:event.target.value})}/>}
+   {nasEvidence(item)?<Stack direction="row" alignItems="center" spacing={1} sx={{minWidth:0,gridColumn:attachmentOnly?1:{xs:1,sm:'auto'},gridRow:attachmentOnly?'auto':{xs:2,sm:'auto'}}}><Typography sx={{overflowWrap:'anywhere',flex:1}}>{evidenceFileName(item)}</Typography><Button disabled={busy||!orgId} onClick={()=>download(item)}>{a.download}</Button></Stack>:<TextField data-text-case="preserve" size="small" label={t.path} value={normalizeEvidencePath(item.path)} disabled={disabled||busy||Boolean(pending)||!onChange} error={Boolean(onChange)&&!validDocumentEvidence([item],previous)} inputProps={{maxLength:500,'data-text-case':'preserve'}} sx={{gridColumn:{xs:1,sm:'auto'},gridRow:{xs:2,sm:'auto'}}} onChange={event=>change(index,{path:normalizeEvidencePath(event.target.value)})}/>}
+   {onChange&&<DeleteActionButton aria-label={t.remove} title={t.remove} disabled={disabled||busy||Boolean(pending)} sx={{gridColumn:attachmentOnly?2:{xs:2,sm:3},gridRow:attachmentOnly?'auto':{xs:'1 / span 2',sm:'auto'}}} onClick={()=>onChange(value.filter((_,i)=>i!==index))}/>}
   </Box>)}
  </Stack>;
 }

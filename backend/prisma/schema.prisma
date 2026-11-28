@@ -1221,6 +1221,7 @@ model Warehouse {
 
 
 model Employee {
+  workTaskReports WorkTaskReport[]
   feedbackAutomationPolicies EmployeeFeedbackAutomation[]
   feedbackAutomationEvents EmployeeFeedbackAutomationEvent[]
   authorizedFeedbackRules EmployeeFeedbackRule[] @relation("FeedbackRuleAutomation")
@@ -3804,10 +3805,14 @@ model EmployeeFeedbackRun {
  @@unique([ruleId,orgId])
 }
 model EmployeeFeedbackDelivery {
+ taskId String?
+ taskRequirementVersion Int?
+ task DashboardWorkRequest? @relation(fields:[taskId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackDelivery_task_fkey")
+ taskChecks WorkTaskReportCheck[]
  id String @id
  orgId Int
  employeeId Int
- ruleId String
+ ruleId String?
  ruleVersion Int
  automationVersion Int
  occurrenceKey String
@@ -3820,12 +3825,14 @@ model EmployeeFeedbackDelivery {
  authorizedByEmployeeId Int
  createdAt DateTime @default(now()) @db.Timestamp(3)
  readAt DateTime? @db.Timestamp(3)
- rule EmployeeFeedbackRule @relation(fields:[ruleId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackDelivery_rule_fkey")
+ rule EmployeeFeedbackRule? @relation(fields:[ruleId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackDelivery_rule_fkey")
  employee Employee @relation("FeedbackDeliveryRecipient",fields:[employeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackDelivery_employee_fkey")
  authorizer Employee @relation("FeedbackDeliveryAuthorizer",fields:[authorizedByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"FeedbackDelivery_actor_fkey")
  activation EmployeeFeedbackAutomationEvent @relation(fields:[orgId,automationVersion],references:[orgId,version],onDelete:Restrict,map:"FeedbackDelivery_activation_fkey")
  @@unique([ruleId,ruleVersion,automationVersion,occurrenceKey],map:"FeedbackDelivery_occurrence_key")
  @@index([orgId,employeeId,createdAt(sort:Desc),id],map:"FeedbackDelivery_inbox_idx")
+ @@unique([id,orgId],map:"FeedbackDelivery_scope_key")
+ @@unique([taskId,taskRequirementVersion],map:"FeedbackDelivery_task_key")
 }
 
 model EmployeeFeedbackRule {
@@ -3888,7 +3895,54 @@ model EmployeeFeedbackEvent {
  @@unique([draftId,version])
 }
 
+model WorkTaskReport {
+ id String @id
+ orgId Int
+ requestId String
+ authorId Int
+ requirementVersion Int
+ clientKey String
+ requestHash String
+ body String
+ taskSnapshot Json
+ submittedAt DateTime @default(now()) @db.Timestamp(3)
+ request DashboardWorkRequest @relation(fields:[requestId,orgId],references:[id,orgId],onDelete:Restrict,map:"WorkTaskReport_request_fkey")
+ author Employee @relation(fields:[authorId,orgId],references:[id,orgId],onDelete:Restrict,map:"WorkTaskReport_author_fkey")
+ files EvidenceAttachmentLink[]
+ checks WorkTaskReportCheck[]
+ @@unique([id,orgId])
+ @@unique([requestId,requirementVersion])
+ @@unique([orgId,authorId,clientKey])
+}
+model WorkTaskReportCheck {
+ requestId String
+ orgId Int
+ requirementVersion Int
+ result String
+ reportId String?
+ deliveryId String?
+ lastError String?
+ checkedAt DateTime @default(now()) @db.Timestamp(3)
+ request DashboardWorkRequest @relation(fields:[requestId,orgId],references:[id,orgId],onDelete:Restrict,map:"TaskReportCheck_request_fkey")
+ report WorkTaskReport? @relation(fields:[reportId,orgId],references:[id,orgId],onDelete:Restrict,map:"TaskReportCheck_report_fkey")
+ delivery EmployeeFeedbackDelivery? @relation(fields:[deliveryId,orgId],references:[id,orgId],onDelete:Restrict,map:"TaskReportCheck_delivery_fkey")
+ @@id([requestId,requirementVersion])
+}
+
 model DashboardWorkRequest {
+ reportRequired Boolean @default(false)
+ dueAt DateTime? @db.Timestamp(3)
+ timeZone String @default("Asia/Ho_Chi_Minh")
+ reportFileRequired Boolean @default(false)
+ automaticWarning Boolean @default(false)
+ warningMessage String @default("")
+ warningArmedAt DateTime? @db.Timestamp(3)
+ requirementVersion Int @default(1)
+ cancelledAt DateTime? @db.Timestamp(3)
+ cancellationReason String?
+ reports WorkTaskReport[]
+ reportChecks WorkTaskReportCheck[]
+ feedbackDeliveries EmployeeFeedbackDelivery[]
  id String @id
  orgId Int
  senderId Int
@@ -4146,6 +4200,8 @@ model EvidenceAttachment {
   @@unique([storageRoot,storageKey],map:"EvidenceAttachment_storage_key")
 }
 model EvidenceAttachmentLink {
+  workReportId String?
+  workReport WorkTaskReport? @relation(fields:[workReportId,orgId],references:[id,orgId],onDelete:Restrict,map:"EvidenceLink_work_report_fkey")
   id String @id
   orgId Int
   attachmentId String

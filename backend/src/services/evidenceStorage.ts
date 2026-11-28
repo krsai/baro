@@ -59,7 +59,7 @@ export async function uploadEvidence(db:any,scope:{orgId:number,actorId:number,p
  const config=evidenceStorageConfig(scope.orgId,env);if(!config)fail('EVIDENCE_STORAGE_NOT_CONFIGURED',503);
  const file=evidenceUploadInput(input);
  const {orgId,actorId,purpose}=scope;
- if(!['EXPENSE','BANK_LEDGER'].includes(purpose))fail('EVIDENCE_FILE_INVALID');
+ if(!['EXPENSE','BANK_LEDGER','WORK_REPORT'].includes(purpose))fail('EVIDENCE_FILE_INVALID');
  const employee=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'}});if(!employee)fail('ACTIVE_EMPLOYEE_REQUIRED',403);
  const createdAt=new Date(),year=createdAt.getUTCFullYear(),month=String(createdAt.getUTCMonth()+1).padStart(2,'0');
  await db.evidenceAttachment.upsert({where:{id:file.id},create:{id:file.id,orgId,createdByEmployeeId:actorId,purpose,originalFileName:file.fileName,contentType:file.contentType,byteSize:file.byteSize,sha256:file.sha256,storageRoot:config!.baseUrl,storageKey:`${year}/${month}/${file.id}.${file.extension}`,createdAt},update:{}});

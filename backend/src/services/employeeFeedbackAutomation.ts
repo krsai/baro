@@ -4,6 +4,7 @@ import {retryEditTransaction} from '../utils/editRevision';
 import {toDateKeyInTimeZone} from '../utils/atTrainingMonthKey';
 import {loadManagementPeriod} from '../factories/factoryManagementStart';
 import {feedbackRuleInput} from './employeeFeedback';
+import {runTaskReportWarnings} from './taskReports';
 
 const fail=(status:number,message:string):never=>{throw createHttpError(status,message);};
 const shift=(day:string,n:number)=>new Date(Date.parse(day+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
@@ -123,7 +124,7 @@ export async function runFeedbackAutomation(db:any,gates:any,now=new Date()){
  return candidates.length;
 }
 export function startFeedbackAutomation(db:any,gates:any){
- let running=false;const run=async()=>{if(running)return;running=true;try{await runFeedbackAutomation(db,gates);}catch{console.warn('[employee-feedback] automatic check unavailable; pending work retained');}finally{running=false;}};
+ let running=false;const run=async()=>{if(running)return;running=true;try{await runFeedbackAutomation(db,gates);await runTaskReportWarnings(db,gates);}catch{console.warn('[employee-feedback] automatic check unavailable; pending work retained');}finally{running=false;}};
  const timer=setInterval(()=>void run(),60000);timer.unref();void run();return ()=>clearInterval(timer);
 }
 
