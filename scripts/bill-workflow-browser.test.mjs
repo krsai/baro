@@ -71,7 +71,10 @@ try{
   const bounds=await page.locator('[data-bl-document-layout]').evaluate(n=>({width:n.getBoundingClientRect().width,overflow:n.scrollWidth>n.clientWidth+2}));assert.equal(bounds.overflow,false,JSON.stringify(bounds));
   const parties=await page.locator('[data-bl-parties]').boundingBox(),identity=await page.locator('[data-bl-identity]').boundingBox();
   if(width>=900){assert.ok(Math.abs(parties.y-identity.y)<1);const route=await page.locator('[data-bl-region=route]').boundingBox();assert.ok(route.x>=parties.x&&route.x+route.width<=parties.x+parties.width+1);assert.ok(route.y>parties.y);}else assert.ok(identity.y>=parties.y+parties.height-1);
-  assert.equal(await page.locator('[data-bl-onboard-mark]').getByText('SURRENDERED',{exact:true}).count(),1);
+  assert.equal(await page.locator('[data-bl-onboard-mark]').count(),0);
+  assert.equal(await page.locator('[data-bl-document-layout] img, [data-bl-document-layout] h2').count(),0);
+  const cargoHeight=await page.locator('[data-bl-region=cargo]').evaluate(n=>n.getBoundingClientRect().height);if(width>=900)assert.ok(cargoHeight<300,String(cargoHeight));
+  const border=await number.evaluate(n=>getComputedStyle(n.closest('.MuiOutlinedInput-root').querySelector('fieldset')).borderTopStyle);assert.equal(border,'solid');
   const sizes=await page.locator('[data-bl-identity] input').evaluateAll(nodes=>nodes.map(n=>n.closest('.MuiInputBase-root').getBoundingClientRect().height));assert.ok(Math.max(...sizes)-Math.min(...sizes)<2,JSON.stringify(sizes));
   await page.locator('summary').filter({hasText:t.logo}).click();await page.getByRole('button',{name:t.saveLogo,exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('[name=\"cargo\"]')?.disabled===true);
