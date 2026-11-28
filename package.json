@@ -155,7 +155,7 @@
     "sample:work-logs": "node backend/scripts/reset-to-baseline.js work-logs",
     "sample:orders": "node backend/scripts/reset-to-baseline.js orders",
     "realign:time-model": "node backend/scripts/reset-to-baseline.js time-model",
-    "check:encoding": "node scripts/collect-logs.mjs --check && node scripts/check-encoding.mjs",
+    "check:encoding": "node scripts/collect-logs.mjs --check && node scripts/check-encoding.mjs && node --test scripts/check-encoding.test.mjs",
     "check:i18n": "node scripts/check-ui-message-keys.mjs",
     "check:ui-notices": "node scripts/check-ui-notices.mjs",
     "check:ui-consistency": "node scripts/check-ui-consistency.mjs && node --test scripts/record-interaction-policy.test.mjs",

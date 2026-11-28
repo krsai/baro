@@ -323,7 +323,7 @@ Dialog의 크기·내부 스크롤은 공통 테마가, 업무 Drawer의 작업 
 
 - 특송의 전 구간 고정 연결선도 양 끝에 다른 운송 구간과 같은 20px 원을 표시한다. 끝점은 장식이며 드래그/포커스 대상이 아니다. 편집은 파란색, 비활성 조회는 선·삼각형과 같은 불투명 회색을 사용한다.
 
-- ?? ?? ??? `LocalizedDateField`? ? ??? ??? ?? ??? ????. ?? `event.target.value`? `YYYY-MM-DD`/? ??? ??? ?? ??? ????. `CustomDatePicker`? ?? ??? LanguageContext? ??? ??? adapterLocale/localeText? ????. ???? ?? date ??? ??? ???? ???.
+- 일반 날짜 입력은 `LocalizedDateField`를 사용해 앱 언어에 맞는 날짜 표시와 달력을 제공한다. 기존 `event.target.value`의 `YYYY-MM-DD` 또는 빈 문자열 계약은 유지한다. `CustomDatePicker`는 현재 LanguageContext의 언어에 맞는 adapterLocale/localeText를 사용한다. 새 화면에 브라우저 언어를 따르는 native date 입력을 복제하지 않는다. 손상된 원문은 `2b131221`의 구현·검사 소스를 근거로 재정리했다.
 - 텍스트 입력은 `data-text-case="upper"`(대문자), `title`(단어별 첫 글자), `preserve`(원문 유지)로 항목의 역할을 선언한다. 은행명·계좌명·예금주·SWIFT와 운송 회사명에는 upper를 사용한다. title 입력의 약어는 입력 대소문자와 관계없이 SYSTEM 사전의 등록 표기를 사용한다. 일반 주소와 특송 개인 이름까지 회사명 정책으로 묶지 않는다. 서버 저장도 같은 항목 규칙을 적용하고 조회·포커스만으로 원문/발행 snapshot을 변경하지 않는다.
 - 운송 공통 정보는 서버 저장 시 SR·운송장·BL에 반영한다. BL 컨테이너는 공통 `ShippingCargoRows`로 편집하고 새 출력본의 화인 영역에 표시한다. 기존 BL에 컨테이너가 없으면 현재 업무의 연결값을 기본 표시하되 조회만으로 저장하지 않는다. SR 보기의 자기 회사 접수 건은 수정 진입을 제공하며 `ShippingOperations`를 재사용하고 모달 하단 저장·미저장 확인·저장 중/결과 불명 잠금을 유지한다. 갱신 이벤트나 연결 문서 저장이 열린 화면의 초안을 덮어쓰지 않으며 충돌 시 기존 버전 확인/재시도를 따른다.
 - 물류 현황판은 상태 → 고객사 → CGO → ETD → ETA → DLV → 화물 → 비고 순서로 표시한다. CGO는 해당 운송건의 Cargo Ready 날짜(plannedDate)이며 workDetails의 명시 변경값을 우선한다. Master 일정이나 SR 생성일로 대체하지 않고 빈 날짜는 다른 일정과 같이 —로 표시한다.
