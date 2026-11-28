@@ -75,7 +75,12 @@ test('Prisma/PostgreSQL: own-customer drafts, exact retries, issue, immutable sn
    assert.equal(await db.workOrder.count(),0);assert.equal(await db.invoiceDraftOrder.count(),0);assert.equal(await db.invoiceDraftLine.count(),0);
   });
   await t.test('issue is atomic and idempotent with scoped code FKs and a frozen issued snapshot',async()=>{
+   const logoDataUrl='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9S8AAAAASUVORK5CYII=';
+   await db.systemSetting.upsert({where:{key:`COMPANY_BRANDING:${org}`},create:{key:`COMPANY_BRANDING:${org}`,value:{version:1,logoDataUrl}},update:{value:{version:1,logoDataUrl}}});
    invoice=await issueInvoiceDraft(db,org,'actor',draft.id,draft.revision);
+   assert.equal(invoice.snapshot.fields.logoDataUrl,logoDataUrl);
+   await db.systemSetting.update({where:{key:`COMPANY_BRANDING:${org}`},data:{value:{version:2,logoDataUrl:''}}});
+   assert.equal((await db.invoice.findUnique({where:{id:invoice.id}})).snapshot.fields.logoDataUrl,logoDataUrl);
    assert.match(invoice.invoiceNumber,/^INV-2026-\d{6}$/);assert.equal(invoice.snapshot.fields.number,invoice.invoiceNumber);
    assert.equal(invoice.documentKind,'GENERAL');assert.equal(invoice.pricingBasis,null);assert.equal(String(invoice.total),'1250');
    assert.equal((await issueInvoiceDraft(db,org,'actor',draft.id,draft.revision)).id,invoice.id);

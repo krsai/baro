@@ -87,17 +87,25 @@ html,body{box-sizing:border-box;margin:0;padding:0;background:#fff}
 .invoice-print th,.invoice-print td{padding:8px 5px;font-size:10px;line-height:1.5}
 .invoice-print th{font-size:9px;color:#475569;border-top:1px solid #cbd5e1}
 .invoice-print .num{white-space:nowrap;overflow-wrap:normal}
-.invoice-print .invoice-summary{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;padding:16px;background:#f8fafc;align-items:stretch}
+.invoice-print .invoice-summary{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px 24px;padding:16px 0 0;border-top:1px solid #cbd5e1;background:#fff;align-items:start}
 .invoice-print .invoice-subtotals{text-align:right;padding:0 0 14px}
-.invoice-print .invoice-remark{min-height:72px;align-self:stretch}
-.invoice-print .invoice-summary-details{display:flex;flex-direction:column;min-height:180px}
-.invoice-print .invoice-summary-details .invoice-total{margin-top:auto}
-.invoice-print .invoice-total{font-size:11px;padding:8px 0;margin:0;font-weight:700}
-.invoice-print .invoice-total span:last-child{color:#2878f0}
-.invoice-print .invoice-bank-section{margin:0;padding:0}
+.invoice-print .invoice-remark{grid-column:1/-1;min-height:40px;padding:0 0 12px;border-bottom:1px solid #e7ecf2}
+.invoice-print .invoice-summary-details{grid-column:2;grid-row:2;display:flex;flex-direction:column;min-height:0;line-height:1.8}
+.invoice-print .invoice-summary-details .invoice-total{margin-top:12px}
+.invoice-print .invoice-total{font-size:14px;padding:12px 0;margin:0;font-weight:700;border-top:2px solid #182b3d;border-bottom:1px solid #cbd5e1}
+.invoice-print .invoice-total span:last-child{color:#182b3d}
+.invoice-print .invoice-bank-section{grid-column:1;grid-row:2;margin:0;padding:0}
 .invoice-print .invoice-bank-grid{grid-template-columns:minmax(0,1fr);gap:12px}
-.invoice-print .invoice-bank-card{padding:10px;gap:4px 8px;border-radius:0}
+.invoice-print .invoice-bank-card{padding:10px 0;gap:4px 12px;border:0;border-top:1px solid #e7ecf2;border-radius:0}
 .invoice-print .invoice-bank-card dt{font-size:9px}
-.invoice-print .invoice-signature{margin-top:24px}
-.invoice-print .invoice-stamp{border:0;border-top:1px solid #94a3b8;border-radius:0;width:200px;min-height:0;padding:8px 0;font-size:10px}
+.invoice-print .invoice-signature{margin-top:28px;break-inside:avoid;page-break-inside:avoid}
+.invoice-print .invoice-stamp{border:0;border-radius:0;width:64mm;min-height:48mm;padding:0;text-align:center;font-size:10px;color:#475569;display:flex;flex-direction:column}
+.invoice-print .invoice-stamp strong{font-size:11px;color:#182b3d}
+.invoice-print .invoice-signing-space{height:36mm;flex-shrink:0}
+.invoice-print .invoice-stamp>p{border-top:1px solid #94a3b8;padding-top:6px}
+.invoice-print .invoice-brand{display:flex;align-items:center;gap:16px;min-width:0}
+.invoice-print .invoice-logo{display:block;width:30mm;height:16mm;object-fit:contain;object-position:left center}
+.invoice-print .invoice-settlement{margin-bottom:8px}
+.invoice-print .invoice-amount-row{display:flex;justify-content:space-between;gap:12px;font-variant-numeric:tabular-nums}
+.invoice-print .invoice-amount-row>span:last-child{text-align:right}
 `;

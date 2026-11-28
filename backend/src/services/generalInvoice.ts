@@ -1,3 +1,4 @@
+import {companyBranding} from './companyBranding';
 import {assertInvoicePaymentUnlinked} from './invoiceDeletion';
 import {invoiceCurrencyTotals,totalGeneralInvoiceCurrencies} from './invoiceCurrencies';
 import {companyInvoiceParty} from './companyDocumentContact';
@@ -91,7 +92,7 @@ export async function issueGeneralInvoice(tx:any,sellerOrgId:number,actor:string
  const calculated=calculateGeneralInvoice(content,await validateGeneralInvoiceCodes(tx,sellerOrgId,content.lines));
  if(original&&JSON.stringify(invoiceCurrencyTotals(original).map(row=>row.currencyCode).sort())!==JSON.stringify(calculated.snapshot.currencyTotals.map(row=>row.currencyCode).sort()))throw createHttpError(409,'INVOICE_REVISION_SCOPE_CHANGED');
  const invoiceNumber=await allocateDocumentNumber(tx,sellerOrgId,'INV',content.fields.date,'');
- calculated.snapshot.fields={...calculated.snapshot.fields,number:invoiceNumber};
+ calculated.snapshot.fields={...calculated.snapshot.fields,number:invoiceNumber,logoDataUrl:(await companyBranding(tx,sellerOrgId)).logoDataUrl};
  const latest=await tx.invoice.findFirst({where:{sellerOrgId},orderBy:{sequenceNumber:'desc'},select:{sequenceNumber:true}});
  const invoice=await tx.invoice.create({data:{...invoiceBankLinks(content.fields),sellerOrgId,buyerOrgId:draft.buyerOrgId,documentKind:'GENERAL',pricingBasis:null,clientKey:issueKey,invoiceNumber,sequenceNumber:(latest?.sequenceNumber||0)+1,currencyCode:calculated.currencyCode,subtotal:calculated.subtotal,total:calculated.total,receivableAdded:calculated.total,snapshot:calculated.snapshot,issuedBy:actor,revisionOfInvoiceId:original?.id??null,rootInvoiceId:original?(original.rootInvoiceId||original.id):null,revisionNumber:original?original.revisionNumber+1:1,revisionReason}});
  await tx.invoiceGeneralLine.createMany({data:calculated.lines.map(line=>({...line,sellerOrgId,invoiceId:invoice.id}))});

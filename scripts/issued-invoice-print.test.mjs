@@ -38,8 +38,8 @@ test('print explains the final billing percentage and deduction using frozen amo
  invoice.snapshot.orders[0]={...invoice.snapshot.orders[0],basisAmount:'200',billingPercentage:'50',billedAmount:'100',appliedDeductionAmount:'20',netAmount:'80'};
  invoice.snapshot.fields.bank='Bank A / 123 / Holder / USD\nBank B / 456 / Holder / VND';
  const before=structuredClone(invoice),html=buildIssuedInvoicePrintHtml(invoice);
- assert.ok(html.includes('Full amount: $200.00'));assert.ok(html.includes('Billing: 50%'));
- assert.ok(html.includes('Deduction: $20.00'));assert.ok(html.includes('Previously received: $0.00'));
+ assert.ok(html.includes('Full amount:</span> <span>$200.00'));assert.ok(html.includes('Billing:</span> <span>50%'));
+ assert.ok(html.includes('Deduction:</span> <span>$20.00'));assert.ok(html.includes('Previously received:</span> <span>$0.00'));
  assert.equal((html.match(/<p class="invoice-bank-line">/g)||[]).length,2);
  assert.deepEqual(invoice,before);
 });
@@ -76,4 +76,8 @@ test('print uses English for every UI language and keeps cancelled status visibl
     assert.match(html,/class="invoice-parties invoice-paired-parties"/);assert.match(html,/class="invoice-total"/);
     assert.equal((html.match(/aria-hidden="true"/g)||[]).length,0);
   }
+});
+
+ test('logo uses the issued snapshot only and signing space is separate from captions',()=>{
+ for(const documentKind of ['GENERAL','ORDER']){const invoice=fixture();invoice.snapshot.documentKind=documentKind;invoice.logoDataUrl='https://example.com/live.png';let html=buildIssuedInvoicePrintHtml(invoice);assert.doesNotMatch(html,/<img /);invoice.snapshot.fields.logoDataUrl='data:image/png;base64,aGVsbG8=';html=buildIssuedInvoicePrintHtml(invoice);assert.match(html,/<img class="invoice-logo"/);assert.match(html,/<div class="invoice-signing-space"><\/div>/);invoice.snapshot.fields.logoDataUrl='https://example.com/external.png';assert.doesNotMatch(buildIssuedInvoicePrintHtml(invoice),/<img /);}
 });

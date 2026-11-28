@@ -1,3 +1,4 @@
+import {companyBranding} from './companyBranding';
 import {invoiceCurrencyAmount} from './invoiceCurrencies';
 import {orderInvoiceAccounting} from './invoiceAccounting';
 import {assertInvoiceDeletable,assertInvoicePaymentUnlinked} from './invoiceDeletion';
@@ -228,7 +229,7 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
     }
     calculated.snapshot.orders = calculated.orders;
     const invoiceNumber=await allocateDocumentNumber(tx,sellerOrgId,'INV',content.fields.date,'');
-    calculated.snapshot.fields={...calculated.snapshot.fields,number:invoiceNumber};
+    calculated.snapshot.fields={...calculated.snapshot.fields,number:invoiceNumber,logoDataUrl:(await companyBranding(tx,sellerOrgId)).logoDataUrl};
     const latest = await tx.invoice.findFirst({ where: { sellerOrgId }, orderBy: { sequenceNumber: "desc" }, select: { sequenceNumber: true } });
     const invoice = await tx.invoice.create({ data: { ...invoiceBankLinks(content.fields), sellerOrgId, buyerOrgId: draft.buyerOrgId, invoiceNumber,
       clientKey: issueKey, sequenceNumber: (latest?.sequenceNumber || 0) + 1, pricingBasis: calculated.pricingBasis,
