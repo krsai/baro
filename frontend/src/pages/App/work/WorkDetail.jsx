@@ -12,6 +12,7 @@ import DeleteActionButton from '../../../components/DeleteActionButton';
 import QueryFeedback from '../../../components/QueryFeedback';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Checkbox, FormControlLabel } from '@mui/material';
 import {Box,Chip,CircularProgress,IconButton,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography,useMediaQuery} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import { useTheme } from '@mui/material/styles';
@@ -1005,6 +1006,9 @@ const WorkDetail = ({
   recordKind = 'EMPLOYEE',
 }) => {
   const isOutsourcingMode = recordKind === 'OUTSOURCING';
+  const isLegacyPeriod = !isOutsourcingMode && Boolean(initialLog?.id) && toText(initialLog?.coverageStartDate || initialLog?.workDate) !== toText(initialLog?.coverageEndDate || initialLog?.workDate);
+  const usesDailyRoster = !isOutsourcingMode && (!initialLog?.id || initialLog?.workerReviews?.length > 0);
+  const [noWorkWorkerIds, setNoWorkWorkerIds] = useState(() => (initialLog?.workerReviews || []).filter(row => row.noWork).map(row => Number(row.workerId)));
   const { activeOrgId, activeFactoryId, activeOrgRole, accessProfile } = useAuth();
   const { languageCode } = useLanguage();
   const LABELS = WORK_DETAIL_LABELS[languageCode] || WORK_DETAIL_LABELS.en;
@@ -1216,6 +1220,7 @@ const WorkDetail = ({
     initialRowsHydratedRef.current = false;
     coverageStartDateEditedRef.current = false;
     setPersistedSnapshotText(null);
+    setNoWorkWorkerIds((initialLog?.workerReviews || []).filter(row => row.noWork).map(row => Number(row.workerId)));
     setFactoryScopeContextReady(false);
     setSelectedFactory(initialFactoryOption);
     setWorkDate(buildInitialWorkDate(initialLog));
@@ -1255,6 +1260,7 @@ const WorkDetail = ({
     initialLog?.note,
     initialLog?.records,
     initialLog?.workDate,
+    initialLog?.workerReviews,
     languageCode,
     prefetchedAllAssignments,
     prefetchedAssignments,
@@ -1471,6 +1477,15 @@ const WorkDetail = ({
       return safeRows.length > 0 ? safeRows : [createBlankRow()];
     });
   }, [hasInitialRecords, initialLog?.id, factoryScopeDataLoading, factoryScopeWorkers.length, selectedFactoryId, selectedFactoryId]);
+  useEffect(() => {
+    if (!usesDailyRoster || !factoryScopeContextReady || factoryScopeDataLoading || !selectedFactoryId) return;
+    setRows(current => {
+      const present = new Set(current.map(row => Number(row.worker?.id)));
+      const missing = factoryScopeWorkers.filter(worker => !present.has(Number(worker.id)));
+      if (!missing.length) return current;
+      return [...current.filter(row => row.worker || row.assignment || row.process || row.quantity), ...missing.map(worker => createBlankRow({ worker }))];
+    });
+  }, [usesDailyRoster, factoryScopeContextReady, factoryScopeDataLoading, selectedFactoryId, factoryScopeWorkers]);
   useEffect(() => {
     if (!Array.isArray(rows) || rows.length === 0) {
       if (editingRowId) setEditingRowId('');
@@ -1814,7 +1829,8 @@ const WorkDetail = ({
 
     note: toText(note),
     records: buildComparableWorkRecords(summary.records),
-  }), [coverageStartDateKey, entryMode, note, selectedFactoryId, selectedFactoryId, summary.records, workDateKey]);
+    noWorkWorkerIds: [...noWorkWorkerIds].sort((a, b) => a - b),
+  }), [coverageStartDateKey, entryMode, note, selectedFactoryId, selectedFactoryId, summary.records, workDateKey, noWorkWorkerIds]);
   const currentSnapshotText = useMemo(
     () => toStableSnapshotText(currentComparableSnapshot),
     [currentComparableSnapshot]
@@ -2229,6 +2245,7 @@ const WorkDetail = ({
   }, []);
 
   const handleFactoryChange = useCallback((nextFactory) => {
+    setNoWorkWorkerIds([]);
     coverageStartDateEditedRef.current = false;
     setSelectedFactory(nextFactory || null);
     setSelectedFactoryScope(null);
@@ -2279,13 +2296,14 @@ const WorkDetail = ({
       workLogOperationStartDateKey
     );
     setWorkDate(resolvedNextDate);
+    if (!isOutsourcingMode && !isLegacyPeriod) setNoWorkWorkerIds([]);
     setCoverageSuggestion({
       previousCoverageEndDate: null,
       suggestedCoverageStartDate: null,
       isFirstFactoryWorkLog: false,
     });
     setCoverageStartDate((current) => {
-      if (!coverageStartDateEditedRef.current || !current?.isValid?.()) return resolvedNextDate;
+      if (!isOutsourcingMode || !coverageStartDateEditedRef.current || !current?.isValid?.()) return resolvedNextDate;
       const normalizedCurrent = clampWorkLogDay(current, workLogOperationStartDateKey);
       return normalizedCurrent.isAfter(resolvedNextDate, 'day') ? resolvedNextDate : normalizedCurrent;
     });
@@ -2294,7 +2312,7 @@ const WorkDetail = ({
     setEditingField(null);
     setSearchTerm('');
     initialRowsHydratedRef.current = Boolean(initialLog?.id);
-  }, [initialLog?.id, workLogOperationStartDateKey]);
+  }, [initialLog?.id, workLogOperationStartDateKey, isOutsourcingMode, isLegacyPeriod]);
   const handleCoverageStartDateChange = useCallback((nextDate) => {
     coverageStartDateEditedRef.current = true;
     setCoverageStartDate(
@@ -2446,9 +2464,19 @@ const WorkDetail = ({
       setFormError(messages.factoryScopeRequired || '공장의 작업 정보를 확인해 주세요.');
       return;
     }
-    if (summary.records.length === 0) {
+    if (summary.records.length === 0 && !(usesDailyRoster && factoryScopeWorkers.length > 0 && factoryScopeWorkers.every(worker => noWorkWorkerIds.includes(Number(worker.id))))) {
       setFormError(messages.noRowsToSave || '저장할 작업 행이 없습니다.');
       return;
+    }
+    if (usesDailyRoster) {
+      const worked = new Set(summary.records.map(record => Number(record.workerId)));
+      const incomplete = factoryScopeWorkers.filter(worker => !worked.has(Number(worker.id)) && !noWorkWorkerIds.includes(Number(worker.id)));
+      const conflict = noWorkWorkerIds.some(id => worked.has(id));
+      const partialRow = rows.some(row => (row.assignment || row.process || row.quantity) && (!row.process || !(Number(row.quantity) > 0)));
+      if (incomplete.length || conflict || partialRow) {
+        setFormError(languageCode === 'ko' ? '모든 직원의 작업 내역을 완성하거나 작업 없음을 확인해 주세요. 입력 중인 행도 완성해 주세요.' : languageCode === 'vi' ? 'Hoàn Thành Công Việc Hoặc Xác Nhận Không Làm Việc Cho Tất Cả Nhân Viên.' : 'Complete Every Worker’s Entries Or Confirm No Work. Complete Any Unfinished Rows.');
+        return;
+      }
     }
     const availableWorkerIds = new Set(factoryScopeWorkers.map((worker) => toPositiveIdOrNull(worker?.id)).filter((workerId) => workerId !== null));
     const shouldValidateWorkerFactoryScopeMembership = availableWorkerIds.size > 0;
@@ -2478,6 +2506,7 @@ const WorkDetail = ({
       return;
     }
     saveWithQuantityReview({
+      ...(usesDailyRoster ? { workerReviews: factoryScopeWorkers.map(worker => ({ workerId: Number(worker.id), noWork: noWorkWorkerIds.includes(Number(worker.id)) })) } : {}),
       recordKind,
       workDate: workDateKey,
       coverageStartDate: coverageStartDateKey,
@@ -2499,7 +2528,7 @@ const WorkDetail = ({
         employmentAutoNote: savedEmploymentAutoNote,
       }),
     });
-  }, [contextReady, factoryScopeDataLoading, autoExceededNote, coverageStartDateKey, currentFactory?.name, duplicateGroups, entryMode, hasFactoryWage, initialLog?.id, isDirty, isOutsourcingMode, languageCode, factoryScopeWorkers, missingAssignmentPlanLinkMessage, note, saveWithQuantityReview, recordKind, savedEmploymentAutoNote, selectedFactoryId, selectedFactoryWagePerSecond, currentFactory?.name, selectedFactoryId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey, workLogOperationStartDateKey, workLogOperationStartErrorMessage]);
+  }, [usesDailyRoster, noWorkWorkerIds, rows, contextReady, factoryScopeDataLoading, autoExceededNote, coverageStartDateKey, currentFactory?.name, duplicateGroups, entryMode, hasFactoryWage, initialLog?.id, isDirty, isOutsourcingMode, languageCode, factoryScopeWorkers, missingAssignmentPlanLinkMessage, note, saveWithQuantityReview, recordKind, savedEmploymentAutoNote, selectedFactoryId, selectedFactoryWagePerSecond, currentFactory?.name, selectedFactoryId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey, workLogOperationStartDateKey, workLogOperationStartErrorMessage]);
   const rowOrderIndexById = useMemo(() => {
     const map = new Map();
     rows.forEach((row, index) => {
@@ -2890,18 +2919,24 @@ const WorkDetail = ({
         >
           <Stack spacing={1.5}>
             <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', xl: '180px 180px minmax(0, 1fr) minmax(220px, 1fr)' }, alignItems: 'start' }}>
+              {(isOutsourcingMode || isLegacyPeriod) && <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={languageCode} localeText={buildDatePickerLocaleText(languageCode)}>
+                <DatePicker disabled={isLegacyPeriod} label={LABELS.coverageStartDate} value={coverageStartDate} onChange={handleCoverageStartDateChange} minDate={workLogOperationStartDay} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
+              </LocalizationProvider>}
               <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={languageCode} localeText={buildDatePickerLocaleText(languageCode)}>
-                <DatePicker label={LABELS.coverageStartDate} value={coverageStartDate} onChange={handleCoverageStartDateChange} minDate={workLogOperationStartDay} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
-              </LocalizationProvider>
-              <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={languageCode} localeText={buildDatePickerLocaleText(languageCode)}>
-                <DatePicker label={LABELS.workDate} value={workDate} onChange={handleWorkDateChange} minDate={workLogOperationStartDay} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
+                <DatePicker disabled={isLegacyPeriod} label={isOutsourcingMode || isLegacyPeriod ? LABELS.workDate : languageCode === 'ko' ? '작업일' : languageCode === 'vi' ? 'Ngày Làm Việc' : 'Work Date'} value={workDate} onChange={handleWorkDateChange} minDate={workLogOperationStartDay} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
               </LocalizationProvider>
               <Box sx={{ gridColumn: { sm: '1 / -1', xl: 4 }, minWidth: 0 }}>
-              <SearchableSelect label={!loading && factories.length === 1 ? LABELS.autoFactory : LABELS.factory} options={factories} value={selectedFactory} onChange={(_event, value) => handleFactoryChange(value)} disabled={factories.length === 1} autoHighlight openOnFocus selectOnFocus clearOnBlur={false} handleHomeEndKeys getOptionLabel={(option) => option?.name || ''} isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')} textFieldProps={{ size: 'small' }} />
+              <SearchableSelect label={!loading && factories.length === 1 ? LABELS.autoFactory : LABELS.factory} options={factories} value={selectedFactory} onChange={(_event, value) => handleFactoryChange(value)} disabled={factories.length === 1 || isLegacyPeriod} autoHighlight openOnFocus selectOnFocus clearOnBlur={false} handleHomeEndKeys getOptionLabel={(option) => option?.name || ''} isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')} textFieldProps={{ size: 'small' }} />
               </Box>
             </Box>
 
             {isAggregateLegacyLog ? <Alert severity="warning">{messages.legacyReadOnly}</Alert> : null}
+            {usesDailyRoster && factoryScopeContextReady && <Box data-testid="daily-worker-roster">
+              <Typography variant="subtitle2">{languageCode === 'ko' ? '전체 직원 확인 · 작업 없는 직원만 체크' : languageCode === 'vi' ? 'Xác Nhận Tất Cả Nhân Viên · Chỉ Chọn Người Không Làm Việc' : 'All Workers · Check Only Workers With No Work'}</Typography>
+              <Stack direction="row" useFlexGap flexWrap="wrap">
+                {factoryScopeWorkers.map(worker => <FormControlLabel key={worker.id} label={`${worker.employeeNo || ''} ${worker.name}`} control={<Checkbox size="small" checked={noWorkWorkerIds.includes(Number(worker.id))} disabled={saving || summary.records.some(record => Number(record.workerId) === Number(worker.id))} onChange={(_event, checked) => setNoWorkWorkerIds(current => checked ? [...current, Number(worker.id)] : current.filter(id => id !== Number(worker.id)))} />} />)}
+              </Stack>
+            </Box>}
             {formError ? <Alert severity="error">{formError}</Alert> : null}
             {duplicateGroups.length > 0 ? (
               <Alert severity="warning">

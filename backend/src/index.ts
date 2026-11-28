@@ -189,8 +189,11 @@ import {
 } from "./work-records/workRecordEmployment";
 import {
   validateWorkLogSingleMonthRange,
+  validateEmployeeWorkLogDailyCoverage,
+  WORK_LOG_DAILY_ONLY_ERROR,
   WORK_LOG_CROSS_MONTH_ERROR,
 } from "./work-records/workLogCoverage";
+import { validateDailyWorkLogRoster } from "./work-records/dailyWorkLogRoster";
 import {
   AT_MONTHLY_A_CLAMP_RATIO,
   fitAtParamsWithProportionalAllocation,
@@ -934,6 +937,10 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [{"tableName":"EvidenceAttachment","col
   { tableName: "InvoiceFinalLockEvent", columnName: "invoiceId" },
   { tableName: "InvoiceFinalLockEvent", columnName: "action" },
   { tableName: "WorkLog", columnName: "coverageStartDate" },
+  { tableName: "WorkLogWorkerReview", columnName: "workLogId" },
+  { tableName: "WorkLogWorkerReview", columnName: "orgId" },
+  { tableName: "WorkLogWorkerReview", columnName: "workerId" },
+  { tableName: "WorkLogWorkerReview", columnName: "noWork" },
   { tableName: "WorkLog", columnName: "coverageEndDate" },
   { tableName: "WorkLog", columnName: "entryMode" },
   { tableName: "WorkLog", columnName: "recordKind" },
@@ -1289,6 +1296,8 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ["EvidenceAttachment_org_fkey","Evi
   "Employee_factory_org_fkey",
   "AttendanceEntry_factory_org_fkey",
   "WorkLog_factory_org_fkey",
+  "WorkLogWorkerReview_workLogId_orgId_fkey",
+  "WorkLogWorkerReview_workerId_orgId_fkey",
   "AtTrainingBucket_factory_org_fkey",
   "EmployeeCompensationPolicy_orgId_payType_gradeId_key",
   "EmployeeCompensationPolicy_nonnegative_components_check",
@@ -9355,6 +9364,7 @@ const buildWorkLogSelectWithOptionalCoverage = ({
     createdAt: true,
     updatedAt: true,
     updatedBy: true,
+    workerReviews: { select: { workerId: true, noWork: true } },
   };
   if (includeCoverage) {
     select.coverageStartDate = true;
@@ -12123,6 +12133,7 @@ const toWorkLogResponse = async (
     itemCount: workLog.itemCount ?? 0,
     totalCtSeconds: workLog.totalCtSeconds ?? 0,
     note: workLog.note ?? "",
+    workerReviews: workLog.workerReviews ?? [],
     records: await buildWorkLogResponseRecordList({
       orgId: toPositiveIntOrNull(options.orgId),
       workLog,
@@ -12261,6 +12272,24 @@ const buildWorkLogContextResponse = async ({ orgId, factoryId, workDate, coverag
     previousCoverageEndDate, suggestedCoverageStartDate, isFirstFactoryWorkLog: !previousCoverageEndDate,
   };
 };
+const loadDailyRosterWorkerIds = async (tx: any, orgId: number, factoryId: number, date: string): Promise<number[]> => {
+  const employees = await tx.employee.findMany({ where: { orgId, factoryId, orgRole: 'WORKER', status: { in: ['ACTIVE', 'TERMINATED', 'SUSPENDED'] } }, select: { id: true, joinedAt: true, leftAt: true } });
+  return employees.filter((employee: any) => evaluateWorkerEmploymentInDateRange({ joinedAt: employee.joinedAt, leftAt: employee.leftAt, startDateKey: date, endDateKey: date }).passed).map((employee: any) => employee.id);
+};
+const saveDailyWorkerReviews = async (tx: any, orgId: number, workLogId: number, normalized: any, rawReviews: unknown, isNew: boolean) => {
+  const existingReviews = await tx.workLogWorkerReview.findMany({ where: { workLogId, orgId } });
+  if (!isNew && existingReviews.length === 0) return;
+  await tx.$queryRawUnsafe('SELECT id FROM "Factory" WHERE id=$1 AND "orgId"=$2 FOR UPDATE', normalized.factoryId, orgId);
+  const other = await tx.workLog.findFirst({ where: { orgId, factoryId: normalized.factoryId, recordKind: 'EMPLOYEE', displayDate: normalized.displayDate, id: { not: workLogId } }, select: { id: true } });
+  if (other) throw createHttpError(409, 'A work log already exists for this factory and day. Open the existing work log.');
+  const workerIds = await loadDailyRosterWorkerIds(tx, orgId, normalized.factoryId, normalized.displayDate);
+  const reviews = Array.isArray(rawReviews) ? rawReviews.map(row => ({ workerId: Number(row?.workerId), noWork: row?.noWork })) : [];
+  const error = validateDailyWorkLogRoster({ workerIds, records: normalized.records, reviews });
+  if (error || workerIds.length === 0) throw createHttpError(400, 'Complete all workers for the selected factory and day, or explicitly confirm no work for each worker without production.');
+  await tx.workLogWorkerReview.deleteMany({ where: { workLogId, orgId } });
+  await tx.workLogWorkerReview.createMany({ data: reviews.map(review => ({ ...review, workLogId, orgId })) });
+};
+
 const resolveWorkLogUpdatedBy = async (orgId: number, req: Request): Promise<string | null> => {
   const requesterEmail = resolveOptionalString(getRequesterEmail(req), null);
   if (!requesterEmail) return null;
@@ -24538,6 +24567,9 @@ app.post("/work-logs/import", async (req, res) => {
     });
 
   importedRows.forEach((row) => {
+    if (row.coverageStartDate && row.coverageEndDate && row.coverageStartDate !== row.coverageEndDate) {
+      issues.push(buildWorkLogImportIssue({ row, code: "DAILY_WORK_LOG_REQUIRED", message: WORK_LOG_DAILY_ONLY_ERROR }));
+    }
     if (!row.coverageEndDate) {
       issues.push(
         buildWorkLogImportIssue({
@@ -25282,6 +25314,12 @@ app.post("/work-logs/import", async (req, res) => {
       continue;
     }
 
+    const dailyWorkerIds = await loadDailyRosterWorkerIds(prisma, organization.id, normalized.factoryId!, normalized.displayDate);
+    const workedWorkerIds = new Set<number>(normalized.records.map((record: any) => record.workerId));
+    if (dailyWorkerIds.some(id => !workedWorkerIds.has(id))) {
+      issues.push(buildWorkLogImportIssue({ row: groupAnchorRow, code: 'DAILY_WORK_LOG_ROSTER_INCOMPLETE', message: 'Include every worker for this factory and day. Confirm workers without production in the daily work log screen.' }));
+      continue;
+    }
     validatedGroups.push({
       factoryScope: factoryScopeValidation.factoryScope ?? group.factoryScope,
       sourceRows: group.rows,
@@ -25386,6 +25424,8 @@ app.post("/work-logs/import", async (req, res) => {
               ),
             });
           }
+          await saveDailyWorkerReviews(tx, organization.id, next.id, group.normalized,
+            [...new Set(records.map((record: any) => record.workerId))].map(workerId => ({ workerId, noWork: false })), true);
           createdWorkLogIds.push(next.id);
         }
         return createdWorkLogIds;
@@ -25786,6 +25826,8 @@ app.post("/work-logs", async (req, res) => {
   if (normalized.recordKind === "OUTSOURCING") {
     return handleCreateOutsourcedWorkLog({ req, res, organization, normalized, trace });
   }
+  const dailyCoverageError = validateEmployeeWorkLogDailyCoverage({ ...normalized, coverageStartDate: normalizeDateKey(req.body?.coverageStartDate) || normalized.coverageStartDate });
+  if (dailyCoverageError) return res.status(400).json({ ok: false, error: dailyCoverageError });
   const crossMonthRangeError = validateWorkLogSingleMonthRange({
     coverageStartDate: normalized.coverageStartDate,
     coverageEndDate: normalized.coverageEndDate,
@@ -26015,6 +26057,7 @@ app.post("/work-logs", async (req, res) => {
         });
       }
 
+      await saveDailyWorkerReviews(tx, organization.id, next.id, normalized, req.body?.workerReviews, true);
       return next;
     }, { timeout: 30000 });
   let created: any;
@@ -26086,6 +26129,8 @@ app.put("/work-logs/:id", async (req, res) => {
     select: {
       id: true,
       displayDate: true,
+      coverageStartDate: true,
+      coverageEndDate: true,
       recordKind: true,
       workRecords: {
         select: {
@@ -26100,10 +26145,13 @@ app.put("/work-logs/:id", async (req, res) => {
       .json({ ok: false, error: translateWorkLogErrorMessage("work log not found") });
   }
   const normalized = normalizeWorkLogPayload(req.body ?? {}, existing);
+  if (normalized.recordKind !== existing.recordKind) return res.status(400).json({ ok: false, error: 'The work log record kind cannot be changed.' });
   updateWorkLogMutationTrace(trace, "normalized", summarizeWorkLogPayloadForDebug(normalized));
   if (normalized.recordKind === "OUTSOURCING") {
     return handleUpdateOutsourcedWorkLog({ req, res, organization, id, normalized, trace });
   }
+  const dailyCoverageError = validateEmployeeWorkLogDailyCoverage({ ...normalized, coverageStartDate: normalizeDateKey(req.body?.coverageStartDate) || normalized.coverageStartDate, existing });
+  if (dailyCoverageError) return res.status(400).json({ ok: false, error: dailyCoverageError });
   const crossMonthRangeError = validateWorkLogSingleMonthRange({
     coverageStartDate: normalized.coverageStartDate,
     coverageEndDate: normalized.coverageEndDate,
@@ -26344,6 +26392,7 @@ app.put("/work-logs/:id", async (req, res) => {
         });
       }
 
+      await saveDailyWorkerReviews(tx, organization.id, next.id, normalized, req.body?.workerReviews, false);
       return next;
     }, { timeout: 30000 });
   let updated: any;

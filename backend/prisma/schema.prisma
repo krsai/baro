@@ -1304,6 +1304,7 @@ model Employee {
   managedFactories         Factory[]          @relation("FactoryManager")
   attendanceEntries        AttendanceEntry[]
   workRecords              WorkRecord[]
+  workLogWorkerReviews     WorkLogWorkerReview[]
   atTrainingBuckets        AtTrainingBucket[]
 
   createdByEmployee                  Employee?                         @relation("EmployeeCreatedByEmployee", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
@@ -2864,6 +2865,7 @@ model WorkLog {
   organization          Organization           @relation(fields: [orgId], references: [id])
   factory                Factory?               @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Restrict, map: "WorkLog_factory_org_fkey")
   workRecords            WorkRecord[]
+  workerReviews          WorkLogWorkerReview[]
   outsourcedWorkRecords  OutsourcedWorkRecord[]
   atTrainingBuckets      AtTrainingBucket[]
 
@@ -2874,6 +2876,19 @@ model WorkLog {
   @@index([orgId, createdAt])
   @@index([orgId, recordKind])
   @@index([factoryId])
+  @@unique([id, orgId])
+}
+
+model WorkLogWorkerReview {
+  workLogId Int
+  orgId Int
+  workerId Int
+  noWork Boolean
+  workLog WorkLog @relation(fields: [workLogId, orgId], references: [id, orgId], onDelete: Cascade)
+  worker Employee @relation(fields: [workerId, orgId], references: [id, orgId], onDelete: Restrict)
+
+  @@id([workLogId, workerId])
+  @@index([workerId, orgId])
 }
 
 // Employee-only work records. Outsourced (vendor) production lives in
