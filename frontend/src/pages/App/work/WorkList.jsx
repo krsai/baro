@@ -33,7 +33,7 @@ import {
   resolveScopedFactoryManagementStartDateKey,
 } from '../../../utils/factoryManagementStart';
 import { deleteWorkLog, loadWorkLogs } from './workLogStorage';
-import { downloadWorkLogs } from './workLogExport';
+import { downloadWorkLogs, resolveWorkLogExportRange } from './workLogExport';
 import QuantityImportReviewTable from './QuantityImportReviewTable';
 import {
   extractWorkLogImportIssueRows,
@@ -44,7 +44,7 @@ import {
 } from './workLogImport';
 
 const TEXT = {
-  export: { ko: '엑셀 다운로드', en: 'Download Excel', vi: 'Tải Excel' },
+  export: { ko: '월별 상세 엑셀', en: 'Monthly Details Excel', vi: 'Excel Chi Tiết Hằng Tháng' },
   exportError: { ko: '작업 기록을 다운로드하지 못했습니다. 다시 시도해 주세요.', en: 'Could Not Download Work Records. Please Try Again.', vi: 'Không Thể Tải Nhật Ký Công Việc. Vui Lòng Thử Lại.' },
   import: { ko: '파일 업로드', en: 'Import File', vi: 'Nhap tep' },
   importSuccess: {
@@ -455,16 +455,14 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
 
   const handleExport = async () => {
     if (exporting || !activeOrgId) return;
-    const visibleIds = filteredLogs.map(log => String(log.id));
+    const exportRange = resolveWorkLogExportRange(dateFrom, dateTo);
     setExporting(true);
     try {
       const rows = await loadWorkLogs({
-        orgId: activeOrgId, factoryId: selectedFactoryIdNumber, dateFrom, dateTo,
+        orgId: activeOrgId, factoryId: selectedFactoryIdNumber, ...exportRange,
         recordKind, includeRecords: true, skipCache: true, forceRefresh: true,
       });
-      const byId = new Map(rows.map(log => [String(log.id), log]));
-      if (visibleIds.some(id => !byId.has(id))) throw new Error('WORK_LOG_EXPORT_CHANGED');
-      downloadWorkLogs(visibleIds.map(id => byId.get(id)), dateFrom, dateTo);
+      downloadWorkLogs(rows, exportRange.dateFrom, exportRange.dateTo);
     } catch {
       showNotification(resolveText(TEXT.exportError, languageCode), 'error');
     } finally {
@@ -642,7 +640,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                   variant="outlined"
                   startIcon={<DownloadIcon />}
                   onClick={handleExport}
-                  disabled={exporting || importing || loading || loadingFactories || loadError || factoryError || !activeOrgId || filteredLogs.length === 0}
+                  disabled={exporting || importing || loading || loadingFactories || loadError || factoryError || !activeOrgId}
                 >
                   {resolveText(TEXT.export, languageCode)}
                 </Button>
