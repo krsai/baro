@@ -1,4 +1,5 @@
 import {personalProfileEmployee} from './personalProfile';
+import {loadEmployeeGrades,deleteUnusedEmployeeGrade} from './employeeGrades';
 import {assertCompanyLeaveBalances} from './employeeLeave';
 import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
 ﻿import { type OrgUserRole } from "@prisma/client";
@@ -216,11 +217,7 @@ export const createEmployeeRouter = ({
   employeeRouter.get("/employee-grades", async (req, res) => {
     const organization = await getOrganizationByQuery(req);
     if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
-    const sets = await prisma.employeeGradeSet.findMany({
-      where: { orgId: organization.id },
-      include: { grades: { orderBy: [{ sortOrder: "asc" }, { id: "asc" }] } },
-      orderBy: { id: "asc" },
-    });
+    const sets = await loadEmployeeGrades(prisma, organization.id);
     return res.json(sets);
   });
 
@@ -305,18 +302,7 @@ export const createEmployeeRouter = ({
     const organization = await getOrganizationByQuery(req);
     if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
     if (!(await requireGradeManager(req, res, organization.id))) return;
-    const gradeId = Number(req.params.gradeId);
-    const grade = await prisma.employeeGrade.findFirst({ where: { id: gradeId, orgId: organization.id } });
-    if (!grade) return res.status(404).json({ ok: false, error: "grade not found" });
-    if (grade.isDefault) return res.status(409).json({ ok: false, error: "default grade cannot be deleted" });
-    const defaultGrade = await prisma.employeeGrade.findFirst({ where: { orgId: organization.id, isDefault: true } });
-    if (!defaultGrade) return res.status(409).json({ ok: false, error: "default grade not found" });
-    const assignedCount = await prisma.$transaction(async (tx) => {
-      const result = await tx.employee.updateMany({ where: { orgId: organization.id, gradeId }, data: { gradeId: defaultGrade.id } });
-      await tx.employeeGrade.delete({ where: { id: gradeId } });
-      return result.count;
-    });
-    return res.json({ ok: true, reassignedEmployeeCount: assignedCount, defaultGradeId: defaultGrade.id });
+    return res.json(await deleteUnusedEmployeeGrade(prisma, organization.id, Number(req.params.gradeId)));
   });
 
   employeeRouter.get("/employees/me", async (req, res) => {

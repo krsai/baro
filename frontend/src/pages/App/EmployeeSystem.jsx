@@ -1,9 +1,11 @@
 import ActionNotice from '../../components/ActionNotice';
+import {employeeGradeText} from '../../constants/employeeGrade';
+import {usePageDialogs} from '../../components/PageDialogProvider';
 import { useLanguage } from '../../context/LanguageContext';
 import { hasLocalizedName } from '../../utils/localizedName.mjs';
 import DeleteActionButton from '../../components/DeleteActionButton';
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {Box,Button,IconButton,MenuItem,Paper,Stack,TextField,Typography} from '@mui/material';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {Box,Button,IconButton,MenuItem,Paper,Stack,TextField,Tooltip,Typography} from '@mui/material';
 import Alert from "../../components/AppNotice";
 import AppPageContainer from "../../components/AppPageContainer";
 import { useAuth } from "../../context/AuthContext";
@@ -20,6 +22,7 @@ const toGradeDraft = (grade) => ({
 const EmployeeSystem = () => {
   const { activeOrgId } = useAuth();
   const { languageCode } = useLanguage();
+  const gradeText=employeeGradeText[languageCode]||employeeGradeText.en,dialogs=usePageDialogs(),deleteLock=useRef(false);
   const [sets, setSets] = useState([]);
   const [grades, setGrades] = useState({});
   const [saving, setSaving] = useState(false);
@@ -126,14 +129,21 @@ const EmployeeSystem = () => {
     }
   };
   const removeGrade = async (grade) => {
+    if(deleteLock.current||saving||gradesChanged||grade.isDefault||grade._count?.employees>0)return;
+    deleteLock.current=true;
     try {
+      if(!await dialogs.confirm(gradeText.confirmDelete.replace('{name}',grade[languageCode==='ko'?'nameKo':languageCode==='vi'?'nameVi':'nameEn']||grade.name||grade.code)))return;
+      setSaving(true);
       await requestJSON(`/employee-grades/${grade.id}${buildQueryString({ orgId: activeOrgId })}`, { method: "DELETE" });
       await load();
     } catch (error) {
       setMessage({
         severity: "error",
-        text: error?.message || "직급을 삭제하지 못했습니다.",
+        text: ({EMPLOYEE_GRADE_IN_USE:gradeText.inUse,EMPLOYEE_GRADE_DEFAULT:gradeText.defaultGrade,EMPLOYEE_GRADE_CHANGED:gradeText.changed,EMPLOYEE_GRADE_NOT_FOUND:gradeText.changed})[error?.message]||gradeText.failed,
       });
+    } finally {
+      deleteLock.current=false;
+      setSaving(false);
     }
   };
 
@@ -172,7 +182,7 @@ const EmployeeSystem = () => {
                       <TextField size="small" label="Grade name (English)" value={grades[grade.id]?.nameEn || ""} onChange={(e) => editGrade(grade.id, "nameEn", e.target.value)} />
                       <TextField size="small" label="Tên cấp bậc (Tiếng Việt)" value={grades[grade.id]?.nameVi || ""} onChange={(e) => editGrade(grade.id, "nameVi", e.target.value)} />
                       <TextField size="small" label="순서" type="number" value={grades[grade.id]?.sortOrder || ""} onChange={(e) => editGrade(grade.id, "sortOrder", e.target.value)} />
-                      <DeleteActionButton color="error" disabled={grade.isDefault || saving || gradesChanged} onClick={() => removeGrade(grade)} />
+                      <Tooltip title={grade.isDefault?gradeText.defaultGrade:grade._count?.employees>0?gradeText.inUse:''}><span><DeleteActionButton data-grade-delete={grade.id} color="error" disabled={grade.isDefault || grade._count?.employees>0 || saving || gradesChanged} onClick={() => removeGrade(grade)} /></span></Tooltip>
                     </Box>
                   ))}
                 </Stack>
