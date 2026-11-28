@@ -3,6 +3,7 @@ import path from 'node:path';
 
 const ROOT = process.cwd();
 const TARGET_DIRS = ['frontend/src', 'backend/src'];
+const DOCUMENT_FILES = ['docs/development-reference.md'];
 const TEXT_EXTENSIONS = new Set([
   '.js',
   '.jsx',
@@ -67,6 +68,17 @@ async function main() {
           label: pattern.label,
         });
       }
+    }
+  }
+
+  // Documentation can lose Korean text as literal question marks, without U+FFFD.
+  // Keep valid code examples using the two-character nullish operator.
+  for (const relativeFile of DOCUMENT_FILES) {
+    const content = await fs.readFile(path.join(ROOT, relativeFile), 'utf8');
+    const patterns = [...PATTERNS, { label: 'Possible lossy text (repeated question marks)', regex: /\?{3,}/u }];
+    for (const pattern of patterns) {
+      const match = pattern.regex.exec(content);
+      if (match) issues.push({file:relativeFile,line:findLineNumber(content,match.index),label:pattern.label});
     }
   }
 
