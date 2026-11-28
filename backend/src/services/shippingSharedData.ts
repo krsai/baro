@@ -1,3 +1,5 @@
+import {billPortLabel} from '../utils/billPortLabel';
+import {billPortLabels} from './billPortLabels';
 import {randomUUID} from 'node:crypto';
 import {shippingWorkData} from './shippingWorkData';
 
@@ -7,6 +9,7 @@ export const sharedFields=['shipper','consignee','notify','vessel','voyage','etd
 const totals=new Set(['quantity','unit','weightKg','cbm','cbmFormula']);
 const publicFields=[...sharedFields,'plannedDate','routeLocations','routeLocationDetails','originPortCode','destinationPortCode','workScope','shipperParty','consigneeParty','notifyParty','notifySameAsConsignee'];
 const equal=(a:any,b:any)=>JSON.stringify(a??'')===JSON.stringify(b??'');
+const sameShared=(key:string,a:any,b:any)=>['origin','destination'].includes(key)&&typeof a==='string'&&typeof b==='string'?billPortLabel(a)===billPortLabel(b):equal(a,b);
 const copy=(v:any)=>v===undefined?undefined:JSON.parse(JSON.stringify(v));
 export const partyBlock=(p:any)=>p?[p.name,p.address,[p.contactName,p.phone,p.email].filter(Boolean).join(' / ')].filter(Boolean).join('\n'):'';
 
@@ -51,8 +54,8 @@ export function sharedBillSource(job:any){
   if(!Object.hasOwn(job.data?.workDetails||{},role)&&d[actual+'Party'])result[role]=partyBlock(d[actual+'Party']);
  }
  if(job.service!=='EXPRESS'&&['SEA','AIR'].includes(job.mode)){
-  result.origin=d.routeLocations?.ORIGIN_TERMINAL||d.originPortCode||d.origin||'';
-  result.destination=d.routeLocations?.DESTINATION_TERMINAL||d.destinationPortCode||d.destination||'';
+  result.origin=job.billPorts?.origin||billPortLabel(d.routeLocations?.ORIGIN_TERMINAL||d.originPortCode||d.origin||'',d.originPortCode);
+  result.destination=job.billPorts?.destination||billPortLabel(d.routeLocations?.DESTINATION_TERMINAL||d.destinationPortCode||d.destination||'',d.destinationPortCode);
   result.placeOfReceipt=d.placeOfReceipt||d.origin||'';result.placeOfDelivery=d.placeOfDelivery||d.destination||'';
  }
  return result;
@@ -71,12 +74,12 @@ function allowed(bill:any,bills:any[],key:string){
  return true;
 }
 export async function syncBillsFromJob(tx:any,actorId:number,before:any,after:any,exclude?:string){
- const old=sharedBillSource(before),next=sharedBillSource(after),bills=await ownBills(tx,after);
+ const old=sharedBillSource({...before,billPorts:await billPortLabels(tx,before)}),next=sharedBillSource({...after,billPorts:await billPortLabels(tx,after)}),bills=await ownBills(tx,after);
  for(const bill of bills){
   if(bill.id===exclude)continue;const data={...bill.data};let changed=false;
   for(const key of sharedFields){
    if(!allowed(bill,bills,key)||equal(old[key],next[key])||next[key]===undefined)continue;
-   if(data[key]===undefined||equal(data[key],old[key])){data[key]=copy(next[key]);changed=true;}
+   if(data[key]===undefined||sameShared(key,data[key],old[key])){data[key]=copy(next[key]);changed=true;}
   }
   if(!changed)continue;
   const updated=(await tx.$queryRawUnsafe('UPDATE "FreightBill" SET data=$1::jsonb,version=version+1,"updatedByEmployeeId"=$2,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$3 AND "orgId"=$4 RETURNING *',JSON.stringify(data),actorId,bill.id,after.orgId))[0];
@@ -88,12 +91,12 @@ export async function syncJobFromBill(tx:any,actorId:number,job:any,before:any,a
  if(!before)return job; // Creation copies defaults; it is not an edit of the SR.
  const bills=await ownBills(tx,job),bill=bills.find((b:any)=>b.id===after.id);
  if(!bill||bill.kind==='MASTER'&&bill.linkedJobs>1)return job;
- const source=sharedBillSource(job),data=copy(job.data),working={...data.workDetails};let changed=false;
+ const source=sharedBillSource({...job,billPorts:await billPortLabels(tx,job)}),data=copy(job.data),working={...data.workDetails};let changed=false;
  for(const key of sharedFields){
   if(!allowed(bill,bills,key)||equal(before.data?.[key],after.data?.[key])||after.data?.[key]===undefined)continue;
   // Never infer a party FK from a free-text company name or replace a forwarder
   // Master party with the customer's House party.
-  if(before.data?.[key]!==undefined&&!equal(before.data[key],source[key]))continue;
+  if(before.data?.[key]!==undefined&&!sameShared(key,before.data[key],source[key]))continue;
   const value=copy(after.data[key]);
   if(['shipper','consignee','notify'].includes(key)&&String(value).split('\n')[0]!==String(source[key]).split('\n')[0])continue;
   if(['origin','destination'].includes(key)&&job.service!=='EXPRESS'&&['SEA','AIR'].includes(job.mode)){

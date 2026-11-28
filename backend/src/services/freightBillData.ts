@@ -1,3 +1,4 @@
+import {billPortLabel} from '../utils/billPortLabel';
 import {normalizeEditableDecimal} from '../utils/editableDecimal';
 import {validateVolumeFormula} from '../utils/validateVolumeFormula';
 import {createHttpError} from '../utils/http';
@@ -14,7 +15,7 @@ export function billData(value:any){
    result.containers=rows.map(r=>({size:String(r.size),type:String(r.type),count:normalizeEditableDecimal(r.count)}));continue;
   }
   if(typeof raw!=='string'||raw.length>billFieldLimits[key]!)throw createHttpError(400,'FREIGHT_INVALID_INPUT');
-  const text=['quantity','weightKg','cbm','originalCount'].includes(key)?normalizeEditableDecimal(raw.trim()):raw.trim();
+  const text=['origin','destination'].includes(key)?billPortLabel(raw):['quantity','weightKg','cbm','originalCount'].includes(key)?normalizeEditableDecimal(raw.trim()):raw.trim();
   if(key==='logoDataUrl')validateBillLogo(text);
   if(key==='releaseType'&&text&&!['ORIGINAL','SEA_WAYBILL'].includes(text)||key==='surrenderStatus'&&text&&!['NONE','REQUESTED','CONFIRMED'].includes(text)||key==='originalCount'&&text&&!/^(0|[1-9]\d?)$/.test(text))throw createHttpError(400,'FREIGHT_INVALID_INPUT');
   if(['etd','eta','issueDate','onBoardDate','surrenderRequestedAt','surrenderConfirmedAt'].includes(key)&&text&&(!/^\d{4}-\d\d-\d\d$/.test(text)||!Number.isFinite(Date.parse(text))||new Date(text).toISOString().slice(0,10)!==text))throw createHttpError(400,'FREIGHT_INVALID_INPUT');

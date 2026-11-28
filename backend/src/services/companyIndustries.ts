@@ -1,4 +1,5 @@
 import {publishCompanyProfileDefault} from './companyProfileDefaults';
+import {companyBranding,saveCompanyBranding} from './companyBranding';
 import {companyClassificationSource} from './companyClassificationSource';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -32,14 +33,15 @@ export async function saveCompanyIndustries(db:any,orgId:number,actorId:number,i
   return readCompanyIndustries(tx,orgId,actorId);
  });
 }
-export async function saveCompanyProfileAndClassification(db:any,orgId:number,actorId:number,data:any,classification:any){
+export async function saveCompanyProfileAndClassification(db:any,orgId:number,actorId:number,data:any,classification:any,logo?:any){
  return retryEditTransaction(db,async(tx:any)=>{
   await actor(tx,orgId,actorId,true);
   const before=await tx.organization.findUnique({where:{id:orgId}});
   const organization=await tx.organization.update({where:{id:orgId},data});
   await publishCompanyProfileDefault(tx,orgId,actorId,before,organization);
   const saved=await saveClassification(tx,orgId,orgId,actorId,classification);
-  return {organization,classification:saved};
+  const companyLogo=logo===undefined?await companyBranding(tx,orgId):await saveCompanyBranding(tx,orgId,actorId,logo);
+  return {organization,classification:saved,companyLogo};
  });
 }
 // Billing accepts any active company code with a compatible cash direction.

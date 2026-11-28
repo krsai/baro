@@ -1,4 +1,5 @@
 import {publishCompanyProfileDefault} from '../services/companyProfileDefaults';
+import {companyBranding,saveCompanyBranding} from '../services/companyBranding';
 import {companyDocumentContactUpdate} from '../services/companyDocumentContact';
 import {businessLegalForm} from '../services/businessLegalForm';
 import {saveCompanyProfileAndClassification} from '../services/companyIndustries';
@@ -75,7 +76,7 @@ export const createOrganizationRouter = ({
     }
     const organizationWithRepresentative =
       (await findOrganizationProfileById(organization.id)) ?? organization;
-    return res.json(toOrganizationResponse(organizationWithRepresentative));
+    return res.json({...toOrganizationResponse(organizationWithRepresentative),companyLogo:await companyBranding(prisma,organization.id)});
   });
 
   organizationRouter.post("/organizations", async (req, res) => {
@@ -158,7 +159,7 @@ export const createOrganizationRouter = ({
     const isSystemAdmin = systemUser?.systemRole === "SYSTEM_ADMIN";
     const isOrgAdmin = employee?.status === "ACTIVE" && employee?.orgRole === "ADMIN";
     const isProfileUpdate=String(req.path||'').replace(/\/+$/,'').toLowerCase().endsWith('/profile');
-    if((isProfileUpdate||req.body?.classification!==undefined)&&!isOrgAdmin)return res.status(403).json({error:'COMPANY_INDUSTRY_ADMIN_REQUIRED'});
+    if((isProfileUpdate||req.body?.classification!==undefined||req.body?.companyLogo!==undefined)&&!isOrgAdmin)return res.status(403).json({error:'COMPANY_INDUSTRY_ADMIN_REQUIRED'});
 
     if (!isSystemAdmin && !isOrgAdmin) {
       return res.status(403).json({ ok: false, error: "admin access required" });
@@ -237,19 +238,21 @@ export const createOrganizationRouter = ({
       ...(normalizedCode !== undefined ? { code: normalizedCode } : {}),
     };
 
-    const combined=req.body?.classification!==undefined?await saveCompanyProfileAndClassification(prisma,id,employee!.id,organizationUpdateData,req.body.classification):null;
-    const organization = combined?.organization || await prisma.$transaction(async tx=>{
+    const combined=req.body?.classification!==undefined?await saveCompanyProfileAndClassification(prisma,id,employee!.id,organizationUpdateData,req.body.classification,req.body.companyLogo):null;
+    const profile = combined || await prisma.$transaction(async tx=>{
       const before=await tx.organization.findUnique({where:{id}});
       const saved=await tx.organization.update({where:{id},data:organizationUpdateData});
       if(isOrgAdmin)await publishCompanyProfileDefault(tx,id,employee!.id,before,saved);
-      return saved;
+      const companyLogo=req.body?.companyLogo===undefined?await companyBranding(tx,id):await saveCompanyBranding(tx,id,employee!.id,req.body.companyLogo);
+      return {organization:saved,companyLogo};
     });
+    const organization=profile.organization;
 
     if (isSystemAdmin) {
       await applySubscriptionPayload(organization, req.body ?? {});
     }
     const withSubscription = await attachOrganizationSubscription(organization);
-    return res.json({...toOrganizationResponse(withSubscription),...(combined?{classification:combined.classification}:{})});
+    return res.json({...toOrganizationResponse(withSubscription),companyLogo:profile.companyLogo,...(combined?{classification:combined.classification}:{})});
   });
 
   organizationRouter.get("/organizations/:id/subscription", async (req, res) => {

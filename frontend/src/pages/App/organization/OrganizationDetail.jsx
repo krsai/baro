@@ -1,4 +1,5 @@
 import EntityCountryPhoneFields from '../../../components/EntityCountryPhoneFields';
+import CompanyLogoField,{companyLogoText} from '../../../components/CompanyLogoField';
 import CompanyNameField from "../../../components/CompanyNameField";
 import EntityPhoneField from '../../../components/EntityPhoneField';
 import { phoneForCountry } from '../../../utils/entityPhone.mjs';
@@ -52,6 +53,7 @@ const buildCompanyInfo = (data = {}) => {
     address: data.address ?? '',
     phone: data.phone ?? '',
     email: data.email ?? '',
+    companyLogo:data.companyLogo||{version:0,logoDataUrl:''},
   };
 };
 
@@ -123,6 +125,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
 
 
   const [isSaving, setIsSaving] = useState(false);
+  const [logoReading,setLogoReading]=useState(false);
   const [industryProfile,setIndustryProfile]=useState(null),[classification,setClassification]=useState(null),[industryReady,setIndustryReady]=useState(false),[industryError,setIndustryError]=useState(''),[industryReload,setIndustryReload]=useState(0);
   const location=useLocation(),tabPath=useRef(location.pathname);
   const [profileReload,setProfileReload]=useState(0),[profileError,setProfileError]=useState(false);
@@ -190,9 +193,9 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
     [formData, savedFormData]
   );
   const isDirty=profileDirty||classificationDirty;
-  draftBlocked.current=isDirty||isSaving;
-  useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['organization-profile','company-industries','partner-classifications'],isActive:location.pathname===tabPath.current,isBlocked:isDirty||isSaving,onRefresh:async()=>{setProfileReload(v=>v+1);setIndustryReload(v=>v+1);}});
-  useUnsavedChanges(isDirty);
+  draftBlocked.current=isDirty||isSaving||logoReading;
+  useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['organization-profile','company-industries','partner-classifications'],isActive:location.pathname===tabPath.current,isBlocked:isDirty||isSaving||logoReading,onRefresh:async()=>{setProfileReload(v=>v+1);setIndustryReload(v=>v+1);}});
+  useUnsavedChanges(isDirty||logoReading);
 
   const isNameValid = hasLocalizedName(formData, 'name');
 
@@ -203,7 +206,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   };
 
   const handleSave = async () => {
-    if (!isDirty || saveLock.current || isSaving || !isNameValid || !organizationId || !industryProfile?.canEdit || !industryReady || !classificationComplete(classification)) return;
+    if (!isDirty || saveLock.current || isSaving || logoReading || !isNameValid || !organizationId || !industryProfile?.canEdit || !industryReady || !classificationComplete(classification)) return;
     saveLock.current=true;const companyId=activeOrgId;
 
     setIsSaving(true);
@@ -222,6 +225,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
         country: formData.country || null,
         address: formData.address?.trim() || null,
         defaultSizeSetCode: formData.defaultSizeSetCode,
+        companyLogo:formData.companyLogo,
       };
 
       const payload={...(profileDirty?Object.fromEntries(Object.entries(profilePayload).filter(([key])=>key==='representativeEmployeeId'?['representative','phone','email','address'].some(field=>formData[field]!==savedFormData[field]):formData[key]!==savedFormData[key])):{}),...(classificationDirty?{classification:classificationPayload(classification)}:{})};
@@ -247,7 +251,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
       emitWorkspaceDataChanged({orgId:companyId,source:'organization-profile',topics:['organization-profile','shipping','invoices','company-industries','partner-classifications','business-partners','customers','transaction-codes','accounting-codes']});
       showNotification(text.saveSuccess, 'success');
     } catch (error) {
-      if(live.current&&scope.current===companyId)showNotification(error.message==='COMPANY_DOCUMENT_CONTACT_ENGLISH_REQUIRED'?contactText.english:error.message==='COMPANY_DOCUMENT_CONTACT_INVALID'?contactText.invalid:error.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:error.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:entityCodeError(error,languageCode,text.saveError), 'error');
+      if(live.current&&scope.current===companyId)showNotification(error.message==='FREIGHT_LOGO_INVALID'?(companyLogoText[languageCode]||companyLogoText.en).invalid:error.message==='COMPANY_DOCUMENT_CONTACT_ENGLISH_REQUIRED'?contactText.english:error.message==='COMPANY_DOCUMENT_CONTACT_INVALID'?contactText.invalid:error.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:error.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:entityCodeError(error,languageCode,text.saveError), 'error');
     } finally {
       saveLock.current=false;if(live.current)setIsSaving(false);
     }
@@ -255,12 +259,13 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
 
   const embedded = headerActionsTarget !== undefined;
   const Container = embedded ? Box : AppPageContainer;
-  const saveAction = <SaveButton onClick={handleSave} disabled={!isDirty || isSaving || !isNameValid || !organizationId || !industryProfile?.canEdit || !industryReady || !classificationComplete(classification)} loading={isSaving} />;
+  const saveAction = <SaveButton onClick={handleSave} disabled={!isDirty || isSaving || logoReading || !isNameValid || !organizationId || !industryProfile?.canEdit || !industryReady || !classificationComplete(classification)} loading={isSaving} />;
   return <>
     {headerActionsTarget && createPortal(saveAction,headerActionsTarget)}
     <Container {...(embedded ? {sx:{minWidth:0,width:'100%'}} : {title:text.title,titleActions:saveAction})}>
       <PageContentStack component="fieldset" disabled={isSaving} sx={{border:0,p:0,m:0,minWidth:0}}>
       {profileError&&<Alert severity="error" action={<Button onClick={()=>setProfileReload(v=>v+1)}>{industryText.retry}</Button>}>{text.saveError}</Alert>}
+      <CompanyLogoField key={activeOrgId} value={formData.companyLogo.logoDataUrl} languageCode={languageCode} disabled={isSaving||profileError||!organizationId||!industryProfile?.canEdit} onBusyChange={setLogoReading} onChange={logoDataUrl=>setFormData(current=>({...current,companyLogo:{...current.companyLogo,logoDataUrl}}))}/>
       <EntityDetailSection title={(businessLegalFormText[languageCode]||businessLegalFormText.en).title}>
         <Grid container spacing={2}>
 

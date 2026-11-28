@@ -1,15 +1,14 @@
 import React from 'react';
-import {Box,Stack,Typography} from '@mui/material';
+import {Box,Stack} from '@mui/material';
 import {billRouteFields,billFreightFields} from '../utils/billFormLayout.mjs';
 
 // Follow the reference's party/route column and full-width document tables.
-export default function BillDocumentForm({field,numberField,issuerField,masterField,logoActions,logoActionsLabel,containerField}){
+export default function BillDocumentForm({field,numberField,issuerField,masterField,logo,logoActions,logoLabel,containerField}){
  const cell={minWidth:0},table={display:'grid',gap:2,minWidth:0};
  const cargoCell={...cell,'& .MuiTextField-root':{width:'100%'}};
  return <>
-  {(masterField||logoActions)&&<Stack spacing={1.5}>
+  {masterField&&<Stack spacing={1.5}>
    {masterField&&<Box sx={{maxWidth:{md:440}}}>{masterField}</Box>}
-   {logoActions&&<Box component="details" sx={{border:1,borderColor:'divider',borderRadius:1,p:1}}><Typography component="summary" sx={{cursor:'pointer'}}>{logoActionsLabel}</Typography><Box sx={{pt:1}}>{logoActions}</Box></Box>}
   </Stack>}
   <Stack data-shipping-bl-form data-bl-document-layout spacing={2}>
    <Box data-bl-region="identity" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'1fr 1fr'},gap:2,alignItems:'start'}}>
@@ -17,7 +16,10 @@ export default function BillDocumentForm({field,numberField,issuerField,masterFi
      <Stack spacing={2}>{['shipper','consignee','notify'].map(key=><Box key={key} sx={cell}>{field(key,true)}</Box>)}</Stack>
      <Box data-bl-region="route" sx={{...table,mt:2,gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))'}}}>{billRouteFields.map(key=><Box key={key} sx={{...cell}}>{field(key)}</Box>)}</Box>
     </Box>
-    <Box data-bl-identity sx={cell}>{numberField}</Box>
+    <Stack data-bl-identity spacing={2} sx={cell}>{numberField}<Stack data-bl-logo spacing={1} alignItems="center">
+     {logo&&<Box component="img" alt={logoLabel} src={logo} sx={{width:240,maxWidth:'100%',height:80,objectFit:'contain'}}/>}
+     {logoActions}
+    </Stack></Stack>
    </Box>
    {containerField&&<Box data-bl-region="containers" sx={{...cell}}>{containerField}</Box>}
    <Box data-bl-region="cargo" sx={{...table,gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',md:'24fr 10fr 38fr 14fr 14fr'},position:'relative'}}>

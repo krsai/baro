@@ -1,3 +1,4 @@
+import useWorkspaceRefreshOnEvent from '../../hooks/useWorkspaceRefreshOnEvent';
 import {RecordInteractionScope, RecordRow, RecordOpenButton} from '../../components/RecordInteraction';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import {shippingState} from '../../utils/shippingState.mjs';
@@ -98,6 +99,7 @@ function Jobs({orgId}){
  const api=useCallback((path='',method='GET',body,query={})=>requestJSON('/freight/transport-jobs'+path+buildQueryString({orgId,...query}),{method,skipCache:true,...(body?{body:JSON.stringify(body)}:{})}),[orgId]);
  useEffect(()=>{let live=true;setSrEditing(false);setSrWorkState({dirty:false,saving:false,uncertain:false});setSrRecord(null);setSrError(false);setSrLoading(Boolean(srId));if(srId)api('/'+encodeURIComponent(srId)).then(row=>{if(live)setSrRecord(row);}).catch(()=>{if(live)setSrError(true);}).finally(()=>{if(live)setSrLoading(false);});return()=>{live=false;};},[api,srId,srRetry]);
  const message=e=>['SHIPPING_REJECT_BLOCKED','SHIPPING_DELETE_BLOCKED'].includes(e.message)?t.linkedBlocked:e.message==='SHIPPING_ACCESS_DENIED'?t.sourceOwnerOnly:e.message==='SHIPPING_DC_SCOPE'?billLabels.dcScope:e.message==='FREIGHT_COMPOSITION_HAS_BILLS'?billLabels.compositionBlocked:e.message==='FREIGHT_MASTER_HAS_HOUSES'?t.hasHouses:e.message==='FREIGHT_MASTER_SCOPE'?t.scope:e.message==='FREIGHT_CHANGED'?t.conflict:t.failed;
+ useWorkspaceRefreshOnEvent({orgId,topics:['organization-profile'],isActive:active,isBlocked:busy||billState.busy||billState.uncertain,onRefresh:async()=>{const next=await api('/options');if(alive.current)setOptions(old=>({...old,forwarder:next.forwarder,billBranding:next.billBranding}));}});
  useEffect(()=>{let live=true;Promise.all([requestJSON('/freight/options'+buildQueryString({orgId}),{skipCache:true}),api('/options')]).then(([customers,value])=>live&&setOptions({customers,employees:value.employees,forwarder:value.forwarder,billBranding:value.billBranding,currencies:value.currencies||[]})).catch(e=>live&&setError(message(e)));return()=>{live=false;};},[api,reload,form]);
  const listVisible=!id||stage==='basic';
  const [detailLoading,setDetailLoading]=useState(!!id);

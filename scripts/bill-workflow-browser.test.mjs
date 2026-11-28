@@ -19,7 +19,7 @@ try{
  for(const lang of ['ko','en','vi'])for(const theme of ['standard','compact'])for(const width of [1440,390]){
   if(process.argv.includes('--layout-check-only')&&(lang!=='en'||theme!=='standard'))continue;
   const page=await browser.newPage({viewport:{width,height:1000},hasTouch:width===390}),errors=[],saves=[],t=billWorkflowText[lang],bt=shippingBillText[lang];currentPage=page;page.setDefaultTimeout(20000);page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});page.on('dialog',d=>d.accept());
-  const data={origin:'Haiphong',destination:'Incheon',shipper:'SHIPPER ORIGINAL',consignee:'CONSIGNEE ORIGINAL',notify:'NOTIFY ORIGINAL',cargo:'Original Cargo',quantity:'77',unit:'CTN',weightKg:'1040',cbm:'5.440'};
+  const data={origin:'Haiphong',destination:'Incheon',originPortCode:'VNHPH',destinationPortCode:'KRINC',routeLocations:{ORIGIN_TERMINAL:'Haiphong (VNHPH)',DESTINATION_TERMINAL:'Incheon (KRINC)'},shipper:'SHIPPER ORIGINAL',consignee:'CONSIGNEE ORIGINAL',notify:'NOTIFY ORIGINAL',cargo:'Original Cargo',quantity:'77',unit:'CTN',weightKg:'1040',cbm:'5.440'};
   if(process.argv.includes('--shared-containers-only'))Object.assign(data,{shipmentType:'FCL',containers:[{size:'20',type:'DC',count:'1'}]});
   let autoNumber=0;const logos=[];
   const job={id:'job',orgId:7,version:1,number:'JOB-1',mode:'SEA',service:'GENERAL',status:'DRAFT',receiptStatus:'ACCEPTED',data,bills:[{id:'m1',jobId:'job',kind:'MASTER',number:'M-1',version:1,data:{}},{id:'m2',jobId:'job',kind:'MASTER',number:'M-2',version:1,data:{}},{id:'h1',jobId:'job',kind:'HOUSE',number:'H-1',masterId:'m1',version:1,data:{}}],documents:[]};
@@ -72,15 +72,13 @@ try{
   const parties=await page.locator('[data-bl-parties]').boundingBox(),identity=await page.locator('[data-bl-identity]').boundingBox();
   if(width>=900){assert.ok(Math.abs(parties.y-identity.y)<1);const route=await page.locator('[data-bl-region=route]').boundingBox();assert.ok(route.x>=parties.x&&route.x+route.width<=parties.x+parties.width+1);assert.ok(route.y>parties.y);}else assert.ok(identity.y>=parties.y+parties.height-1);
   assert.equal(await page.locator('[data-bl-onboard-mark]').count(),0);
-  assert.equal(await page.locator('[data-bl-document-layout] img, [data-bl-document-layout] h2').count(),0);
+  assert.equal(await page.locator('[data-bl-logo] img').count(),1);assert.equal(await page.locator('[data-bl-document-layout] h2').count(),0);
+  assert.equal(await page.getByRole('textbox',{name:'Port Of Loading',exact:true}).inputValue(),'HAIPHONG, VIETNAM');assert.equal(await page.getByRole('textbox',{name:'Port Of Discharge',exact:true}).inputValue(),'INCHEON, KOREA');assert.equal(data.originPortCode,'VNHPH');assert.equal(data.destinationPortCode,'KRINC');
+  const logoBounds=await page.locator('[data-bl-logo]').boundingBox(),numberBounds=await number.boundingBox();assert.ok(logoBounds.y>numberBounds.y);assert.ok(logoBounds.x>=identity.x-1);
   const cargoHeight=await page.locator('[data-bl-region=cargo]').evaluate(n=>n.getBoundingClientRect().height);if(width>=900)assert.ok(cargoHeight<300,String(cargoHeight));
   const border=await number.evaluate(n=>getComputedStyle(n.closest('.MuiOutlinedInput-root').querySelector('fieldset')).borderTopStyle);assert.equal(border,'solid');
   const sizes=await page.locator('[data-bl-identity] input').evaluateAll(nodes=>nodes.map(n=>n.closest('.MuiInputBase-root').getBoundingClientRect().height));assert.ok(Math.max(...sizes)-Math.min(...sizes)<2,JSON.stringify(sizes));
-  await page.locator('summary').filter({hasText:t.logo}).click();await page.getByRole('button',{name:t.saveLogo,exact:true}).click();
-  await page.waitForFunction(()=>document.querySelector('[name=\"cargo\"]')?.disabled===true);
-  await page.getByRole('button',{name:bt.retry,exact:true}).click();
-  await page.waitForFunction(()=>document.querySelector('[name=\"cargo\"]')?.disabled===false);
-  assert.deepEqual(logos[0],logos[1]);assert.equal(saves.length,2);await page.locator('summary').filter({hasText:t.logo}).click();
+  const logoArea=page.locator('[data-bl-logo]');await logoArea.getByRole('button',{name:t.removeLogo,exact:true}).click();assert.equal(await logoArea.locator('img').count(),0);const choose=logoArea.getByRole('button',{name:t.logo,exact:true});if(width===390)await choose.tap();else{await choose.focus();await choose.press('Enter');}assert.equal(await logoArea.locator('img').count(),1);assert.equal(await page.getByRole('button',{name:t.saveLogo,exact:true}).count(),0);assert.equal(logos.length,0);assert.equal(saves.length,2);
   await page.getByRole('textbox',{name:'Shipper',exact:true}).fill('Incorrect Party');
   assert.equal(await page.getByRole('button',{name:t.reapply,exact:true}).count(),0);
   assert.equal(await page.getByRole('textbox',{name:'Shipper',exact:true}).inputValue(),'Incorrect Party');

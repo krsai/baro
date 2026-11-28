@@ -58,6 +58,7 @@ export function normalizeHumanPayload(value,{path='',key='',ancestors=[],depth=0
  const normalizedKey=fieldKey(key);
  if(protectedTrees.has(normalizedKey))return value;
  if(typeof value==='string'){
+  if(/^\/freight\/transport-jobs\/[^/]+\/bills(?:\/|$)/.test(path.split('?')[0])&&['origin','destination'].includes(normalizedKey))return value.toUpperCase();
   if(bankUpperKeys.has(normalizedKey)||normalizedKey==='displayname'&&/\/(?:bank-accounts|expense-bank-accounts)(?:\/|$)/i.test(path))return value.toUpperCase();
   if(normalizedKey==='label'&&ancestors.includes('routeLocationDetails')&&ancestors.at(-1)?.endsWith('_DOOR')&&service!=='EXPRESS')return value.toUpperCase();
   if(companyKeys.has(normalizedKey))return value.toUpperCase();

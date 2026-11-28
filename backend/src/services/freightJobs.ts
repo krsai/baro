@@ -1,4 +1,5 @@
 import {syncJobFromBill} from './shippingSharedData';
+import {billPortLabels} from './billPortLabels';
 import {linkedJobBills,searchJobMasters,changeJobMasterLink} from './freightMasterLinks';
 import {randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
@@ -19,7 +20,7 @@ export async function jobDetail(db:any,orgId:number,actorId:number,id:string){
  const bills=await linkedJobBills(db,orgId,id);
  const documents=await db.$queryRawUnsafe('SELECT id,kind,number,"sourceVersion","createdAt",snapshot->\'tradeDocument\'->>\'sourceMode\' AS "sourceMode" FROM "FreightDocument" WHERE "orgId"=$1 AND "jobId"=$2 ORDER BY "createdAt" DESC,id',orgId,id);
  const assignee=Number.isSafeInteger(row.data?.assigneeId)?await db.employee.findFirst({where:{id:row.data.assigneeId,orgId},select:{id:true,name:true,employeeNo:true}}):null;
- return {...row,bills,documents,assignee};
+ return {...row,bills,documents,assignee,billPorts:await billPortLabels(db,row)};
 }
 export async function jobOptions(db:any,orgId:number,actorId:number){
  const actor=await freightForwarder(db,orgId,actorId);
@@ -71,10 +72,13 @@ export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:strin
   const billId=id||text(input.id,80);if(!billId)fail('FREIGHT_REQUIRED');
   let rows;
   if(before&&!remove&&kind==='HOUSE')await houseBillNumber(tx,orgId,number,before.id);
-  if(before)rows=await tx.$queryRawUnsafe('UPDATE "FreightBill" SET number=$1,issuer=$2,"masterId"=$3,"deletedAt"=$4,version=version+1,"updatedByEmployeeId"=$5,"updatedAt"=CURRENT_TIMESTAMP,data=$8::jsonb WHERE id=$6 AND "orgId"=$7 RETURNING *',number,issuer,masterId,remove?new Date():null,actorId,billId,orgId,JSON.stringify(data));
-  else{
+  if(before){
+   if(!remove&&data.logoDataUrl&&data.logoDataUrl!==before.data?.logoDataUrl&&data.logoDataUrl!==(await billBranding(tx,orgId)).logoDataUrl)fail('FREIGHT_COMPANY_LOGO_REQUIRED');
+   rows=await tx.$queryRawUnsafe('UPDATE "FreightBill" SET number=$1,issuer=$2,"masterId"=$3,"deletedAt"=$4,version=version+1,"updatedByEmployeeId"=$5,"updatedAt"=CURRENT_TIMESTAMP,data=$8::jsonb WHERE id=$6 AND "orgId"=$7 RETURNING *',number,issuer,masterId,remove?new Date():null,actorId,billId,orgId,JSON.stringify(data));
+  }else{
    const previous=(await tx.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE id=$1',billId))[0];
-   if(previous){const sameData=(value:any)=>JSON.stringify(billData(Object.fromEntries(Object.entries(value).filter(([key])=>!['surrenderRecordedBy','surrenderRecordedAt'].includes(key)))));if(previous.orgId!==orgId||previous.jobId!==jobId||previous.kind!==kind||number&&previous.number!==number||previous.issuer!==issuer||previous.masterId!==masterId||sameData(previous.data||{})!==sameData(data)||previous.deletedAt)fail('FREIGHT_CHANGED',409);return previous;}
+   if(previous){if(input.data?.logoDataUrl===undefined&&previous.data?.logoDataUrl!==undefined)data.logoDataUrl=previous.data.logoDataUrl;const sameData=(value:any)=>JSON.stringify(billData(Object.fromEntries(Object.entries(value).filter(([key])=>!['surrenderRecordedBy','surrenderRecordedAt'].includes(key)))));if(previous.orgId!==orgId||previous.jobId!==jobId||previous.kind!==kind||number&&previous.number!==number||previous.issuer!==issuer||previous.masterId!==masterId||sameData(previous.data||{})!==sameData(data)||previous.deletedAt)fail('FREIGHT_CHANGED',409);return previous;}
+   const logo=(await billBranding(tx,orgId)).logoDataUrl;if(data.logoDataUrl===undefined)data.logoDataUrl=logo;else if(data.logoDataUrl&&data.logoDataUrl!==logo)fail('FREIGHT_COMPANY_LOGO_REQUIRED');
    if(kind==='HOUSE')number=await houseBillNumber(tx,orgId,number);
    rows=await tx.$queryRawUnsafe('INSERT INTO "FreightBill"(id,"orgId","jobId",kind,number,issuer,"masterId",data,"createdByEmployeeId","updatedByEmployeeId","houseNumberManaged") VALUES($1,$2,$3,$4,$5,$6,$7,$9::jsonb,$8,$8,$10) RETURNING *',billId,orgId,jobId,kind,number,issuer,masterId,actorId,JSON.stringify(data),kind==='HOUSE');
   }

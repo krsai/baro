@@ -1,3 +1,4 @@
+import {billPortLabel} from './billPortLabel.mjs';
 import {shippingWorkData} from './shippingWorkData.mjs';
 export const billFields=['shipper','consignee','notify','deliveryAgent','vessel','voyage','origin','destination','placeOfReceipt','placeOfDelivery','etd','eta','issueDate','issuePlace','marks','cargo','quantity','unit','weightKg','cbm','cbmFormula','freightTerms','billTo','incoterms','preCarriage','finalDestination','totalPackagesWords','revenueTons','rate','ratePer','prepaid','collect','freightPayableAt','originalCount','onBoardDate','releaseType','surrenderStatus','surrenderRequestedAt','surrenderConfirmedAt','surrenderReference','surrenderReason','logoDataUrl'];
 export const requiresBillHierarchy=job=>job?.service!=='EXPRESS'&&['SEA','AIR'].includes(job?.mode);
@@ -6,8 +7,8 @@ export function initialBillData(job,bill,parent,forwarder){
  if(bill.version){const containers=shippingWorkData(job.data||{}).containers;return {...bill.data,...(bill.data?.containers===undefined&&containers&&!(bill.kind==='MASTER'&&bill.linkedJobCount>1)?{containers:structuredClone(containers)}:{})};}
  const source=shippingWorkData(job.data||{}),result=Object.fromEntries(billFields.map(key=>[key,String(source[key]??(['quantity','weightKg','cbm'].includes(key)?'0':key==='unit'?'PKG':''))]));
  if(job.service!=='EXPRESS'&&['SEA','AIR'].includes(job.mode)){
-  result.origin=String(source.routeLocations?.ORIGIN_TERMINAL||source.originPortCode||source.origin||'');
-  result.destination=String(source.routeLocations?.DESTINATION_TERMINAL||source.destinationPortCode||source.destination||'');
+  result.origin=job.billPorts?.origin||billPortLabel(source.routeLocations?.ORIGIN_TERMINAL||source.originPortCode||source.origin||'',source.originPortCode);
+  result.destination=job.billPorts?.destination||billPortLabel(source.routeLocations?.DESTINATION_TERMINAL||source.destinationPortCode||source.destination||'',source.destinationPortCode);
   result.placeOfReceipt=String(source.placeOfReceipt||source.origin||'');
   result.placeOfDelivery=String(source.placeOfDelivery||source.destination||'');
  }

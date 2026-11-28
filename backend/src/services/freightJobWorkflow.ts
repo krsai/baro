@@ -1,4 +1,5 @@
 import {normalizeEditableDecimal} from '../utils/editableDecimal';
+import {billPortLabel} from '../utils/billPortLabel';
 import {prepareSharedJob,syncBillsFromJob} from './shippingSharedData';
 import {linkedJobBills} from './freightMasterLinks';
 import {Prisma} from '@prisma/client';
@@ -119,6 +120,8 @@ export async function createJobDocument(db:any,orgId:number,actorId:number,id:st
   // A saved bill is a separate document source; never overwrite the job.
   if(bill?.data)Object.assign(data,Object.fromEntries(Object.entries(bill.data).filter(([key])=>!['surrenderRecordedBy','surrenderRecordedAt'].includes(key))));
   Object.assign(data,fields);
+  // Format only a newly requested copy. Existing document snapshots stay literal.
+  if(bill&&row.mode==='SEA')for(const key of ['origin','destination'])if(typeof data[key]==='string')data[key]=billPortLabel(data[key]);
   for(const role of ['shipper','consignee','notify']){const party=row.data[role+'Party'];if(data[role]===undefined)data[role]=work[role]||[party?.name,party?.address,party?.contactName,party?.phone,party?.email].filter(Boolean).join('\n');}
   if(!data.shipper||!data.consignee)fail('FREIGHT_DOCUMENT_REQUIRED');
   const issuer=await tx.organization.findUnique({where:{id:orgId},select:{name:true,address:true,representative:true,phone:true,email:true}}),documentId=randomUUID();

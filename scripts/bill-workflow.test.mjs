@@ -44,13 +44,8 @@ test('monthly HBL allocation, master 1:N links, surrender audit and document sna
   assert.equal(corrected.number,house.number);assert.equal(document.snapshot.source.data.surrenderStatus,'CONFIRMED');
   await assert.rejects(saveJobBill(db,org,actor,job.id,{...corrected,data:{...corrected.data,releaseType:'SEA_WAYBILL',surrenderStatus:'CONFIRMED'}},house.id),/SURRENDER_SCOPE/);
   assert.deepEqual((await jobDetail(db,org,actor,job.id)).data,original);
-  const opts=await jobOptions(db,org,actor);assert.match(opts.billBranding.logoDataUrl,/^data:image\/png/);assert.equal((await jobOptions(db,s.other.id,actor).catch(e=>e.message)),'ACTIVE_EMPLOYEE_REQUIRED');
-  await assert.rejects(saveBillBranding(db,org,s.people.junior.id,{version:0,logoDataUrl:''}),/ACCESS_DENIED/);
-  await assert.rejects(saveBillBranding(db,org,actor,{version:0,logoDataUrl:'data:image/svg+xml;base64,PHN2Zz4='}),/LOGO_INVALID/);
-  const initialBrand=await saveBillBranding(db,org,actor,{version:0,logoDataUrl:opts.billBranding.logoDataUrl});assert.equal(initialBrand.version,1);
-  assert.equal((await saveBillBranding(db,org,actor,{version:0,logoDataUrl:opts.billBranding.logoDataUrl})).version,1);
-  const brand=await saveBillBranding(db,org,actor,{version:1,logoDataUrl:''});assert.equal(brand.version,2);
-  assert.equal((await saveBillBranding(db,org,actor,{version:1,logoDataUrl:''})).version,2);
+  const opts=await jobOptions(db,org,actor);assert.equal(opts.billBranding.logoDataUrl,'');assert.equal((await jobOptions(db,s.other.id,actor).catch(e=>e.message)),'ACTIVE_EMPLOYEE_REQUIRED');
+  await assert.rejects(saveBillBranding(db,org,actor,{version:0,logoDataUrl:''}),/COMPANY_LOGO_MANAGED_IN_PROFILE/);
   await db.$transaction(async tx=>{const first=await houseBillNumber(tx,org,'',undefined,new Date('2031-11-30T16:59:59Z')),next=await houseBillNumber(tx,org,'',undefined,new Date('2031-11-30T17:00:00Z'));assert.equal(first,'DEXL3111001');assert.equal(next,'DEXL3112001');});
   await db.systemSetting.create({data:{key:`FREIGHT_HBL_NUMBER:${org}:3201`,value:{lastNumber:999}}});
   await assert.rejects(db.$transaction(tx=>houseBillNumber(tx,org,'',undefined,new Date('2032-01-15T00:00:00Z'))),/NUMBER_EXHAUSTED/);
